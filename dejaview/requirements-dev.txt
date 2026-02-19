@@ -4,3 +4,4 @@ pytest
 pytest-qt
 pytest-cov
 pyinstaller
+pywinauto   # E2E binary automation (Windows UIA backend)
