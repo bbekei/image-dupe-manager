@@ -1,0 +1,6 @@
+# Dev/build dependencies (plan §Test Framework — Test Stack)
+-r requirements.txt
+pytest
+pytest-qt
+pytest-cov
+pyinstaller

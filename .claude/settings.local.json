@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip install:*)",
+      "Bash(python:*)",
+      "Bash(ls:*)",
+      "Read(//c/Users/bekei/My Python stuff/image-dupe-manager/**)",
+      "Bash(test:*)",
+      "Bash(where:*)",
+      "Bash(pyside6-lrelease --version)",
+      "Bash(lrelease:*)",
+      "Bash(pyinstaller --version)",
+      "Bash(pyinstaller:*)"
+    ]
+  }
+}

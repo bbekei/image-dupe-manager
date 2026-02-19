@@ -1,0 +1,8 @@
+[run]
+omit =
+    tests/*
+    resources/*
+    main.py
+
+[report]
+fail_under = 80

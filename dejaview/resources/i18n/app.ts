@@ -1,0 +1,232 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE TS>
+<TS version="2.1" language="en_US">
+<!--
+  app.ts — English source strings for DejaView (plan §Architecture).
+  All UI-visible strings are here. Internal data (DB values, JSON keys,
+  log messages) always stay in English regardless of UI language.
+
+  This file is the source of truth. Run:
+    pylupdate6 dejaview/**/*.py -ts resources/i18n/app.ts
+  to refresh it from tr() calls in source files.
+-->
+<context>
+    <name>MainWindow</name>
+    <message>
+        <source>Add folders to get started.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>File</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>View</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Scan</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Share</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Configure Sync&#x2026;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Manage Synced Libraries&#x2026;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sync not configured.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Signing in with Google&#x2026;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Signed in to Google Drive.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Google sign-in failed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sync settings saved.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&#x2195; Syncing&#x2026;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&#x2713; Synced.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&#x26a0; Sync unavailable &#x2014; showing last known data</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&#x2713; Sync complete.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>FolderPanel</name>
+    <message>
+        <source>+ Add...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>- Remove</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>ScanControl</name>
+    <message>
+        <source>▶ Start</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>⏸ Pause</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>▶ Resume</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>⏹ Stop</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Discovering files...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>PAUSED</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>ResultsPanel</name>
+    <message>
+        <source>All</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Duplicates Only</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cross-Library</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>● DUPLICATE</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>ShareDialog</name>
+    <message>
+        <source>Configure Sync</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Identity</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Display name:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>e.g. alice</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Google Drive</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sign in with Google</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Shared folder ID:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Paste Google Drive folder ID here</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Privacy</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Export privacy level:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Filename only</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hash only</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Full path</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Synced Libraries</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remove Peer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sync Now</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Signed in</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not signed in</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid Name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid folder ID format.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remove &apos;{0}&apos; and all their synced data?</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+</TS>

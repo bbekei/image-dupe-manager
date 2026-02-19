@@ -1,0 +1,6 @@
+# Runtime dependencies (plan §Dependencies)
+Pillow
+PyQt6
+google-api-python-client
+google-auth-oauthlib
+google-auth-httplib2
