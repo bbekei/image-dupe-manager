@@ -32,6 +32,9 @@ a = Analysis(
         ('resources/i18n/app_hu.qm', 'resources/i18n'),
         # Qt base Hungarian translation (standard button labels, dialogs)
         (str(_qt_hu_qm), 'resources/i18n'),
+        # User guide files (Feature Request 1 — Help Menu)
+        ('resources/help/USER_GUIDE.md', 'resources/help'),
+        ('resources/help/USER_GUIDE_HU.md', 'resources/help'),
         # Google OAuth2 client secrets (bundled per plan §Security)
         # Uncomment when client_secrets.json is created:
         # ('resources/client_secrets.json', 'resources'),

@@ -2,7 +2,7 @@
 ui/main_window.py — DejaView application shell (plan §UI Layout — Main Window).
 
 Layout:
-  Menu bar  : File | View | Scan | Share
+  Menu bar  : File | View | Scan | Share | Help
   Left pane : FolderPanel (180–300 px wide)
   Right pane: ResultsPanel (Phase 3) or CompareView (Phase 4)
   Bottom bar: ScanControl (buttons + progress)
@@ -38,6 +38,7 @@ from data.export import build_export_payload, import_payload, validate_username
 from data.sync import DriveSync
 from ui.compare_view import CompareView
 from ui.folder_panel import FolderPanel
+from ui.help_dialog import HelpDialog
 from ui.results_panel import ResultsPanel
 from ui.scan_control import ScanControl
 from ui.share_dialog import ShareDialog
@@ -112,6 +113,10 @@ class MainWindow(QMainWindow):
         share_menu.addAction(
             self.tr("Manage Synced Libraries\u2026"), self._on_manage_peers
         )
+
+        # Help (Feature Request 1 — Help Menu)
+        help_menu = mb.addMenu(self.tr("Help"))
+        help_menu.addAction(self.tr("User Guide\u2026"), self._on_user_guide)
 
     def _build_central(self) -> None:
         self._splitter = QSplitter(Qt.Orientation.Horizontal, self)
@@ -481,6 +486,15 @@ class MainWindow(QMainWindow):
         """After sync settings saved, refresh cross-library data."""
         self._results_panel.update_cross_library_data()
         self._status_bar.showMessage(self.tr("Sync settings saved."))
+
+    # ── Help (Feature Request 1 — Help Menu) ─────────────────────────────
+
+    @pyqtSlot()
+    def _on_user_guide(self) -> None:
+        """Help > User Guide — open the localised user guide dialog."""
+        guide_dir = Path(__file__).resolve().parent.parent / "resources" / "help"
+        dlg = HelpDialog(guide_dir=guide_dir, parent=self)
+        dlg.exec()
 
     # ── Sync execution (plan §Workflow 5 — Ongoing sync) ─────────────────
 

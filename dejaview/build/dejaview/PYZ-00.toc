@@ -1339,6 +1339,10 @@
    'C:\\Users\\bekei\\My Python '
    'stuff\\image-dupe-manager\\dejaview\\ui\\folder_panel.py',
    'PYMODULE'),
+  ('ui.help_dialog',
+   'C:\\Users\\bekei\\My Python '
+   'stuff\\image-dupe-manager\\dejaview\\ui\\help_dialog.py',
+   'PYMODULE'),
   ('ui.main_window',
    'C:\\Users\\bekei\\My Python '
    'stuff\\image-dupe-manager\\dejaview\\ui\\main_window.py',

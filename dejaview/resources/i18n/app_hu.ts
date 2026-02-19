@@ -211,6 +211,15 @@
         <source>✓ Sync complete.</source>
         <translation>✓ Szinkronizálás kész.</translation>
     </message>
+    <!-- Help menu (Feature Request 1) -->
+    <message>
+        <source>Help</source>
+        <translation>Súgó</translation>
+    </message>
+    <message>
+        <source>User Guide…</source>
+        <translation>Felhasználói kézikönyv…</translation>
+    </message>
 </context>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
@@ -569,6 +578,20 @@
     <message>
         <source>Hashing {0} candidate(s)…</source>
         <translation>{0} jelölt hashelése…</translation>
+    </message>
+</context>
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     HelpDialog (ui/help_dialog.py)
+     ═══════════════════════════════════════════════════════════════════════ -->
+<context>
+    <name>HelpDialog</name>
+    <message>
+        <source>User Guide</source>
+        <translation>Felhasználói kézikönyv</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation>Bezárás</translation>
     </message>
 </context>
 </TS>

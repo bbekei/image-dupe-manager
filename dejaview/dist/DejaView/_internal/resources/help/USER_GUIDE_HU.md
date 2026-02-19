@@ -1,0 +1,210 @@
+# DejaView Home Photo Manager — Felhasználói kézikönyv
+
+## Mit csinál ez az alkalmazás?
+
+A DejaView Home Photo Manager megkeresi a duplikált fotókat a megadott mappákban, és lehetővé teszi, hogy eldöntse: melyik másolatot tartsa meg, és melyiket törölje. Az alkalmazás a képek vizuális tartalmát hasonlítja össze — ezért a duplikátumokat akkor is megtalálja, ha a fájlokat átnevezték, más beállításokkal mentették el, vagy módosult a metaadatuk.
+
+A keresési eredményeket meg is oszthatja családtagjaival, hogy megtalálja azokat a fotókat, amelyek több ember könyvtárában is megvannak — a tényleges képek sehová sem töltődnek fel.
+
+---
+
+## Telepítés
+
+### Telepítővel (ajánlott)
+
+1. Töltse le a **DejaView_Setup.exe** fájlt a kiadások oldaláról
+2. Futtassa a telepítőt — normál felhasználói fiókkal is működik (nem szükséges rendszergazda)
+3. Válassza ki a kívánt nyelvet (angol vagy magyar) a telepítés során
+4. Opcionálisan hozzon létre asztali parancsikont
+5. Kattintson a **Befejezés** gombra a DejaView elindításához
+
+Az alkalmazás alapértelmezetten a `C:\Users\<felhasználó>\AppData\Local\Programs\DejaView` mappába települ. Az adatbázis és az előnézeti képek külön tárolódnak: `%APPDATA%\DejaView\`.
+
+### Eltávolítás
+
+Használja a **Programok hozzáadása és eltávolítása** funkciót a Windows beállításokban, vagy futtassa az eltávolítót a Start menü csoportjából.
+
+---
+
+## A felület
+
+A főablak három részből áll:
+
+```
+┌────────────────────────────────────────────────────────┐
+│ Menü: Fájl | Nézet | Szkennelés | Megosztás            │
+├──────────────┬─────────────────────────────────────────┤
+│ MAPPAPANEL   │  EREDMÉNYPANEL                          │
+│              │  [Összes | Csak duplikátumok | Könyvtárak│
+│ [+ Hozzáad.] │                              közötti]   │
+│ [- Eltávolít]│                                         │
+│              │  Az eredmények itt jelennek meg         │
+│ ▶ C:\Fotók   │                                         │
+│ ▶ Z:\Család  │                                         │
+├──────────────┴─────────────────────────────────────────┤
+│ [▶ Indítás] [⏸ Szünet] [⏹ Leállítás] ████░░ 47% 230/490│
+└────────────────────────────────────────────────────────┘
+```
+
+- **Mappapanel** (bal oldal) — a beolvasni kívánt mappák listája
+- **Eredménypanel** (jobb oldal) — a talált fájlok, duplikátum-jelzőkkel
+- **Vezérlősáv** (lent) — indítás, szünet, leállítás és az előrehaladás kijelzője
+
+---
+
+## 1. lépés — Mappák hozzáadása
+
+1. Kattintson a **+ Hozzáadás...** gombra a mappapanelen, vagy válassza a **Fájl > Mappa hozzáadása** menüpontot
+2. Megnyílik egy mappaböngésző — navigáljon a fotókönyvtárba, majd kattintson az OK gombra
+3. A mappa megjelenik a listában
+
+Tetszőleges számú mappát adhat hozzá, különböző meghajtókról vagy hálózati megosztásokról is (pl. `Z:\Közös fotók`). Egy mappa eltávolításához jelölje ki, majd kattintson az **– Eltávolítás** gombra.
+
+---
+
+## 2. lépés — Szkennelés
+
+Kattintson a **▶ Indítás** gombra a vezérlősávban. A szkennelés két szakaszban zajlik:
+
+### 1. szakasz — Feltérképezés
+Az alkalmazás végigmegy az összes hozzáadott mappán, és megkeresi az összes fájlt. A fájlok azonnal megjelennek az eredménypanelen — még a duplikátum-ellenőrzés előtt. Az előrehaladás sávon ez jelenik meg: *Fájlok keresése...*
+
+### 2. szakasz — Duplikátum-keresés
+Az alkalmazás összehasonlítja a potenciálisan egyező fájlok vizuális tartalmát. Az egyező fájlok mellett valós időben megjelennek a **● DUPLIKÁTUM** jelzők. Az előrehaladás sávon látható a feldolgozott fájlok száma (pl. *230 / 490*).
+
+> Amelyik fájl mellett a szkennelés végén nincs jelző, az egyedi — nem találtunk hozzá vizuális másolatot a beolvasott mappákban.
+
+### Szüneteltetés és folytatás
+Kattintson a **⏸ Szünet** gombra, amikor csak szeretné. Az aktuális fájl feldolgozása befejeződik, majd a szkennelés megáll. Az állapotjelzőn megjelenik a **SZÜNETELTETVE** felirat. Az alkalmazást be is zárhatja — az előrehaladás el van mentve. Újra megnyitás után kattintson a **▶ Folytatás** gombra a folytatáshoz. A már feldolgozott fájlokat nem ellenőrzi újra.
+
+### Leállítás
+A **⏹ Leállítás** gomb megnyomásával véglegesen befejezi a szkennelést. A részleges eredmények megmaradnak, és a talált duplikátumokat tovább kezelheti.
+
+---
+
+## 3. lépés — Eredmények áttekintése
+
+A szkennelés után az eredménypanel tetején lévő szűrősávval választhatja ki, mit jelenítsen meg:
+
+| Szűrő | Megjelenített fájlok |
+|-------|---------------------|
+| **Összes** | Minden fájl a beolvasott mappákból |
+| **Csak duplikátumok** | Csak azok a fájlok, amelyeknek van legalább egy másolatuk |
+| **Könyvtárak közötti** | Olyan fájlok, amelyek egy szinkronizált családtag könyvtárában is megvannak |
+
+A **Csak duplikátumok** szűrőre váltva az eredménypanel csak az érintett fájlokat mutatja. A fájlok az eredeti mappaszerkezetükben jelennek meg, így jól látható, hol találhatók az egyes másolatok.
+
+Kattintson bármelyik **● DUPLIKÁTUM** jelzővel ellátott fájlra az Összehasonlítás nézet megnyitásához.
+
+---
+
+## 4. lépés — Összehasonlítás és döntés
+
+Az Összehasonlítás nézet egymás mellett mutatja egy duplikátumcsoport összes másolatát:
+
+```
+┌──────────────┐   ┌──────────────┐   ┌──────────────┐
+│   [kép]      │   │   [kép]      │   │   [kép]      │
+│ C:\Fotók\    │   │ Z:\Család\   │   │ D:\Mentés\   │
+│ tengerpart.  │   │ foto.jpg     │   │ img0041.jpg  │
+│ jpg          │   │              │   │              │
+│ 2,1 MB       │   │ 1,8 MB       │   │ 2,1 MB       │
+│ 2023-06-15   │   │ 2023-07-30   │   │ 2023-06-15   │
+│[MEGTART][TÖR]│   │[MEGTART][TÖR]│   │[MEGTART][TÖR]│
+└──────────────┘   └──────────────┘   └──────────────┘
+[Alkalmazás a csoport összes elemére]  [Csoportos szabályok...]
+```
+
+Minden cella tartalmaz egy előnézeti képet, a fájl helyét, méretét és módosítási dátumát.
+
+### Műveletek fájlonként
+
+| Gomb | Mit csinál |
+|------|------------|
+| **MEGTART** | Ezt a másolatot jelöli megtartásra |
+| **TÖRÖL** | Ezt a másolatot jelöli törlésre |
+| **Átnevez** | Új fájlnevet lehet megadni közvetlenül a cellán |
+
+> **Semmi sem törlődik azonnal.** Minden döntés előbb csak jelölésre kerül. A tényleges lemezműveletek előtt áttekintheti a teljes listát.
+
+### Csoportos szabályok
+Kattintson a **Csoportos szabályok...** gombra, és az alkalmazás automatikusan dönt az egész csoportra:
+
+- **Legrégebbi megtartása** — megtartja a legkorábbi módosítási dátumú fájlt, a többit törlésre jelöli
+- **Legnagyobb megtartása** — megtartja a legnagyobb fájlméretet, a többit törlésre jelöli
+- **Adott mappában lévő fájlok megtartása** — megtartja az Ön által kiválasztott mappában lévő másolatot, a többit törli
+
+### Műveletek megerősítése
+Miután egy vagy több csoportban elvégezte a jelöléseket, egy megerősítő párbeszédablak felsorolja az összes törlésre jelölt fájlt. Ellenőrizze a listát, majd erősítse meg — az összes módosítás egyszerre érvényesül.
+
+---
+
+## Megosztás családtagokkal
+
+Megoszhatja a szkennelési ujjlenyomatokat megbízható személyekkel, hogy megtalálja a különböző könyvtárakban duplikálódott fotókat. **A tényleges képek sehová sem töltődnek fel.** Csak kompakt ujjlenyomatok (és opcionálisan fájlnevek) hagyják el a gépét.
+
+### Google Drive-szinkronizálás beállítása
+
+A csoport egyik tagja egyszer elvégzi az első beállítást:
+
+1. Nyissa meg a **Megosztás > Szinkronizálás beállítása...** menüpontot
+2. Adjon meg egy megjelenítési nevet (pl. `anna`) — ez azonosítja az Ön adatait a megosztott mappában
+3. Kattintson a **Bejelentkezés Google-lel** gombra — megnyílik egy böngészőablak az engedélyezéshez. Az alkalmazás csak az általa létrehozott fájlokhoz kap hozzáférést, a teljes Google Drive-hoz nem.
+4. A Google Drive webes felületén hozzon létre egy megosztott mappát, és ossza meg a kívánt személyekkel. Az alkalmazás közvetlen hivatkozást és rövid útmutatót jelenít meg ehhez a lépéshez.
+5. Illessze be a megosztott mappa URL-jét vagy azonosítóját az alkalmazásba
+6. Válasszon **adatvédelmi szintet** — azt szabályozza, mi kerüljön megosztásra:
+
+   | Szint | Mit oszt meg |
+   |-------|-------------|
+   | **Csak fájlnév** *(alapértelmezett)* | Ujjlenyomatok és fájlnevek; a teljes elérési utak titkosak maradnak |
+   | **Csak ujjlenyomat** | Kizárólag ujjlenyomatok; fájlnevek és elérési utak titkosak |
+   | **Teljes elérési út** | Ujjlenyomatok és teljes fájlelérési utak |
+
+7. Kattintson a **Mentés** gombra
+
+Minden más személy megismétli a 2–7. lépést a saját megjelenítési nevével, ugyanarra a megosztott mappára mutatva.
+
+### A szinkronizálás menete
+
+A szinkronizálás automatikusan zajlik:
+
+- **Indításkor** — az alkalmazás csendben letölti a többiek legfrissebb eredményeit a háttérben
+- **Szkennelés után** — automatikusan feltölti az Ön frissített eredményeit
+- **Bezáráskor** — végső feltöltés, ha változás történt
+
+Az állapotsávon látható:
+- `↕ Szinkronizálás...` — folyamatban
+- `✓ Szinkronizálva 2 perce` — naprakész
+
+**Ha nem csatlakozik az internethez**, az állapotsávon ez jelenik meg: `⚠ Szinkronizálás nem elérhető – utolsó ismert adatok láthatók`. A Könyvtárak közötti szűrő az utolsó sikeres szinkronizálás eredményeit mutatja. A feltöltés várólistára kerül, és a következő online alkalommal automatikusan megtörténik.
+
+### Könyvtárak közötti duplikátumok megtekintése
+
+Váltson a **Könyvtárak közötti** szűrőre, hogy lássa, melyek azok a fotói, amelyek más valakinek a könyvtárában is megvannak.
+
+Az Összehasonlítás nézetben a más könyvtárból származó cellák megjelenítik a tulajdonos nevét, és **csak olvashatók** — nem jelennek meg rajtuk műveleti gombok. Ön dönt arról, mit tesz a saját másolatával; a másik fél fájljait nem érinti.
+
+### Szinkronizált könyvtárak kezelése
+
+Nyissa meg a **Megosztás > Szinkronizált könyvtárak kezelése** menüpontot, ahol láthatja az összes szinkronizált személyt. Bárkit eltávolíthat a listáról — az adataik törlődnek a helyi adatbázisból.
+
+---
+
+## Kézi export / import (Google Drive nélkül)
+
+Ha nem szeretné használni a Google Drive-ot, az eredményeket fájlként is megoszthatja:
+
+1. **Export** — nyissa meg a **Megosztás > Szkennelési eredmények exportálása...** menüpontot, adjon meg egy megjelenítési nevet, és mentse el a `.json` fájlt. Küldje el e-mailben vagy USB-n a másik személynek.
+2. **Import** — nyissa meg a **Megosztás > Szkennelési eredmények importálása...** menüpontot, majd nyissa meg a kapott `.json` fájlt. A könyvtárak közötti egyezések azonnal megjelennek.
+
+A **Megosztás > Szinkronizálás beállítása** menüpontban megadott adatvédelmi szint a kézi exportra is vonatkozik.
+
+---
+
+## Beállítások
+
+### Nyelv módosítása
+Az alkalmazás automatikusan felismeri a Windows rendszer nyelvét, és magyarul vagy angolul indul el. Ha kézzel szeretné megváltoztatni, nyissa meg a **Fájl > Beállítások > Nyelv** menüpontot. A változtatás azonnal érvénybe lép — újraindítás nem szükséges.
+
+### Szkennelési sebesség
+A **Fájl > Beállítások > Szkennelési sebesség** menüpontban szabályozhatja, hogy a szkennelés mennyi processzoridőt vegyen igénybe. Az alapértelmezett beállítás a leggyorsabb. Csökkentse, ha szkennelés közben a számítógép lelassul — a szkennelés tovább tart, de a többi program reagálóképesebb marad.

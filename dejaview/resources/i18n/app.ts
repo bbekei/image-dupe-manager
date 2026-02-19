@@ -76,6 +76,14 @@
         <source>&#x2713; Sync complete.</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Help</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>User Guide&#x2026;</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>FolderPanel</name>
@@ -226,6 +234,17 @@
     </message>
     <message>
         <source>Remove &apos;{0}&apos; and all their synced data?</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>HelpDialog</name>
+    <message>
+        <source>User Guide</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Close</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
