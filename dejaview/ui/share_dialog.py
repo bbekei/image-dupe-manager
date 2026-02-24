@@ -249,8 +249,8 @@ class ShareDialog(QDialog):
     def _on_sign_in(self) -> None:
         """Handle Sign in with Google button (plan §Workflow 5, step 3)."""
         self.sign_in_requested.emit()
-        # After external auth completes, caller should call update_auth_status().
-        self._update_auth_status()
+        # Auth runs in a background thread; MainWindow calls set_signing_in()
+        # and update_auth_status() when the flow completes.
 
     def _on_remove_peer(self) -> None:
         """Remove selected peer (plan §Workflow 5 — Manage peers)."""
@@ -296,6 +296,10 @@ class ShareDialog(QDialog):
         self.accept()
 
     # ── Public API (for caller to update state after auth) ───────────────
+
+    def set_signing_in(self, busy: bool) -> None:
+        """Disable/re-enable the sign-in button during the background OAuth flow."""
+        self._sign_in_btn.setEnabled(not busy)
 
     def update_auth_status(self) -> None:
         """Refresh the auth status label. Called by the parent after OAuth flow."""

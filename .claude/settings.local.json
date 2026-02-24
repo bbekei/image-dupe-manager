@@ -10,7 +10,8 @@
       "Bash(pyside6-lrelease --version)",
       "Bash(lrelease:*)",
       "Bash(pyinstaller --version)",
-      "Bash(pyinstaller:*)"
+      "Bash(pyinstaller:*)",
+      "Bash(\"/c/Program Files \\(x86\\)/Inno Setup 6/ISCC.exe\" installer.iss)"
     ]
   }
 }

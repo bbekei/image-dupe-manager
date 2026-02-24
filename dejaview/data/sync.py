@@ -131,16 +131,17 @@ class DriveSync:
     # OAuth2 (plan §Security — credential and token storage)
     # ------------------------------------------------------------------
 
-    def authenticate(self) -> bool:
+    def authenticate(self) -> tuple[bool, str]:
         """Run the OAuth2 desktop flow if needed.
 
-        Returns True if credentials are valid after this call.
+        Returns (True, "") if credentials are valid after this call,
+        or (False, reason) with a user-visible explanation on failure.
         """
         creds = load_credentials(self._creds_path)
 
         if creds and creds.valid:
             self._build_service(creds)
-            return True
+            return True, ""
 
         if creds and creds.expired and creds.refresh_token:
             try:
@@ -148,15 +149,16 @@ class DriveSync:
                 creds.refresh(Request())
                 save_credentials(creds, self._creds_path)
                 self._build_service(creds)
-                return True
+                return True, ""
             except Exception as exc:
                 log.warning("Token refresh failed: %s", exc)
                 # Fall through to full re-auth
 
         # Full OAuth2 desktop flow
         if self._secrets_path is None or not self._secrets_path.exists():
-            log.error("client_secrets.json not found at %s", self._secrets_path)
-            return False
+            msg = f"client_secrets.json not found at {self._secrets_path}"
+            log.error(msg)
+            return False, msg
 
         try:
             from google_auth_oauthlib.flow import InstalledAppFlow
@@ -166,10 +168,11 @@ class DriveSync:
             creds = flow.run_local_server(port=0)
             save_credentials(creds, self._creds_path)
             self._build_service(creds)
-            return True
+            return True, ""
         except Exception as exc:
-            log.error("OAuth2 flow failed: %s", exc)
-            return False
+            msg = f"OAuth2 flow failed: {exc}"
+            log.error(msg)
+            return False, msg
 
     def _build_service(self, creds) -> None:
         """Build the Drive API service from credentials."""

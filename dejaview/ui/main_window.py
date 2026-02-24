@@ -67,6 +67,8 @@ class MainWindow(QMainWindow):
         self._session_id: int | None = None
         self._compare_view: CompareView | None = None
         self._sync_worker: _SyncWorker | None = None
+        self._auth_worker: "_AuthWorker | None" = None
+        self._share_dialog: ShareDialog | None = None
 
         self.setWindowTitle(self.tr("DejaView"))
         self.setMinimumSize(900, 600)
@@ -431,16 +433,17 @@ class MainWindow(QMainWindow):
     @pyqtSlot()
     def _on_configure_sync(self) -> None:
         """Share > Configure Sync — open the ShareDialog."""
-        dlg = ShareDialog(
+        self._share_dialog = ShareDialog(
             db=self._db,
             drive_sync=self._drive_sync,
             parent=self,
         )
-        dlg.sign_in_requested.connect(self._on_sign_in_requested)
-        dlg.sync_requested.connect(self._on_sync_now)
-        dlg.peer_removed.connect(self._on_peer_removed)
-        dlg.settings_saved.connect(self._on_sync_settings_saved)
-        dlg.exec()
+        self._share_dialog.sign_in_requested.connect(self._on_sign_in_requested)
+        self._share_dialog.sync_requested.connect(self._on_sync_now)
+        self._share_dialog.peer_removed.connect(self._on_peer_removed)
+        self._share_dialog.settings_saved.connect(self._on_sync_settings_saved)
+        self._share_dialog.exec()
+        self._share_dialog = None
 
     @pyqtSlot()
     def _on_manage_peers(self) -> None:
@@ -449,20 +452,37 @@ class MainWindow(QMainWindow):
 
     @pyqtSlot()
     def _on_sign_in_requested(self) -> None:
-        """Handle OAuth2 sign-in request from ShareDialog."""
+        """Start the OAuth2 sign-in flow in a background thread.
+
+        run_local_server() blocks until the browser callback arrives, so it
+        must not run on the Qt main thread — doing so freezes the event loop
+        and prevents the browser window from receiving focus on Windows.
+        """
         if self._drive_sync is None:
-            self._status_bar.showMessage(
-                self.tr("Sync not configured.")
-            )
+            self._status_bar.showMessage(self.tr("Sync not configured."))
             return
+        if self._auth_worker is not None and self._auth_worker.isRunning():
+            return  # Already authenticating
         self._status_bar.showMessage(self.tr("Signing in with Google\u2026"))
-        ok = self._drive_sync.authenticate()
+        if self._share_dialog is not None:
+            self._share_dialog.set_signing_in(True)
+        self._auth_worker = _AuthWorker(self._drive_sync, parent=self)
+        self._auth_worker.auth_finished.connect(self._on_auth_finished)
+        self._auth_worker.start()
+
+    @pyqtSlot(bool, str)
+    def _on_auth_finished(self, ok: bool, message: str) -> None:
+        """Handle OAuth2 authentication result from the background thread."""
         if ok:
             self._status_bar.showMessage(self.tr("Signed in to Google Drive."))
         else:
+            reason = message if message else self.tr("Unknown error")
             self._status_bar.showMessage(
-                self.tr("Google sign-in failed.")
+                self.tr("Google sign-in failed: {0}").format(reason)
             )
+        if self._share_dialog is not None:
+            self._share_dialog.set_signing_in(False)
+            self._share_dialog.update_auth_status()
 
     @pyqtSlot()
     def _on_sync_now(self) -> None:
@@ -567,12 +587,42 @@ class MainWindow(QMainWindow):
         if self._scanner and self._scanner.isRunning():
             self._scanner.stop()
             self._scanner.wait(5000)
-        # Wait for any running sync worker to finish.
+        # Wait for any in-progress auth or sync workers to finish.
+        if self._auth_worker is not None and self._auth_worker.isRunning():
+            self._auth_worker.wait(5000)
         if self._sync_worker is not None and self._sync_worker.isRunning():
             self._sync_worker.wait(5000)
         # Plan §Workflow 5 — on app close: final export upload.
         self._run_sync_blocking(session_id=self._session_id)
         event.accept()
+
+
+# ── Background auth worker (non-blocking OAuth2 desktop flow) ────────────
+
+class _AuthWorker(QThread):
+    """Runs DriveSync.authenticate() in a background thread.
+
+    flow.run_local_server() is a blocking call that opens a browser and waits
+    for the OAuth2 callback.  Running it off the main thread keeps the Qt
+    event loop alive so the browser receives focus and the UI stays responsive.
+
+    Emits auth_finished(bool, str) — (True, "") on success,
+    (False, reason) on failure.
+    """
+
+    auth_finished = pyqtSignal(bool, str)
+
+    def __init__(self, drive_sync: DriveSync, parent=None):
+        super().__init__(parent)
+        self._drive_sync = drive_sync
+
+    def run(self) -> None:
+        try:
+            ok, msg = self._drive_sync.authenticate()
+        except Exception as exc:
+            log.warning("Auth worker exception: %s", exc)
+            ok, msg = False, str(exc)
+        self.auth_finished.emit(ok, msg)
 
 
 # ── Background sync worker (plan §Workflow 5 — non-blocking sync) ────────

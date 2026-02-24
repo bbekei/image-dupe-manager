@@ -37,7 +37,7 @@ a = Analysis(
         ('resources/help/USER_GUIDE_HU.md', 'resources/help'),
         # Google OAuth2 client secrets (bundled per plan §Security)
         # Uncomment when client_secrets.json is created:
-        # ('resources/client_secrets.json', 'resources'),
+        ('resources/client_secrets.json', 'resources'),
     ],
     hiddenimports=[
         'PyQt6.sip',
