@@ -2,7 +2,7 @@
 
 ## Mit csinál ez az alkalmazás?
 
-A DejaView Home Photo Manager megkeresi a duplikált fotókat a megadott mappákban, és lehetővé teszi, hogy eldöntse: melyik másolatot tartsa meg, és melyiket törölje. Az alkalmazás a képek vizuális tartalmát hasonlítja össze — ezért a duplikátumokat akkor is megtalálja, ha a fájlokat átnevezték, más beállításokkal mentették el, vagy módosult a metaadatuk.
+A DejaView Home Photo Manager megkeresi a duplikált fotókat a megadott mappákban, és megmutatja, pontosan hol léteznek duplikátumok. Az alkalmazás a képek vizuális tartalmát hasonlítja össze — ezért a duplikátumokat akkor is megtalálja, ha a fájlokat átnevezték, más beállításokkal mentették el, vagy módosult a metaadatuk.
 
 A keresési eredményeket meg is oszthatja családtagjaival, hogy megtalálja azokat a fotókat, amelyek több ember könyvtárában is megvannak — a tényleges képek sehová sem töltődnek fel.
 
@@ -78,7 +78,7 @@ Az alkalmazás összehasonlítja a potenciálisan egyező fájlok vizuális tart
 Kattintson a **⏸ Szünet** gombra, amikor csak szeretné. Az aktuális fájl feldolgozása befejeződik, majd a szkennelés megáll. Az állapotjelzőn megjelenik a **SZÜNETELTETVE** felirat. Az alkalmazást be is zárhatja — az előrehaladás el van mentve. Újra megnyitás után kattintson a **▶ Folytatás** gombra a folytatáshoz. A már feldolgozott fájlokat nem ellenőrzi újra.
 
 ### Leállítás
-A **⏹ Leállítás** gomb megnyomásával véglegesen befejezi a szkennelést. A részleges eredmények megmaradnak, és a talált duplikátumokat tovább kezelheti.
+A **⏹ Leállítás** gomb megnyomásával véglegesen befejezi a szkennelést. A részleges eredmények megmaradnak.
 
 ---
 
@@ -94,11 +94,11 @@ A szkennelés után az eredménypanel tetején lévő szűrősávval választhat
 
 A **Csak duplikátumok** szűrőre váltva az eredménypanel csak az érintett fájlokat mutatja. A fájlok az eredeti mappaszerkezetükben jelennek meg, így jól látható, hol találhatók az egyes másolatok.
 
-Kattintson bármelyik **● DUPLIKÁTUM** jelzővel ellátott fájlra az Összehasonlítás nézet megnyitásához.
+Kattintson bármelyik **● DUPLIKÁTUM** jelzővel ellátott fájlra az Összehasonlítás nézet megnyitásához, ahol megtekintheti a duplikátumcsoport összes másolatát egymás mellett.
 
 ---
 
-## 4. lépés — Összehasonlítás és döntés
+## 4. lépés — Duplikátumok összehasonlítása
 
 Az Összehasonlítás nézet egymás mellett mutatja egy duplikátumcsoport összes másolatát:
 
@@ -110,32 +110,13 @@ Az Összehasonlítás nézet egymás mellett mutatja egy duplikátumcsoport öss
 │ jpg          │   │              │   │              │
 │ 2,1 MB       │   │ 1,8 MB       │   │ 2,1 MB       │
 │ 2023-06-15   │   │ 2023-07-30   │   │ 2023-06-15   │
-│[MEGTART][TÖR]│   │[MEGTART][TÖR]│   │[MEGTART][TÖR]│
 └──────────────┘   └──────────────┘   └──────────────┘
-[Alkalmazás a csoport összes elemére]  [Csoportos szabályok...]
+                   [Bezárás]
 ```
 
-Minden cella tartalmaz egy előnézeti képet, a fájl helyét, méretét és módosítási dátumát.
+Minden cella tartalmaz egy előnézeti képet, a fájl teljes elérési útját, méretét és módosítási dátumát. Ez egy csak olvasható nézet — az összes duplikátum adatait áttekintheti, hogy pontosan lássa, hol találhatók a másolatok.
 
-### Műveletek fájlonként
-
-| Gomb | Mit csinál |
-|------|------------|
-| **MEGTART** | Ezt a másolatot jelöli megtartásra |
-| **TÖRÖL** | Ezt a másolatot jelöli törlésre |
-| **Átnevez** | Új fájlnevet lehet megadni közvetlenül a cellán |
-
-> **Semmi sem törlődik azonnal.** Minden döntés előbb csak jelölésre kerül. A tényleges lemezműveletek előtt áttekintheti a teljes listát.
-
-### Csoportos szabályok
-Kattintson a **Csoportos szabályok...** gombra, és az alkalmazás automatikusan dönt az egész csoportra:
-
-- **Legrégebbi megtartása** — megtartja a legkorábbi módosítási dátumú fájlt, a többit törlésre jelöli
-- **Legnagyobb megtartása** — megtartja a legnagyobb fájlméretet, a többit törlésre jelöli
-- **Adott mappában lévő fájlok megtartása** — megtartja az Ön által kiválasztott mappában lévő másolatot, a többit törli
-
-### Műveletek megerősítése
-Miután egy vagy több csoportban elvégezte a jelöléseket, egy megerősítő párbeszédablak felsorolja az összes törlésre jelölt fájlt. Ellenőrizze a listát, majd erősítse meg — az összes módosítás egyszerre érvényesül.
+A **Bezárás** gombra kattintva visszatér az eredménypanelhez.
 
 ---
 
@@ -182,7 +163,7 @@ Az állapotsávon látható:
 
 Váltson a **Könyvtárak közötti** szűrőre, hogy lássa, melyek azok a fotói, amelyek más valakinek a könyvtárában is megvannak.
 
-Az Összehasonlítás nézetben a más könyvtárból származó cellák megjelenítik a tulajdonos nevét, és **csak olvashatók** — nem jelennek meg rajtuk műveleti gombok. Ön dönt arról, mit tesz a saját másolatával; a másik fél fájljait nem érinti.
+Az Összehasonlítás nézetben a más könyvtárból származó cellák megjelenítik a tulajdonos nevét. Az összes cella csak olvasható — az adatvédelmi szintnek megfelelően láthatja a fájlnevet vagy az elérési utat, a méretét és a dátumát.
 
 ### Szinkronizált könyvtárak kezelése
 

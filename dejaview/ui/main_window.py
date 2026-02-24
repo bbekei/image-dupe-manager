@@ -313,7 +313,6 @@ class MainWindow(QMainWindow):
             parent=self,
         )
         self._compare_view.setObjectName("compare_view")
-        self._compare_view.actions_confirmed.connect(self._on_actions_confirmed)
         self._compare_view.closed.connect(self._close_compare_view)
         # Swap: hide results panel, show compare view in the splitter.
         self._results_panel.hide()
@@ -322,11 +321,6 @@ class MainWindow(QMainWindow):
         self._status_bar.showMessage(
             self.tr("Comparing duplicate group (SHA: {0}\u2026)").format(pixel_hash[:8])
         )
-
-    @pyqtSlot()
-    def _on_actions_confirmed(self) -> None:
-        """Refresh the results panel after actions are confirmed (plan §Post-Action Cleanup)."""
-        self._results_panel.reload()
 
     @pyqtSlot()
     def _close_compare_view(self) -> None:

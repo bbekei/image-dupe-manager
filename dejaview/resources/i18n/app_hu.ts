@@ -325,22 +325,6 @@
         <translation>Távoli</translation>
     </message>
     <message>
-        <source>KEEP</source>
-        <translation>MEGTARTÁS</translation>
-    </message>
-    <message>
-        <source>DEL</source>
-        <translation>TÖRLÉS</translation>
-    </message>
-    <message>
-        <source>Rename</source>
-        <translation>Átnevezés</translation>
-    </message>
-    <message>
-        <source>New filename…</source>
-        <translation>Új fájlnév…</translation>
-    </message>
-    <message>
         <source>({0}&apos;s copy)</source>
         <translation>({0} másolata)</translation>
     </message>
@@ -348,87 +332,13 @@
         <source>(read only)</source>
         <translation>(csak olvasható)</translation>
     </message>
-    <message>
-        <source>Invalid filename</source>
-        <translation>Érvénytelen fájlnév</translation>
-    </message>
-    <message>
-        <source>The filename is invalid. Use a simple name without path separators.</source>
-        <translation>A fájlnév érvénytelen. Használjon egyszerű nevet elérési út nélkül.</translation>
-    </message>
 </context>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
-     _BatchRulesDialog (ui/compare_view.py — batch rules modal)
-     ═══════════════════════════════════════════════════════════════════════ -->
-<context>
-    <name>_BatchRulesDialog</name>
-    <message>
-        <source>Batch Rules</source>
-        <translation>Kötegelt szabályok</translation>
-    </message>
-    <message>
-        <source>Apply an automatic rule to this group:</source>
-        <translation>Automatikus szabály alkalmazása a csoportra:</translation>
-    </message>
-    <message>
-        <source>Keep oldest, delete rest</source>
-        <translation>Legrégebbi megtartása, többi törlése</translation>
-    </message>
-    <message>
-        <source>Keep largest, delete rest</source>
-        <translation>Legnagyobb megtartása, többi törlése</translation>
-    </message>
-    <message>
-        <source>Cancel</source>
-        <translation>Mégse</translation>
-    </message>
-</context>
-
-<!-- ═══════════════════════════════════════════════════════════════════════════
-     _ConfirmDialog (ui/compare_view.py — confirmation modal)
-     ═══════════════════════════════════════════════════════════════════════ -->
-<context>
-    <name>_ConfirmDialog</name>
-    <message>
-        <source>Confirm Actions</source>
-        <translation>Műveletek megerősítése</translation>
-    </message>
-    <message>
-        <source>The following actions will be performed:</source>
-        <translation>A következő műveletek lesznek végrehajtva:</translation>
-    </message>
-    <message>
-        <source>DELETE: {0}</source>
-        <translation>TÖRLÉS: {0}</translation>
-    </message>
-    <message>
-        <source>RENAME: {0} → {1}</source>
-        <translation>ÁTNEVEZÉS: {0} → {1}</translation>
-    </message>
-    <message>
-        <source>KEEP: {0}</source>
-        <translation>MEGTARTÁS: {0}</translation>
-    </message>
-</context>
-
-<!-- ═══════════════════════════════════════════════════════════════════════════
-     CompareView (ui/compare_view.py — main comparison widget)
+     CompareView (ui/compare_view.py — read-only comparison widget)
      ═══════════════════════════════════════════════════════════════════════ -->
 <context>
     <name>CompareView</name>
-    <message>
-        <source>Apply to all in group</source>
-        <translation>Alkalmazás a csoport minden elemére</translation>
-    </message>
-    <message>
-        <source>Batch rules…</source>
-        <translation>Kötegelt szabályok…</translation>
-    </message>
-    <message>
-        <source>Review &amp;&amp; Confirm…</source>
-        <translation>Áttekintés és megerősítés…</translation>
-    </message>
     <message>
         <source>Close</source>
         <translation>Bezárás</translation>
@@ -436,26 +346,6 @@
     <message>
         <source>DUPLICATE GROUP ({0} files · SHA: {1}…)</source>
         <translation>DUPLIKÁTUM CSOPORT ({0} fájl · SHA: {1}…)</translation>
-    </message>
-    <message>
-        <source>No actions</source>
-        <translation>Nincs művelet</translation>
-    </message>
-    <message>
-        <source>No actions have been staged yet.</source>
-        <translation>Még nincsenek előkészített műveletek.</translation>
-    </message>
-    <message>
-        <source>Path outside scan scope: {0}</source>
-        <translation>Az elérési út a vizsgálati hatókörön kívül esik: {0}</translation>
-    </message>
-    <message>
-        <source>Invalid rename target: {0}</source>
-        <translation>Érvénytelen átnevezési cél: {0}</translation>
-    </message>
-    <message>
-        <source>Some actions failed</source>
-        <translation>Egyes műveletek sikertelenek</translation>
     </message>
 </context>
 

@@ -2,7 +2,7 @@
 
 ## What This App Does
 
-DejaView Home Photo Manager finds duplicate photos across your folders and lets you decide which copies to keep and which to delete. It compares images by their visual content — so it catches duplicates even if files have been renamed, re-saved with different settings, or had their metadata changed.
+DejaView Home Photo Manager finds duplicate photos across your folders so you can see exactly where duplicates exist. It compares images by their visual content — so it catches duplicates even if files have been renamed, re-saved with different settings, or had their metadata changed.
 
 You can also share your scan results with family members to find photos that exist across multiple people's libraries, without uploading the actual photos anywhere.
 
@@ -78,7 +78,7 @@ The app checks which files could be duplicates and compares their visual content
 Click **⏸ Pause** at any time. The current file finishes processing, then the scan stops. The status shows **PAUSED**. You can close the app — progress is saved. Reopen the app and click **▶ Resume** to continue from where you left off. Files already processed are not re-checked.
 
 ### Stop
-Click **⏹ Stop** to end the scan permanently. Partial results remain visible and you can still act on them.
+Click **⏹ Stop** to end the scan permanently. Partial results remain visible.
 
 ---
 
@@ -92,15 +92,15 @@ After scanning, use the filter bar at the top of the results panel to choose wha
 | **Duplicates Only** | Only files that have at least one duplicate |
 | **Cross-Library** | Files that also exist in a synced family member's library |
 
-Switch to **Duplicates Only** to focus on just the files that need attention. Files remain shown in their original folder structure so you can see where each copy lives.
+Switch to **Duplicates Only** to focus on just the duplicates. Files remain shown in their original folder structure so you can see where each copy lives.
 
-Click any file with a **● DUPLICATE** badge to open the Compare View.
+Click any file with a **● DUPLICATE** badge to open the Compare View and see all copies side by side.
 
 ---
 
-## Step 4 — Compare and Decide
+## Step 4 — Compare Duplicates
 
-The Compare View shows all copies of a duplicate group side by side:
+The Compare View shows all copies of a duplicate group side by side in a read-only viewer:
 
 ```
 ┌──────────────┐   ┌──────────────┐   ┌──────────────┐
@@ -109,32 +109,11 @@ The Compare View shows all copies of a duplicate group side by side:
 │ beach.jpg    │   │ photo.jpg    │   │ img0041.jpg  │
 │ 2.1 MB       │   │ 1.8 MB       │   │ 2.1 MB       │
 │ 2023-06-15   │   │ 2023-07-30   │   │ 2023-06-15   │
-│ [KEEP] [DEL] │   │ [KEEP] [DEL] │   │ [KEEP] [DEL] │
 └──────────────┘   └──────────────┘   └──────────────┘
-[Apply to all in group]    [Batch rules...]
+                    [Close]
 ```
 
-Each tile shows a thumbnail preview, the file's location, size, and modification date.
-
-### Actions per file
-
-| Button | What it does |
-|--------|-------------|
-| **KEEP** | Mark this copy as the one to keep |
-| **DEL** | Mark this copy for deletion |
-| **Rename** | Type a new filename directly on the tile |
-
-> **Nothing is deleted yet.** All decisions are staged first. You review the full list before anything is touched on disk.
-
-### Batch Rules
-Click **Batch rules...** to let the app decide automatically for the whole group:
-
-- **Keep the oldest** — keeps the file with the earliest modification date, marks the rest for deletion
-- **Keep the largest** — keeps the file with the highest file size, marks the rest for deletion
-- **Keep files in a specific folder** — keeps copies in a folder you choose, deletes copies elsewhere
-
-### Confirming Actions
-After marking files across one or more groups, a confirmation dialog lists every file that will be deleted. Review the list, then confirm. All changes apply at once.
+Each tile shows a thumbnail preview, the file's location, size, and modification date. This is a read-only view — use it to inspect where your duplicates live and compare their details. Click **Close** to return to the results panel.
 
 ---
 
@@ -181,7 +160,7 @@ The status bar shows:
 
 Switch to the **Cross-Library** filter to see your photos that also exist in someone else's library.
 
-In the Compare View, tiles from other people's libraries show their display name and are **read-only** — no action buttons appear on them. You decide what to do with your own copies; other people's files are not affected.
+In the Compare View, tiles from other people's libraries show their display name. All tiles are read-only — the Compare View is for inspecting and comparing duplicates across libraries.
 
 ### Managing Synced Libraries
 

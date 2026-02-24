@@ -39,7 +39,7 @@ class TestSchema:
         )
         tables = {r["name"] for r in cur.fetchall()}
         expected = {
-            "sessions", "session_folders", "files", "actions",
+            "sessions", "session_folders", "files",
             "sync_config", "remote_peers", "remote_files",
         }
         assert expected.issubset(tables), f"Missing tables: {expected - tables}"
@@ -52,7 +52,7 @@ class TestSchema:
         indexes = {r["name"] for r in cur.fetchall()}
         expected = {
             "idx_files_session", "idx_files_hash", "idx_files_path",
-            "idx_files_status", "idx_actions_file", "idx_remote_files_hash",
+            "idx_files_status", "idx_remote_files_hash",
         }
         assert expected.issubset(indexes), f"Missing indexes: {expected - indexes}"
 
@@ -250,59 +250,6 @@ class TestFileOperations:
         db.insert_files_batch(rows)
         files = db.get_files_for_session(sid)
         assert len(files) == 5
-
-
-# ---------------------------------------------------------------------------
-# Actions
-# ---------------------------------------------------------------------------
-
-class TestActions:
-    """Plan §Actions tests."""
-
-    def test_stage_action_for_file(self, db: Database, session_factory):
-        sid = session_factory()
-        fid = db.insert_file(sid, "/a.jpg", 100, _now(), _now())
-        aid = db.stage_action(fid, "delete")
-        assert isinstance(aid, int) and aid > 0
-
-    def test_action_status_defaults_to_staged(self, db: Database, session_factory):
-        sid = session_factory()
-        fid = db.insert_file(sid, "/a.jpg", 100, _now(), _now())
-        aid = db.stage_action(fid, "keep")
-        row = db.get_action(aid)
-        assert row["status"] == "staged"
-        assert row["performed_at"] is None
-
-    def test_confirm_action_sets_performed_at(self, db: Database, session_factory):
-        sid = session_factory()
-        fid = db.insert_file(sid, "/a.jpg", 100, _now(), _now())
-        aid = db.stage_action(fid, "delete")
-        ts = _now()
-        db.confirm_action(aid, ts)
-        row = db.get_action(aid)
-        assert row["status"] == "confirmed"
-        assert row["performed_at"] == ts
-
-    def test_list_staged_actions_for_session(self, db: Database, session_factory):
-        sid = session_factory()
-        fid1 = db.insert_file(sid, "/a.jpg", 100, _now(), _now())
-        fid2 = db.insert_file(sid, "/b.jpg", 200, _now(), _now())
-        aid1 = db.stage_action(fid1, "delete")
-        aid2 = db.stage_action(fid2, "keep")
-        # Confirm one
-        db.confirm_action(aid1, _now())
-        staged = db.get_staged_actions(sid)
-        # Only the unconfirmed one remains staged
-        assert len(staged) == 1
-        assert staged[0]["id"] == aid2
-
-    def test_stage_rename_with_detail(self, db: Database, session_factory):
-        sid = session_factory()
-        fid = db.insert_file(sid, "/a.jpg", 100, _now(), _now())
-        aid = db.stage_action(fid, "rename", detail="beach_2023.jpg")
-        row = db.get_action(aid)
-        assert row["action_type"] == "rename"
-        assert row["detail"] == "beach_2023.jpg"
 
 
 # ---------------------------------------------------------------------------

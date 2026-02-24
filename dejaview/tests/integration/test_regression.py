@@ -14,13 +14,10 @@ from unittest.mock import MagicMock
 
 import pytest
 from PIL import Image
-from PyQt6.QtWidgets import QLabel, QPushButton
-
 from core.scanner import Scanner
 from data.db import Database
 from data.export import build_export_payload, import_payload
 from data.sync import DriveSync
-from ui.compare_view import CompareView
 from ui.main_window import MainWindow
 
 
@@ -124,113 +121,6 @@ def test_regression_wf2_filter_duplicates_only(scanned_session):
     assert len(visible_paths) == 2
     assert str(img_c) not in visible_paths
     assert all(item["is_duplicate"] for item in items)
-
-
-# ---------------------------------------------------------------------------
-# Workflow 3 — Acting on Duplicates (staging + confirm)
-# ---------------------------------------------------------------------------
-
-def test_regression_wf3_stage_and_confirm_delete(scanned_session, db):
-    """Req 4.5 — stage delete, confirm, verify DB + optional disk check."""
-    win = scanned_session["win"]
-    session_id = scanned_session["session_id"]
-    img_b = scanned_session["img_b"]
-
-    # 1. Find img_b's file_id.
-    files = db.get_files_for_session(session_id)
-    img_b_row = next(f for f in files if f["path"] == str(img_b))
-    file_id = img_b_row["id"]
-
-    # 2. Stage a delete action.
-    action_id = db.stage_action(file_id, "delete")
-    action = db.get_action(action_id)
-    assert action["status"] == "staged"
-    assert os.path.isfile(str(img_b))  # file still on disk
-
-    # 3. Open CompareView and execute the staged action.
-    groups = db.get_duplicate_groups(session_id)
-    pixel_hash = groups[0]["pixel_hash"]
-    win._on_compare_requested(pixel_hash)
-    cv = win._compare_view
-
-    staged = db.get_staged_actions(session_id)
-    action_list = [
-        {
-            "action_type": a["action_type"],
-            "path": a["path"],
-            "detail": a["detail"],
-            "action_id": a["id"],
-            "file_id": a["file_id"],
-        }
-        for a in staged
-    ]
-    cv._execute_actions(action_list)
-
-    # 4. Assert confirmed.
-    action = db.get_action(action_id)
-    assert action["status"] == "confirmed"
-    assert action["performed_at"] is not None
-
-    # 5. Destructive assertion gated by env var.
-    if os.environ.get("RUN_DESTRUCTIVE_TESTS") == "1":
-        assert not os.path.isfile(str(img_b))
-
-
-# ---------------------------------------------------------------------------
-# Workflow 4 — Cross-Library (read-only remote tiles)
-# ---------------------------------------------------------------------------
-
-def test_regression_wf4_remote_tile_has_no_actions(qtbot, db, tmp_path, thumb_dir):
-    """Req 4.4 — remote tiles are informational only, no action buttons."""
-    HASH = "a" * 64
-    now = datetime.now(timezone.utc).isoformat()
-
-    # 1. Create a local file with a known pixel_hash.
-    scan_dir = tmp_path / "photos"
-    scan_dir.mkdir()
-    local_file = _make_jpg(scan_dir / "beach.jpg")
-
-    session_id = db.create_session("wf4", now)
-    db.add_session_folder(session_id, str(scan_dir))
-    file_id = db.insert_file(session_id, str(local_file), 102, now, now)
-    db.update_pixel_hash(file_id, HASH, str(thumb_dir / f"{HASH}.jpg"))
-
-    # Create a dummy thumbnail so the tile can load it.
-    _make_jpg(thumb_dir / f"{HASH}.jpg", size=(40, 40))
-
-    # 2. Create matching remote_file for peer 'alice'.
-    peer_id = db.upsert_remote_peer("alice", now)
-    db.insert_remote_files(peer_id, [
-        {"pixel_hash": HASH, "filename": "vacation.jpg", "size": 1000,
-         "modified_at": now},
-    ])
-
-    # 3. Open CompareView for this group.
-    session_folders = db.get_session_folders(session_id)
-    cv = CompareView(
-        db=db, session_id=session_id, pixel_hash=HASH,
-        session_folders=session_folders,
-    )
-    qtbot.addWidget(cv)
-
-    # 4. Local tile has KEEP and DEL buttons.
-    assert len(cv.local_tiles) >= 1
-    local_tile = cv.local_tiles[0]
-    assert local_tile.findChild(QPushButton, "keep_btn") is not None
-    assert local_tile.findChild(QPushButton, "del_btn") is not None
-
-    # 5. Remote tile has no action buttons.
-    assert len(cv.remote_tiles) >= 1
-    remote_tile = cv.remote_tiles[0]
-    btn_names = {b.objectName() for b in remote_tile.findChildren(QPushButton)}
-    assert "keep_btn" not in btn_names
-    assert "del_btn" not in btn_names
-    assert "rename_btn" not in btn_names
-
-    # 6. Remote tile shows 'alice' peer label.
-    peer_label = remote_tile.findChild(QLabel, "peer_label")
-    assert peer_label is not None
-    assert "alice" in peer_label.text()
 
 
 # ---------------------------------------------------------------------------

@@ -63,17 +63,6 @@ CREATE TABLE IF NOT EXISTS files (
     UNIQUE (session_id, path)
 );
 
-CREATE TABLE IF NOT EXISTS actions (
-    id           INTEGER PRIMARY KEY,
-    file_id      INTEGER NOT NULL REFERENCES files(id),
-    action_type  TEXT    NOT NULL
-        CHECK (action_type IN ('delete', 'rename', 'keep')),
-    detail       TEXT,
-    status       TEXT NOT NULL DEFAULT 'staged'
-        CHECK (status IN ('staged', 'confirmed')),
-    performed_at TEXT
-);
-
 CREATE TABLE IF NOT EXISTS sync_config (
     id               INTEGER PRIMARY KEY CHECK (id = 1),
     local_username   TEXT NOT NULL,
@@ -118,7 +107,6 @@ CREATE INDEX IF NOT EXISTS idx_files_session    ON files(session_id);
 CREATE INDEX IF NOT EXISTS idx_files_hash       ON files(pixel_hash);
 CREATE INDEX IF NOT EXISTS idx_files_path       ON files(path);
 CREATE INDEX IF NOT EXISTS idx_files_status     ON files(status);
-CREATE INDEX IF NOT EXISTS idx_actions_file     ON actions(file_id);
 CREATE INDEX IF NOT EXISTS idx_remote_files_hash ON remote_files(pixel_hash);
 """
 
@@ -354,46 +342,6 @@ class Database:
             (session_id, folder_path, _like_escape(prefix) + "%"),
         )
         self.conn.commit()
-
-    # ------------------------------------------------------------------
-    # Actions
-    # ------------------------------------------------------------------
-
-    def stage_action(
-        self, file_id: int, action_type: str, detail: Optional[str] = None
-    ) -> int:
-        cur = self.conn.execute(
-            "INSERT INTO actions (file_id, action_type, detail) VALUES (?, ?, ?)",
-            (file_id, action_type, detail),
-        )
-        self.conn.commit()
-        return cur.lastrowid  # type: ignore[return-value]
-
-    def confirm_action(self, action_id: int, performed_at: str) -> None:
-        self.conn.execute(
-            """
-            UPDATE actions SET status = 'confirmed', performed_at = ?
-            WHERE id = ?
-            """,
-            (performed_at, action_id),
-        )
-        self.conn.commit()
-
-    def get_staged_actions(self, session_id: int) -> list[sqlite3.Row]:
-        return self.conn.execute(
-            """
-            SELECT a.*, f.path, f.session_id
-            FROM actions a
-            JOIN files f ON f.id = a.file_id
-            WHERE f.session_id = ? AND a.status = 'staged'
-            """,
-            (session_id,),
-        ).fetchall()
-
-    def get_action(self, action_id: int) -> Optional[sqlite3.Row]:
-        return self.conn.execute(
-            "SELECT * FROM actions WHERE id = ?", (action_id,)
-        ).fetchone()
 
     # ------------------------------------------------------------------
     # Sync config (singleton row, id=1)
