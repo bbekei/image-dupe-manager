@@ -17,6 +17,7 @@ Sync lifecycle hooks (plan §Workflow 5 — Ongoing sync):
 
 import json
 import logging
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -157,10 +158,27 @@ class MainWindow(QMainWindow):
         # Wire ResultsPanel → CompareView (plan §Phase 4 — comparison).
         self._results_panel.compare_view_requested.connect(self._on_compare_requested)
 
+        # Auto-size left pane to fit folder names.
+        self._folder_panel.folders_changed.connect(self._auto_fit_splitter)
+
     def _build_status_bar(self) -> None:
         self._status_bar = QStatusBar(self)
         self.setStatusBar(self._status_bar)
         self._status_bar.showMessage(self.tr("Add folders to get started."))
+
+    # ── Dynamic layout ─────────────────────────────────────────────────
+
+    @pyqtSlot(list)
+    def _auto_fit_splitter(self, folders: list[str]) -> None:
+        """Adjust left pane width to fit the longest folder name."""
+        if not folders:
+            return
+        fm = self._folder_panel.fontMetrics()
+        max_text_width = max(
+            fm.horizontalAdvance(os.path.basename(f)) for f in folders
+        )
+        desired = max(180, min(300, max_text_width + 60))
+        self._splitter.setSizes([desired, self.width() - desired])
 
     # ── Session management ───────────────────────────────────────────────
 

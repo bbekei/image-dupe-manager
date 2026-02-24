@@ -15,6 +15,7 @@ Emits compare_view_requested(str pixel_hash) when a duplicate file is clicked.
 
 import logging
 import os
+from dataclasses import dataclass, field
 from typing import Optional
 
 from PyQt6.QtCore import (
@@ -55,6 +56,20 @@ FILTER_CROSS_LIBRARY = "cross_library"  # Phase 5
 
 # Debounce interval (plan §Resource Usage — UI update rate-limiting).
 _DEBOUNCE_MS = 200
+
+# Tree indentation bounds (dynamic indent fitting).
+_DEFAULT_INDENT = 20
+_MIN_INDENT = 8
+
+
+@dataclass
+class _ViewState:
+    """Snapshot of user-adjustable view settings, saved/restored across reloads."""
+
+    filter_mode: str = FILTER_ALL
+    expanded_paths: set[str] = field(default_factory=set)
+    scroll_value: int = 0
+    selected_path: str | None = None
 
 
 class _DuplicateFilterProxy(QSortFilterProxyModel):
@@ -125,6 +140,9 @@ class ResultsPanel(QWidget):
         # Folder path → QStandardItem mapping for incremental tree building.
         self._folder_items: dict[str, QStandardItem] = {}
 
+        # Saved view state for persistence across reloads.
+        self._saved_state: _ViewState | None = None
+
         self._build_ui()
         self._build_debounce_timer()
 
@@ -132,10 +150,18 @@ class ResultsPanel(QWidget):
 
     def set_session_id(self, session_id: int) -> None:
         self._session_id = session_id
+        self._saved_state = None  # Fresh session — no state to restore.
         self.reload()
 
     def reload(self) -> None:
         """Full reload of the tree from the database."""
+        # Save current view state before clearing (if tree has content).
+        state = (
+            self._save_view_state()
+            if self._model.rowCount() > 0
+            else self._saved_state
+        )
+
         self._model.clear()
         self._model.setHorizontalHeaderLabels([self.tr("Name"), self.tr("Status")])
         self._folder_items.clear()
@@ -167,7 +193,15 @@ class ResultsPanel(QWidget):
                 pixel_hash=f["pixel_hash"],
             )
 
-        self._tree.expandAll()
+        # Dynamic view adjustments.
+        self._adjust_indentation()
+        self._fit_columns()
+
+        # Restore saved state or apply smart expand for first load.
+        if state:
+            self._restore_view_state(state)
+        else:
+            self._smart_expand()
 
     def update_cross_library_data(self) -> None:
         """Refresh cross-library hashes after an import and update filter/tags.
@@ -263,7 +297,7 @@ class ResultsPanel(QWidget):
 
         header = self._tree.header()
         header.setStretchLastSection(False)
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
 
         layout.addWidget(self._tree)
@@ -305,6 +339,10 @@ class ResultsPanel(QWidget):
         self._pending_hash_ids.clear()
         for file_id in hash_ids:
             self._update_file_badge(file_id)
+
+        # Auto-fit columns after incremental updates.
+        if file_ids:
+            self._fit_columns()
 
         # Stop timer if nothing pending.
         if not self._pending_file_ids and not self._pending_hash_ids:
@@ -422,6 +460,163 @@ class ResultsPanel(QWidget):
                     return result
         return None
 
+    # ── View state persistence ──────────────────────────────────────────
+
+    def _save_view_state(self) -> _ViewState:
+        """Capture current filter, expansion, scroll, and selection."""
+        state = _ViewState()
+        state.filter_mode = self._proxy.filter_mode
+
+        state.expanded_paths = set()
+        self._collect_expanded(self._model.invisibleRootItem(), state.expanded_paths)
+
+        state.scroll_value = self._tree.verticalScrollBar().value()
+
+        idx = self._tree.currentIndex()
+        if idx.isValid():
+            src = self._proxy.mapToSource(idx)
+            item = self._model.itemFromIndex(src)
+            if item and item.data(ROLE_NODE_TYPE) == "file":
+                state.selected_path = item.data(ROLE_FILE_PATH)
+
+        return state
+
+    def _collect_expanded(self, parent: QStandardItem, paths: set[str]) -> None:
+        """Walk the tree and record expanded folder paths."""
+        for row in range(parent.rowCount()):
+            child = parent.child(row, 0)
+            if child and child.data(ROLE_NODE_TYPE) == "folder":
+                proxy_idx = self._proxy.mapFromSource(child.index())
+                if proxy_idx.isValid() and self._tree.isExpanded(proxy_idx):
+                    for path, item in self._folder_items.items():
+                        if item is child:
+                            paths.add(path)
+                            break
+                self._collect_expanded(child, paths)
+
+    def _restore_view_state(self, state: _ViewState) -> None:
+        """Restore filter, expansion, scroll, and selection from a snapshot."""
+        self.set_filter(state.filter_mode)
+
+        for folder_path, item in self._folder_items.items():
+            proxy_idx = self._proxy.mapFromSource(item.index())
+            if proxy_idx.isValid():
+                self._tree.setExpanded(proxy_idx, folder_path in state.expanded_paths)
+
+        QTimer.singleShot(
+            0, lambda v=state.scroll_value: self._tree.verticalScrollBar().setValue(v)
+        )
+
+        if state.selected_path:
+            item = self._find_file_by_path(state.selected_path)
+            if item:
+                proxy_idx = self._proxy.mapFromSource(item.index())
+                if proxy_idx.isValid():
+                    self._tree.setCurrentIndex(proxy_idx)
+
+    def _find_file_by_path(self, path: str) -> Optional[QStandardItem]:
+        """Find a file item by its ROLE_FILE_PATH."""
+        return self._find_by_path_recursive(self._model.invisibleRootItem(), path)
+
+    def _find_by_path_recursive(
+        self, parent: QStandardItem, path: str
+    ) -> Optional[QStandardItem]:
+        for row in range(parent.rowCount()):
+            child = parent.child(row, 0)
+            if child is None:
+                continue
+            if child.data(ROLE_NODE_TYPE) == "file" and child.data(ROLE_FILE_PATH) == path:
+                return child
+            if child.data(ROLE_NODE_TYPE) == "folder":
+                result = self._find_by_path_recursive(child, path)
+                if result:
+                    return result
+        return None
+
+    # ── Dynamic view adjustment ──────────────────────────────────────────
+
+    def _fit_columns(self) -> None:
+        """Auto-fit the Name column to content, floored at viewport width."""
+        self._tree.resizeColumnToContents(0)
+        viewport_width = self._tree.viewport().width()
+        status_width = self._tree.columnWidth(1)
+        min_name_width = viewport_width - status_width - 4
+        if self._tree.columnWidth(0) < min_name_width:
+            self._tree.setColumnWidth(0, min_name_width)
+
+    def _max_depth(self, parent: Optional[QStandardItem] = None, current: int = 0) -> int:
+        """Return the maximum folder nesting depth in the tree."""
+        effective: QStandardItem = parent if parent is not None else self._model.invisibleRootItem()
+        deepest = current
+        for row in range(effective.rowCount()):
+            child = effective.child(row, 0)
+            if child and child.data(ROLE_NODE_TYPE) == "folder":
+                deepest = max(deepest, self._max_depth(child, current + 1))
+        return deepest
+
+    def _adjust_indentation(self) -> None:
+        """Scale tree indentation inversely with depth."""
+        depth = self._max_depth()
+        if depth <= 4:
+            indent = _DEFAULT_INDENT
+        else:
+            indent = max(_MIN_INDENT, _DEFAULT_INDENT * 4 // depth)
+        self._tree.setIndentation(indent)
+
+    # ── Smart expand/collapse ────────────────────────────────────────────
+
+    def _smart_expand(self) -> None:
+        """Expand folders based on filter mode and content."""
+        mode = self._proxy.filter_mode
+        if mode == FILTER_ALL:
+            self._expand_to_depth(self._model.invisibleRootItem(), max_depth=2, current=0)
+        elif mode in (FILTER_DUPLICATES_ONLY, FILTER_CROSS_LIBRARY):
+            self._expand_paths_to_matches()
+
+    def _expand_to_depth(
+        self, parent: QStandardItem, max_depth: int, current: int
+    ) -> None:
+        """Expand folders up to *max_depth* levels, collapse deeper ones."""
+        for row in range(parent.rowCount()):
+            child = parent.child(row, 0)
+            if child and child.data(ROLE_NODE_TYPE) == "folder":
+                proxy_idx = self._proxy.mapFromSource(child.index())
+                if proxy_idx.isValid():
+                    self._tree.setExpanded(proxy_idx, current < max_depth)
+                if current < max_depth:
+                    self._expand_to_depth(child, max_depth, current + 1)
+
+    def _expand_paths_to_matches(self) -> None:
+        """Expand only folder chains leading to duplicate/cross-library files."""
+        self._tree.collapseAll()
+        target_hashes = (
+            self._duplicate_hashes
+            if self._proxy.filter_mode == FILTER_DUPLICATES_ONLY
+            else self._cross_library_hashes
+        )
+        self._expand_ancestors_of_matches(self._model.invisibleRootItem(), target_hashes)
+
+    def _expand_ancestors_of_matches(
+        self, parent: QStandardItem, target_hashes: set[str]
+    ) -> bool:
+        """Recursively expand folders containing matching files."""
+        has_match = False
+        for row in range(parent.rowCount()):
+            child = parent.child(row, 0)
+            if child is None:
+                continue
+            if child.data(ROLE_NODE_TYPE) == "file":
+                ph = child.data(ROLE_PIXEL_HASH)
+                if ph and ph in target_hashes:
+                    has_match = True
+            elif child.data(ROLE_NODE_TYPE) == "folder":
+                if self._expand_ancestors_of_matches(child, target_hashes):
+                    proxy_idx = self._proxy.mapFromSource(child.index())
+                    if proxy_idx.isValid():
+                        self._tree.setExpanded(proxy_idx, True)
+                    has_match = True
+        return has_match
+
     # ── Slots ────────────────────────────────────────────────────────────
 
     @pyqtSlot(int, bool)
@@ -431,6 +626,7 @@ class ResultsPanel(QWidget):
         mode_map = {0: FILTER_ALL, 1: FILTER_DUPLICATES_ONLY, 2: FILTER_CROSS_LIBRARY}
         mode = mode_map.get(button_id, FILTER_ALL)
         self._proxy.set_filter_mode(mode)
+        self._smart_expand()
 
     @pyqtSlot(QModelIndex)
     def _on_item_double_clicked(self, proxy_index: QModelIndex) -> None:
