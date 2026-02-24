@@ -124,9 +124,15 @@ def _create_drive_sync(db: Database, app_dir: Path) -> DriveSync | None:
 
 
 def main() -> None:
+    app_dir = _app_dir()
+
+    # Log to a file so errors are visible even in windowed/frozen builds
+    # where sys.stderr is None.
+    log_path = app_dir / "dejaview.log"
     logging.basicConfig(
         level=logging.INFO,
-        format="%(levelname)s %(name)s: %(message)s",
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        handlers=[logging.FileHandler(str(log_path), encoding="utf-8")],
     )
 
     app = QApplication(sys.argv)
@@ -135,7 +141,6 @@ def main() -> None:
 
     _load_translators(app)
 
-    app_dir = _app_dir()
     db_path = app_dir / "library.db"
     thumb_dir = app_dir / "thumbs"
     thumb_dir.mkdir(exist_ok=True)

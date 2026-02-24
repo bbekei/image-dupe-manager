@@ -11,7 +11,8 @@
       "Bash(lrelease:*)",
       "Bash(pyinstaller --version)",
       "Bash(pyinstaller:*)",
-      "Bash(\"/c/Program Files \\(x86\\)/Inno Setup 6/ISCC.exe\" installer.iss)"
+      "Bash(\"/c/Program Files \\(x86\\)/Inno Setup 6/ISCC.exe\" installer.iss)",
+      "Bash(pip show:*)"
     ]
   }
 }

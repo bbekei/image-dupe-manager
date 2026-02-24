@@ -480,9 +480,10 @@ class MainWindow(QMainWindow):
             self._status_bar.showMessage(
                 self.tr("Google sign-in failed: {0}").format(reason)
             )
+            log.error("Google sign-in failed: %s", reason)
         if self._share_dialog is not None:
             self._share_dialog.set_signing_in(False)
-            self._share_dialog.update_auth_status()
+            self._share_dialog.update_auth_status(message if not ok else "")
 
     @pyqtSlot()
     def _on_sync_now(self) -> None:

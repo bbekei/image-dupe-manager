@@ -203,11 +203,14 @@ class ShareDialog(QDialog):
         for peer in peers:
             self._peer_list.addItem(peer["username"])
 
-    def _update_auth_status(self) -> None:
+    def _update_auth_status(self, error_message: str = "") -> None:
         """Show current authentication state."""
         if self._drive_sync and self._drive_sync.is_authenticated():
             self._auth_status_label.setText(self.tr("Signed in"))
             self._auth_status_label.setStyleSheet("color: green;")
+        elif error_message:
+            self._auth_status_label.setText(error_message)
+            self._auth_status_label.setStyleSheet("color: red;")
         else:
             self._auth_status_label.setText(self.tr("Not signed in"))
             self._auth_status_label.setStyleSheet("color: gray;")
@@ -301,6 +304,6 @@ class ShareDialog(QDialog):
         """Disable/re-enable the sign-in button during the background OAuth flow."""
         self._sign_in_btn.setEnabled(not busy)
 
-    def update_auth_status(self) -> None:
+    def update_auth_status(self, error_message: str = "") -> None:
         """Refresh the auth status label. Called by the parent after OAuth flow."""
-        self._update_auth_status()
+        self._update_auth_status(error_message)
