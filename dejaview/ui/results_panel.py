@@ -257,6 +257,16 @@ class ResultsPanel(QWidget):
         self._pending_hash_ids.extend(file_ids)
         self._ensure_timer_running()
 
+    @pyqtSlot(str)
+    def on_directory_hashed(self, dir_path: str) -> None:
+        """Called after all files in a directory have been hashed.
+
+        Forces an immediate flush of pending updates and recomputes
+        folder-level duplication badges so completed directories show
+        accurate results for mid-scan browsing.
+        """
+        self._flush_pending()
+
     # ── Filter controls ──────────────────────────────────────────────────
 
     def set_filter(self, mode: str) -> None:

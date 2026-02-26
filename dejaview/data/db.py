@@ -301,6 +301,21 @@ class Database:
             (session_id, session_id),
         ).fetchall()
 
+    def get_folder_file_counts(
+        self, session_id: int, folder_prefix: str
+    ) -> tuple[int, int]:
+        """Return (total_files, hashed_files) under *folder_prefix* for the session."""
+        row = self.conn.execute(
+            """
+            SELECT COUNT(*) AS total,
+                   COUNT(pixel_hash) AS hashed
+            FROM files
+            WHERE session_id = ? AND path LIKE ? || '%' AND status = 'active'
+            """,
+            (session_id, folder_prefix),
+        ).fetchone()
+        return (row["total"], row["hashed"])
+
     def get_duplicate_groups(self, session_id: int) -> list[sqlite3.Row]:
         """Return all (pixel_hash, file_count) rows from the view for a session."""
         return self.conn.execute(

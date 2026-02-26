@@ -163,3 +163,88 @@ def test_progress_signals_advance_monotonically(
     assert currents == sorted(currents), "progress 'current' values must be non-decreasing"
     # All totals must be non-negative.
     assert all(t >= 0 for _, t in progress)
+
+
+# ── Directory-batched hashing tests ──────────────────────────────────────────
+
+def test_directory_hashed_signal_emitted_per_directory(
+    qtbot, db, scan_dir, session_id, thumb_dir
+):
+    """directory_hashed fires once per directory that contains candidates."""
+    sub_a = scan_dir / "sub_a"
+    sub_b = scan_dir / "sub_b"
+    sub_a.mkdir()
+    sub_b.mkdir()
+
+    # Same-size files in two different directories.
+    _jpg(sub_a / "a1.jpg")
+    _jpg(sub_a / "a2.jpg")
+    _jpg(sub_b / "b1.jpg")
+    _jpg(sub_b / "b2.jpg")
+
+    dirs_hashed: list[str] = []
+    scanner = Scanner(db=db, session_id=session_id, thumb_dir=thumb_dir)
+    scanner.directory_hashed.connect(lambda d: dirs_hashed.append(d))
+
+    with qtbot.waitSignal(scanner.scan_complete, timeout=10_000):
+        scanner.start()
+
+    assert set(dirs_hashed) == {str(sub_a), str(sub_b)}
+
+
+def test_directories_processed_leaf_first(
+    qtbot, db, scan_dir, session_id, thumb_dir
+):
+    """Deeper directories are hashed before their parents."""
+    parent = scan_dir / "parent"
+    child = parent / "child"
+    parent.mkdir()
+    child.mkdir()
+
+    # All same-size files so all are candidates.
+    _jpg(parent / "p1.jpg")
+    _jpg(parent / "p2.jpg")
+    _jpg(child / "c1.jpg")
+    _jpg(child / "c2.jpg")
+
+    dirs_hashed: list[str] = []
+    scanner = Scanner(db=db, session_id=session_id, thumb_dir=thumb_dir)
+    scanner.directory_hashed.connect(lambda d: dirs_hashed.append(d))
+
+    with qtbot.waitSignal(scanner.scan_complete, timeout=10_000):
+        scanner.start()
+
+    assert len(dirs_hashed) == 2
+    # child should appear before parent in the emission order.
+    assert dirs_hashed.index(str(child)) < dirs_hashed.index(str(parent))
+
+
+def test_progress_remains_global_across_directory_batches(
+    qtbot, db, scan_dir, session_id, thumb_dir
+):
+    """Progress current/total stays global across directory batches."""
+    sub_a = scan_dir / "a"
+    sub_b = scan_dir / "b"
+    sub_a.mkdir()
+    sub_b.mkdir()
+
+    _jpg(sub_a / "a1.jpg")
+    _jpg(sub_a / "a2.jpg")
+    _jpg(sub_b / "b1.jpg")
+    _jpg(sub_b / "b2.jpg")
+
+    progress: list[tuple[int, int]] = []
+    scanner = Scanner(db=db, session_id=session_id, thumb_dir=thumb_dir)
+    scanner.progress_updated.connect(lambda c, t: progress.append((c, t)))
+
+    with qtbot.waitSignal(scanner.scan_complete, timeout=10_000):
+        scanner.start()
+
+    # Total should be consistent (4 candidates).
+    totals = {t for _, t in progress}
+    assert totals == {4}
+
+    # current should go 0..4 monotonically.
+    currents = [c for c, _ in progress]
+    assert currents == sorted(currents)
+    assert currents[-1] == 4

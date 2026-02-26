@@ -103,6 +103,7 @@ class Scanner(QThread):
     scan_complete    = pyqtSignal()
     scan_error       = pyqtSignal(str, str)   # path, message
     status_message   = pyqtSignal(str)        # for the status bar
+    directory_hashed = pyqtSignal(str)        # directory path, after all files in it are hashed
 
     def __init__(
         self,
@@ -274,48 +275,80 @@ class Scanner(QThread):
             self.tr("Hashing {0} candidate(s)\u2026").format(total)
         )
 
+        if total == 0:
+            return
+
+        # ── Group candidates by parent directory ──────────────────────────
+        dir_groups: dict[str, list] = {}
+        for file_row in candidates:
+            dir_path = os.path.dirname(file_row["path"])
+            dir_groups.setdefault(dir_path, []).append(file_row)
+
+        # Sort directories leaf-first (deepest first) for incremental
+        # browsing: complete the deepest subdirectories before their parents.
+        sorted_dirs = sorted(
+            dir_groups.keys(),
+            key=lambda d: (-d.count(os.sep), d),
+        )
+
         # Fall back to serial mode when throttling is requested.
         workers = 1 if scan_delay_ms > 0 else self._max_workers
         db_lock = threading.Lock()
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
-            # Submit all candidates up-front.
-            future_to_file: dict[concurrent.futures.Future, dict] = {}
-            for file_row in candidates:
+            for dir_path in sorted_dirs:
+                # ── Pause/stop checkpoint between directory batches ───
                 if self._stop_requested or self._pause_requested:
                     break
-                f = executor.submit(hash_file, file_row["path"], self._thumb_dir)
-                future_to_file[f] = file_row
 
-            # Process results as they complete.
-            for future in concurrent.futures.as_completed(future_to_file):
-                if self._stop_requested or self._pause_requested:
-                    executor.shutdown(wait=False, cancel_futures=True)
-                    break
+                # Submit all files in this directory batch.
+                future_to_file: dict[concurrent.futures.Future, dict] = {}
+                for file_row in dir_groups[dir_path]:
+                    if self._stop_requested or self._pause_requested:
+                        break
+                    f = executor.submit(
+                        hash_file, file_row["path"], self._thumb_dir
+                    )
+                    future_to_file[f] = file_row
 
-                file_row = future_to_file[future]
-                file_id = file_row["id"]
-                path = file_row["path"]
+                # Process results as they complete within this directory.
+                for future in concurrent.futures.as_completed(future_to_file):
+                    if self._stop_requested or self._pause_requested:
+                        for pending_f in future_to_file:
+                            pending_f.cancel()
+                        break
 
-                try:
-                    pixel_hash, thumb_path = future.result()
-                    with db_lock:
-                        self._db.update_pixel_hash(file_id, pixel_hash, thumb_path)
-                        self.hash_complete.emit(file_id, pixel_hash)
+                    file_row = future_to_file[future]
+                    file_id = file_row["id"]
+                    path = file_row["path"]
 
-                        # Check if this hash is now part of a duplicate group.
-                        dupes = self._db.get_files_by_pixel_hash(
-                            self._session_id, pixel_hash
-                        )
-                        if len(dupes) > 1:
-                            self.duplicate_found.emit([r["id"] for r in dupes])
+                    try:
+                        pixel_hash, thumb_path = future.result()
+                        with db_lock:
+                            self._db.update_pixel_hash(
+                                file_id, pixel_hash, thumb_path
+                            )
+                            self.hash_complete.emit(file_id, pixel_hash)
 
-                except (HashError, Exception) as exc:
-                    log.warning("Scanner: cannot hash %s: %s", path, exc)
-                    self.scan_error.emit(path, str(exc))
+                            # Check if this hash is now part of a duplicate group.
+                            dupes = self._db.get_files_by_pixel_hash(
+                                self._session_id, pixel_hash
+                            )
+                            if len(dupes) > 1:
+                                self.duplicate_found.emit(
+                                    [r["id"] for r in dupes]
+                                )
 
-                current += 1
-                self.progress_updated.emit(current, total)
+                    except (HashError, Exception) as exc:
+                        log.warning("Scanner: cannot hash %s: %s", path, exc)
+                        self.scan_error.emit(path, str(exc))
 
-                if scan_delay_ms > 0:
-                    time.sleep(scan_delay_ms / 1000.0)
+                    current += 1
+                    self.progress_updated.emit(current, total)
+
+                    if scan_delay_ms > 0:
+                        time.sleep(scan_delay_ms / 1000.0)
+
+                # ── Directory batch complete ──────────────────────────
+                if not self._stop_requested and not self._pause_requested:
+                    self.directory_hashed.emit(dir_path)

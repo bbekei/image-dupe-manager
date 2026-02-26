@@ -281,6 +281,13 @@ class MainWindow(QMainWindow):
         scanner.file_discovered.connect(self._results_panel.on_file_discovered)
         scanner.hash_complete.connect(self._results_panel.on_hash_complete)
         scanner.duplicate_found.connect(self._results_panel.on_duplicate_found)
+        # Directory-batched updates: flush ResultsPanel + update FolderPanel counts.
+        scanner.directory_hashed.connect(self._results_panel.on_directory_hashed)
+        scanner.directory_hashed.connect(self._folder_panel.on_directory_hashed)
+        # FolderPanel count init/reset.
+        scanner.scan_started.connect(self._folder_panel.update_all_counts)
+        scanner.scan_complete.connect(self._folder_panel.reset_display_text)
+        scanner.scan_stopped.connect(self._folder_panel.reset_display_text)
 
     @pyqtSlot()
     def _on_scan_complete(self) -> None:

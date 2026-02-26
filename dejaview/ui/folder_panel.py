@@ -10,7 +10,7 @@ Emits folders_changed(list[str]) whenever the list changes.
 import logging
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal, pyqtSlot
 from PyQt6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
@@ -138,3 +138,44 @@ class FolderPanel(QWidget):
 
     def _on_selection_changed(self) -> None:
         self._remove_btn.setEnabled(bool(self._list.selectedItems()))
+
+    # ── Scan progress display ─────────────────────────────────────────
+
+    @pyqtSlot(str)
+    def on_directory_hashed(self, dir_path: str) -> None:
+        """Update file counts for the root folder containing *dir_path*."""
+        if self._session_id is None:
+            return
+        norm = str(Path(dir_path))
+        for i in range(self._list.count()):
+            item = self._list.item(i)
+            folder = item.data(Qt.ItemDataRole.UserRole) or item.text()
+            if norm.startswith(folder):
+                total, hashed = self._db.get_folder_file_counts(
+                    self._session_id, folder
+                )
+                item.setText(f"{folder} ({total} files, {hashed} hashed)")
+                item.setData(Qt.ItemDataRole.UserRole, folder)
+                break
+
+    def update_all_counts(self) -> None:
+        """Show initial file counts for all root folders (called after Pass 1)."""
+        if self._session_id is None:
+            return
+        for i in range(self._list.count()):
+            item = self._list.item(i)
+            folder = item.data(Qt.ItemDataRole.UserRole) or item.text()
+            total, hashed = self._db.get_folder_file_counts(
+                self._session_id, folder
+            )
+            item.setText(f"{folder} ({total} files, {hashed} hashed)")
+            item.setData(Qt.ItemDataRole.UserRole, folder)
+
+    def reset_display_text(self) -> None:
+        """Revert items to plain folder paths (called on scan complete/stop)."""
+        for i in range(self._list.count()):
+            item = self._list.item(i)
+            folder = item.data(Qt.ItemDataRole.UserRole)
+            if folder:
+                item.setText(folder)
+                item.setData(Qt.ItemDataRole.UserRole, None)

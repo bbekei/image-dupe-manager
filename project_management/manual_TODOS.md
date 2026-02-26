@@ -1,2 +1,3 @@
-persist where the user leaves the directory structure for looking at duplicate images, so that when action is done, they don't have to navigate to the same folder again. 
-define wording of batch actions more precisely
+persist where the user leaves the directory structure for looking at duplicate images, so that when action is done, they don't have to navigate to the same folder again. Now the results panel left coloumn comes back minimized after the image preview is closed by the user
+what is charset normalizer and why is it not found during exe build?
+We have lost a lot of speed with the last changes: parallelization of hashing suffers. find the root cause and fix: we need hashing to happen in a multi-threaded way even if a single directory is processed at a time. Maybe more directories hasing running in spearate threads?
