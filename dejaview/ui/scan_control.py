@@ -16,6 +16,7 @@ Receives on_scan_* slots wired by MainWindow._wire_scanner().
 """
 
 import logging
+import time
 
 from PyQt6.QtCore import pyqtSignal, pyqtSlot
 from PyQt6.QtWidgets import (
@@ -41,6 +42,7 @@ class ScanControl(QWidget):
         super().__init__(parent)
         self._build_ui()
         self._set_initial_state()
+        self._eta_reset()
 
     # ── UI construction ──────────────────────────────────────────────────
 
@@ -64,7 +66,7 @@ class ScanControl(QWidget):
         layout.addWidget(self._progress, stretch=1)
 
         self._status_label = QLabel("", self)
-        self._status_label.setMinimumWidth(120)
+        self._status_label.setMinimumWidth(200)
         layout.addWidget(self._status_label)
 
         self._start_btn.clicked.connect(self.start_requested)
@@ -101,6 +103,7 @@ class ScanControl(QWidget):
         self._pause_btn.setEnabled(True)
         self._stop_btn.setEnabled(True)
         self._status_label.setText("")
+        self._eta_reset()
 
     @pyqtSlot()
     def on_scan_paused(self) -> None:
@@ -116,6 +119,7 @@ class ScanControl(QWidget):
         self._pause_btn.setText(self._pause_label())
         self._pause_btn.setEnabled(True)
         self._status_label.setText("")
+        self._eta_reset()
 
     @pyqtSlot()
     def on_scan_stopped(self) -> None:
@@ -130,4 +134,68 @@ class ScanControl(QWidget):
     def on_progress_updated(self, current: int, total: int) -> None:
         if total > 0:
             self._progress.setValue(int(current / total * 100))
-        self._status_label.setText(self.tr("{0} / {1}").format(current, total))
+
+        now = time.monotonic()
+
+        # Start timing on the first completed file.
+        if current == 1:
+            self._eta_start = now
+            self._eta_last_update = 0.0
+            self._eta_text = ""
+
+        # Show total elapsed time on completion.
+        if current >= total and total > 0 and self._eta_start is not None:
+            elapsed = now - self._eta_start
+            label = self.tr("{0} / {1} \u2014 {2}").format(
+                current, total, self._format_duration(elapsed)
+            )
+            self._status_label.setText(label)
+            return
+
+        # Update ETA at most once per second to avoid flickering.
+        if (
+            current > 0
+            and total > 0
+            and self._eta_start is not None
+            and now - self._eta_last_update >= 1.0
+        ):
+            elapsed = now - self._eta_start
+            if elapsed <= 0:
+                elapsed = 0.001  # guard against instant completion in tests
+            rate = current / elapsed
+            remaining = (total - current) / rate
+            self._eta_text = self.tr("~{0} left").format(
+                self._format_duration(remaining)
+            )
+            self._eta_last_update = now
+
+        if self._eta_text:
+            label = self.tr("{0} / {1} \u2014 {2}").format(
+                current, total, self._eta_text
+            )
+        else:
+            label = self.tr("{0} / {1}").format(current, total)
+        self._status_label.setText(label)
+
+    # ── ETA helpers ─────────────────────────────────────────────────────
+
+    def _eta_reset(self) -> None:
+        """Reset ETA tracking state."""
+        self._eta_start: float | None = None
+        self._eta_last_update: float = 0.0
+        self._eta_text: str = ""
+
+    @staticmethod
+    def _format_duration(seconds: float) -> str:
+        """Format seconds into a human-readable duration string."""
+        s = int(seconds)
+        if s < 60:
+            return f"{s}s"
+        m, s = divmod(s, 60)
+        if m < 60:
+            return f"{m}m {s}s"
+        h, m = divmod(m, 60)
+        if h < 24:
+            return f"{h}h {m}m"
+        d, h = divmod(h, 24)
+        return f"{d}d {h}h"

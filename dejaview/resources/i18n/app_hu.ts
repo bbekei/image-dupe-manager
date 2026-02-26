@@ -291,6 +291,14 @@
         <source>{0} / {1}</source>
         <translation>{0} / {1}</translation>
     </message>
+    <message>
+        <source>{0} / {1} — {2}</source>
+        <translation>{0} / {1} — {2}</translation>
+    </message>
+    <message>
+        <source>~{0} left</source>
+        <translation>~{0} van hátra</translation>
+    </message>
 </context>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════

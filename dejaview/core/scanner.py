@@ -9,6 +9,7 @@ Module ownership rules (plan §Architecture):
 Two-pass scan (plan §Two-pass scan and file-size pre-filter):
   Pass 1 — Discovery: walk all folders, insert file rows with pixel_hash = NULL.
   Pass 2 — Hashing: hash only files whose size appears >= 2 times in the session.
+             Uses ThreadPoolExecutor for multi-core parallelism (Pillow/hashlib release the GIL).
 
 Pause/resume state machine (plan §Pause/resume state machine):
   PASS1         → walks folders, inserts files with pixel_hash=NULL
@@ -27,6 +28,7 @@ import concurrent.futures
 import logging
 import os
 import stat
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -108,6 +110,7 @@ class Scanner(QThread):
         session_id: int,
         thumb_dir: str | Path,
         parent=None,
+        max_workers: int | None = None,
     ):
         super().__init__(parent)
         self._db = db
@@ -116,6 +119,7 @@ class Scanner(QThread):
         self._pause_requested = False
         self._stop_requested = False
         self._is_resuming = False
+        self._max_workers = max_workers or min(os.cpu_count() or 1, 8)
 
     # ── Public control API ───────────────────────────────────────────────
 
@@ -270,31 +274,48 @@ class Scanner(QThread):
             self.tr("Hashing {0} candidate(s)\u2026").format(total)
         )
 
-        for file_row in candidates:
-            if self._stop_requested or self._pause_requested:
-                break
+        # Fall back to serial mode when throttling is requested.
+        workers = 1 if scan_delay_ms > 0 else self._max_workers
+        db_lock = threading.Lock()
 
-            file_id = file_row["id"]
-            path = file_row["path"]
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+            # Submit all candidates up-front.
+            future_to_file: dict[concurrent.futures.Future, dict] = {}
+            for file_row in candidates:
+                if self._stop_requested or self._pause_requested:
+                    break
+                f = executor.submit(hash_file, file_row["path"], self._thumb_dir)
+                future_to_file[f] = file_row
 
-            try:
-                pixel_hash, thumb_path = hash_file(path, self._thumb_dir)
-                self._db.update_pixel_hash(file_id, pixel_hash, thumb_path)
-                self.hash_complete.emit(file_id, pixel_hash)
+            # Process results as they complete.
+            for future in concurrent.futures.as_completed(future_to_file):
+                if self._stop_requested or self._pause_requested:
+                    executor.shutdown(wait=False, cancel_futures=True)
+                    break
 
-                # Check if this hash is now part of a duplicate group.
-                dupes = self._db.get_files_by_pixel_hash(
-                    self._session_id, pixel_hash
-                )
-                if len(dupes) > 1:
-                    self.duplicate_found.emit([r["id"] for r in dupes])
+                file_row = future_to_file[future]
+                file_id = file_row["id"]
+                path = file_row["path"]
 
-            except (HashError, Exception) as exc:
-                log.warning("Scanner: cannot hash %s: %s", path, exc)
-                self.scan_error.emit(path, str(exc))
+                try:
+                    pixel_hash, thumb_path = future.result()
+                    with db_lock:
+                        self._db.update_pixel_hash(file_id, pixel_hash, thumb_path)
+                        self.hash_complete.emit(file_id, pixel_hash)
 
-            current += 1
-            self.progress_updated.emit(current, total)
+                        # Check if this hash is now part of a duplicate group.
+                        dupes = self._db.get_files_by_pixel_hash(
+                            self._session_id, pixel_hash
+                        )
+                        if len(dupes) > 1:
+                            self.duplicate_found.emit([r["id"] for r in dupes])
 
-            if scan_delay_ms > 0:
-                time.sleep(scan_delay_ms / 1000.0)
+                except (HashError, Exception) as exc:
+                    log.warning("Scanner: cannot hash %s: %s", path, exc)
+                    self.scan_error.emit(path, str(exc))
+
+                current += 1
+                self.progress_updated.emit(current, total)
+
+                if scan_delay_ms > 0:
+                    time.sleep(scan_delay_ms / 1000.0)

@@ -134,6 +134,22 @@
         <source>PAUSED</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Complete</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>{0} / {1}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>{0} / {1} — {2}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>~{0} left</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>ResultsPanel</name>
