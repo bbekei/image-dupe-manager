@@ -80,6 +80,9 @@ Kattintson a **⏸ Szünet** gombra, amikor csak szeretné. Az aktuális fájl f
 ### Leállítás
 A **⏹ Leállítás** gomb megnyomásával véglegesen befejezi a szkennelést. A részleges eredmények megmaradnak.
 
+### Letöltött fotók
+Az internetről letöltött vagy e-mailben kapott fotókon Windows biztonsági jelölés ("Mark of the Web") lehet, amely megakadályozhatja az alkalmazást a fájl olvasásában. A DejaView szkennelés közben automatikusan eltávolítja ezt a jelölést a képfájlokról, így azok normálisan feldolgozhatók.
+
 ---
 
 ## 3. lépés — Eredmények áttekintése

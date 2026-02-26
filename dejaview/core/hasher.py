@@ -17,11 +17,35 @@ If the thumbnail already exists it is NOT rewritten (idempotent — plan §Thumb
 """
 
 import hashlib
+import os
+import sys
 from pathlib import Path
 
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 THUMB_SIZE = (400, 400)
+
+# Extensions that hash_file will accept — must match scanner._IMAGE_EXTENSIONS.
+_SAFE_IMAGE_EXTENSIONS = frozenset({".jpg", ".jpeg", ".heic", ".heif"})
+
+
+def _strip_zone_identifier(path: Path) -> None:
+    """Remove the Windows Mark-of-the-Web alternate data stream if present.
+
+    Files downloaded from the internet carry a :Zone.Identifier ADS that can
+    cause security software to block reads, resulting in PIL
+    ``UnidentifiedImageError``.  Only applied to known image extensions.
+    Silently ignored on non-Windows platforms or if the stream does not exist.
+    """
+    if sys.platform != "win32":
+        return
+    if path.suffix.lower() not in _SAFE_IMAGE_EXTENSIONS:
+        return
+    ads = str(path) + ":Zone.Identifier"
+    try:
+        os.remove(ads)
+    except OSError:
+        pass
 
 
 class HashError(Exception):
@@ -52,6 +76,7 @@ def hash_file(path: str | Path, thumb_dir: str | Path) -> tuple[str, str]:
 
     img = None
     try:
+        _strip_zone_identifier(path)
         img = Image.open(path)
 
         # Step 2: normalize EXIF orientation (plan §Pixel hash normalization spec)
