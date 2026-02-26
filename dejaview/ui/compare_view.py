@@ -281,3 +281,194 @@ class CompareView(QWidget):
     @pyqtSlot()
     def _on_close(self) -> None:
         self.closed.emit()
+
+
+# ---------------------------------------------------------------------------
+# FolderTile — one per duplicated folder location
+# ---------------------------------------------------------------------------
+
+class _FolderTile(QWidget):
+    """Tile showing a folder that contains fully-duplicated content."""
+
+    def __init__(
+        self,
+        folder_path: str,
+        file_count: int,
+        total_size: int,
+        file_names: list[str],
+        parent=None,
+    ):
+        super().__init__(parent)
+        self._folder_path = folder_path
+
+        self.setFixedWidth(280)
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(4)
+
+        # Folder icon placeholder.
+        icon_label = QLabel("\U0001f4c1", self)
+        icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        icon_label.setStyleSheet("font-size: 48px; border: 1px solid #ccc; background: #f0f0f0; padding: 20px;")
+        layout.addWidget(icon_label, alignment=Qt.AlignmentFlag.AlignCenter)
+
+        # Folder path.
+        path_label = QLabel(folder_path, self)
+        path_label.setWordWrap(True)
+        path_label.setStyleSheet("font-weight: bold; font-size: 12px;")
+        layout.addWidget(path_label)
+
+        # Stats.
+        size_str = _FileTile._format_size(total_size)
+        stats_label = QLabel(f"{file_count} files \u00b7 {size_str}", self)
+        stats_label.setStyleSheet("font-size: 11px; color: #555;")
+        layout.addWidget(stats_label)
+
+        # File list (collapsible).
+        if file_names:
+            files_text = "\n".join(f"  {name}" for name in file_names[:20])
+            if len(file_names) > 20:
+                files_text += f"\n  ... and {len(file_names) - 20} more"
+            files_label = QLabel(files_text, self)
+            files_label.setStyleSheet("font-size: 10px; color: #777; font-family: monospace;")
+            files_label.setWordWrap(True)
+            layout.addWidget(files_label)
+
+        layout.addStretch()
+
+    @property
+    def folder_path(self) -> str:
+        return self._folder_path
+
+
+# ---------------------------------------------------------------------------
+# FolderCompareView — folder-level comparison
+# ---------------------------------------------------------------------------
+
+class FolderCompareView(QWidget):
+    """
+    Side-by-side comparison of folders that contain the same set of duplicated files.
+    Opened when a fully-duplicated folder is selected for comparison.
+    """
+
+    closed = pyqtSignal()
+
+    def __init__(
+        self,
+        db: Database,
+        session_id: int,
+        folder_path: str,
+        parent=None,
+    ):
+        super().__init__(parent)
+        self._db = db
+        self._session_id = session_id
+        self._folder_path = folder_path
+        self._folder_tiles: list[_FolderTile] = []
+
+        self._build_ui()
+        self._populate_folder_tiles()
+
+    def _build_ui(self) -> None:
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(8, 8, 8, 8)
+
+        self._header = QLabel(self)
+        self._header.setObjectName("compare_header")
+        self._header.setStyleSheet("font-size: 14px; font-weight: bold;")
+        outer.addWidget(self._header)
+
+        scroll = QScrollArea(self)
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+
+        self._tile_container = QWidget()
+        self._tile_layout = QHBoxLayout(self._tile_container)
+        self._tile_layout.setContentsMargins(0, 0, 0, 0)
+        self._tile_layout.setSpacing(12)
+        self._tile_layout.addStretch()
+        scroll.setWidget(self._tile_container)
+        outer.addWidget(scroll, stretch=1)
+
+        action_row = QHBoxLayout()
+        action_row.addStretch()
+        close_btn = QPushButton(self.tr("Close"), self)
+        close_btn.setObjectName("close_btn")
+        action_row.addWidget(close_btn)
+        outer.addLayout(action_row)
+
+        close_btn.clicked.connect(self._on_close)
+
+    def _populate_folder_tiles(self) -> None:
+        """Find all folders containing the same set of pixel hashes as the selected folder."""
+        # Get all files in the selected folder.
+        all_files = self._db.get_files_for_session(self._session_id)
+        folder_prefix = self._folder_path.rstrip("/\\") + os.sep
+
+        # Collect pixel hashes for the selected folder.
+        source_hashes = set()
+        source_files = []
+        for f in all_files:
+            if f["status"] != "active":
+                continue
+            fpath = f["path"]
+            if fpath.startswith(folder_prefix) and os.sep not in fpath[len(folder_prefix):]:
+                if f["pixel_hash"]:
+                    source_hashes.add(f["pixel_hash"])
+                    source_files.append(f)
+
+        if not source_hashes:
+            self._header.setText(self.tr("DUPLICATED FOLDER (no hash data)"))
+            return
+
+        # Find all folders that contain files matching ALL these hashes.
+        # Group files by their parent directory.
+        folder_files: dict[str, list] = {}
+        for f in all_files:
+            if f["status"] != "active" or not f["pixel_hash"]:
+                continue
+            if f["pixel_hash"] in source_hashes:
+                parent_dir = os.path.dirname(f["path"])
+                folder_files.setdefault(parent_dir, []).append(f)
+
+        # Filter to folders that contain ALL the source hashes.
+        matching_folders = []
+        for folder, files in folder_files.items():
+            folder_hashes = {f["pixel_hash"] for f in files}
+            if source_hashes.issubset(folder_hashes):
+                matching_folders.append((folder, files))
+
+        self._header.setText(
+            self.tr("DUPLICATED FOLDER ({0} locations \u00b7 {1} files each)").format(
+                len(matching_folders), len(source_hashes)
+            )
+        )
+
+        # Remove stretch, add tiles, re-add stretch.
+        self._tile_layout.takeAt(self._tile_layout.count() - 1)
+
+        for folder, files in matching_folders:
+            total_size = sum(f["size"] or 0 for f in files)
+            file_names = [os.path.basename(f["path"]) for f in files]
+            tile = _FolderTile(
+                folder_path=folder,
+                file_count=len(files),
+                total_size=total_size,
+                file_names=file_names,
+                parent=self._tile_container,
+            )
+            self._tile_layout.addWidget(tile)
+            self._folder_tiles.append(tile)
+
+        self._tile_layout.addStretch()
+
+    @property
+    def folder_tiles(self) -> list[_FolderTile]:
+        return list(self._folder_tiles)
+
+    @pyqtSlot()
+    def _on_close(self) -> None:
+        self.closed.emit()

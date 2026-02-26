@@ -32,7 +32,7 @@ A főablak három részből áll:
 
 ```
 ┌────────────────────────────────────────────────────────┐
-│ Menü: Fájl | Nézet | Szkennelés | Megosztás            │
+│ Menü: Fájl | Szkennelés | Megosztás | Súgó              │
 ├──────────────┬─────────────────────────────────────────┤
 │ MAPPAPANEL   │  EREDMÉNYPANEL                          │
 │              │  [Összes | Csak duplikátumok | Könyvtárak│
@@ -80,6 +80,8 @@ Kattintson a **⏸ Szünet** gombra, amikor csak szeretné. Az aktuális fájl f
 ### Leállítás
 A **⏹ Leállítás** gomb megnyomásával véglegesen befejezi a szkennelést. A részleges eredmények megmaradnak.
 
+> A szkennelés befejezése után az alkalmazás automatikusan átvált a **Csak duplikátumok** nézetre, ha talált duplikátumokat. Az állapotsávon összefoglaló jelenik meg, például: *Vizsgálat kész: 150 fájl átvizsgálva, 12 duplikátum 5 csoportban.*
+
 ---
 
 ## 3. lépés — Eredmények áttekintése
@@ -94,7 +96,9 @@ A szkennelés után az eredménypanel tetején lévő szűrősávval választhat
 
 A **Csak duplikátumok** szűrőre váltva az eredménypanel csak az érintett fájlokat mutatja. A fájlok az eredeti mappaszerkezetükben jelennek meg, így jól látható, hol találhatók az egyes másolatok.
 
-Kattintson bármelyik **● DUPLIKÁTUM** jelzővel ellátott fájlra az Összehasonlítás nézet megnyitásához, ahol megtekintheti a duplikátumcsoport összes másolatát egymás mellett.
+Jelöljön ki egy **● DUPLIKÁTUM** jelzővel ellátott fájlt, majd kattintson az **Összehasonlítás** gombra az eszközsávban. Dupla kattintással is megnyithatja, vagy jobb gombbal kattintva válassza a **Duplikátumok összehasonlítása** menüpontot.
+
+Ha egy mappa összes fájlja duplikátum, a mappa maga is **● DUPLIKÁLT MAPPA** jelzőt kap a fájlszámmal együtt. Kibonthatja a mappát az egyes fájlok megtekintéséhez, vagy összehasonlíthatja a mappát egészben, hogy lássa, hol létezik a duplikált tartalom.
 
 ---
 
@@ -115,6 +119,8 @@ Az Összehasonlítás nézet egymás mellett mutatja egy duplikátumcsoport öss
 ```
 
 Minden cella tartalmaz egy előnézeti képet, a fájl teljes elérési útját, méretét és módosítási dátumát. Ez egy csak olvasható nézet — az összes duplikátum adatait áttekintheti, hogy pontosan lássa, hol találhatók a másolatok.
+
+Ha egy duplikált mappát hasonlít össze, az Összehasonlítás nézet mappa szintű cellákat mutat a mappa elérési útjával, a fájlok számával és méretével. Ez megkönnyíti a teljes mappamásolatok azonosítását és kezelését.
 
 A **Bezárás** gombra kattintva visszatér az eredménypanelhez.
 
@@ -185,7 +191,15 @@ A **Megosztás > Szinkronizálás beállítása** menüpontban megadott adatvéd
 ## Beállítások
 
 ### Nyelv módosítása
-Az alkalmazás automatikusan felismeri a Windows rendszer nyelvét, és magyarul vagy angolul indul el. Ha kézzel szeretné megváltoztatni, nyissa meg a **Fájl > Beállítások > Nyelv** menüpontot. A változtatás azonnal érvénybe lép — újraindítás nem szükséges.
 
-### Szkennelési sebesség
-A **Fájl > Beállítások > Szkennelési sebesség** menüpontban szabályozhatja, hogy a szkennelés mennyi processzoridőt vegyen igénybe. Az alapértelmezett beállítás a leggyorsabb. Csökkentse, ha szkennelés közben a számítógép lelassul — a szkennelés tovább tart, de a többi program reagálóképesebb marad.
+Az alkalmazás automatikusan a Windows rendszer nyelve alapján választ
+magyart vagy angolt. Ha felül szeretné írni, nyissa meg a
+**Fájl > Beállítások** menüpontot, válassza ki a kívánt nyelvet a
+legördülő listából, majd kattintson a **Mentés** gombra. A változtatás
+az alkalmazás újraindítása után lép érvénybe.
+
+### Téma
+
+A Beállítások ablakban elérhető egy témaválasztó. Jelenleg csak a
+rendszer alapértelmezett téma támogatott; további témák egy jövőbeli
+kiadásban lesznek elérhetők.

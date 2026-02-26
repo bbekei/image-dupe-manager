@@ -32,7 +32,7 @@ The main window has three areas:
 
 ```
 ┌────────────────────────────────────────────────────────┐
-│ Menu: File | View | Scan | Share                       │
+│ Menu: File | Scan | Share | Help                        │
 ├──────────────┬─────────────────────────────────────────┤
 │ FOLDER PANEL │  RESULTS PANEL                          │
 │              │  [All | Duplicates Only | Cross-Library] │
@@ -80,6 +80,8 @@ Click **⏸ Pause** at any time. The current file finishes processing, then the 
 ### Stop
 Click **⏹ Stop** to end the scan permanently. Partial results remain visible.
 
+> After scanning, the app automatically switches to the **Duplicates Only** view if any duplicates were found. The status bar shows a summary like: *Scan complete: 150 files scanned, 12 duplicates in 5 groups.*
+
 ---
 
 ## Step 3 — Review Results
@@ -94,7 +96,9 @@ After scanning, use the filter bar at the top of the results panel to choose wha
 
 Switch to **Duplicates Only** to focus on just the duplicates. Files remain shown in their original folder structure so you can see where each copy lives.
 
-Click any file with a **● DUPLICATE** badge to open the Compare View and see all copies side by side.
+Select any file with a **● DUPLICATE** badge, then click the **Compare** button in the toolbar. You can also double-click the file, or right-click and choose **Compare Duplicates**.
+
+When all files inside a folder are duplicates, the folder itself is shown with a **● DUPLICATED FOLDER** badge and a file count. You can expand the folder to see individual files, or compare the folder as a whole to see where the duplicated content exists.
 
 ---
 
@@ -114,6 +118,8 @@ The Compare View shows all copies of a duplicate group side by side in a read-on
 ```
 
 Each tile shows a thumbnail preview, the file's location, size, and modification date. This is a read-only view — use it to inspect where your duplicates live and compare their details. Click **Close** to return to the results panel.
+
+If you compare a duplicated folder, the Compare View shows folder-level tiles with the folder path, total file count, and size. This makes it easy to identify and manage entire folder copies.
 
 ---
 
@@ -182,7 +188,14 @@ The privacy level you configured in **Share > Configure Sync** also controls wha
 ## Settings
 
 ### Changing the Language
-The app automatically uses Hungarian or English based on your Windows system language. To change it manually, go to **File > Settings > Language**. The change takes effect immediately — no restart needed.
 
-### Scan Speed
-Go to **File > Settings > Scan Speed** to control how much CPU the scan uses. The default is the fastest setting. Lower it if you notice your computer becoming sluggish while scanning — the scan will take longer but leave other programs more responsive.
+The app automatically uses Hungarian or English based on your Windows system
+language. To override this, go to **File > Settings**, choose your preferred
+language from the dropdown, and click **Save**. You will need to restart the
+application for the change to take effect.
+
+### Theme
+
+A theme selector is available in the Settings dialog. Currently only the
+system default theme is supported; additional themes are planned for a
+future release.

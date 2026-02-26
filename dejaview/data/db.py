@@ -96,6 +96,12 @@ CREATE TABLE IF NOT EXISTS remote_files (
     pixel_hash  TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS app_config (
+    id       INTEGER PRIMARY KEY CHECK (id = 1),
+    language TEXT NOT NULL DEFAULT 'auto',
+    theme    TEXT NOT NULL DEFAULT 'system'
+);
+
 CREATE VIEW IF NOT EXISTS duplicate_groups AS
     SELECT session_id, pixel_hash, COUNT(*) AS file_count
     FROM files
@@ -395,6 +401,42 @@ class Database:
         """Return the configured inter-file scan delay (0 if unconfigured)."""
         row = self.get_sync_config()
         return int(row["scan_delay_ms"]) if row else 0
+
+    # ------------------------------------------------------------------
+    # App config (singleton row, id=1)
+    # ------------------------------------------------------------------
+
+    def get_app_config(self) -> Optional[sqlite3.Row]:
+        """Return the app_config singleton row, or None if not yet created."""
+        return self.conn.execute(
+            "SELECT * FROM app_config WHERE id = 1"
+        ).fetchone()
+
+    def upsert_app_config(self, **fields) -> None:
+        """Insert or update the app_config singleton with the given fields."""
+        allowed = {"language", "theme"}
+        safe = {k: v for k, v in fields.items() if k in allowed}
+        if not safe:
+            return
+
+        existing = self.conn.execute(
+            "SELECT 1 FROM app_config WHERE id = 1"
+        ).fetchone()
+
+        if existing:
+            set_clause = ", ".join(f"{k} = ?" for k in safe)
+            self.conn.execute(
+                f"UPDATE app_config SET {set_clause} WHERE id = 1",
+                list(safe.values()),
+            )
+        else:
+            cols = ", ".join(safe.keys())
+            placeholders = ", ".join("?" for _ in safe)
+            self.conn.execute(
+                f"INSERT INTO app_config (id, {cols}) VALUES (1, {placeholders})",
+                list(safe.values()),
+            )
+        self.conn.commit()
 
     # ------------------------------------------------------------------
     # Remote peers

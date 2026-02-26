@@ -2560,6 +2560,10 @@
    'C:\\Users\\bekei\\My Python '
    'stuff\\image-dupe-manager\\dejaview\\ui\\scan_control.py',
    'PYMODULE'),
+  ('ui.settings_dialog',
+   'C:\\Users\\bekei\\My Python '
+   'stuff\\image-dupe-manager\\dejaview\\ui\\settings_dialog.py',
+   'PYMODULE'),
   ('ui.share_dialog',
    'C:\\Users\\bekei\\My Python '
    'stuff\\image-dupe-manager\\dejaview\\ui\\share_dialog.py',

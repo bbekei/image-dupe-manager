@@ -21,10 +21,6 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>View</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Scan</source>
         <translation type="unfinished"></translation>
     </message>
@@ -84,6 +80,22 @@
         <source>User Guide&#x2026;</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Scan complete: {0} files scanned, {1} duplicates in {2} groups.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Scan complete: {0} files scanned. No duplicates found.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Comparing duplicated folder: {0}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Settings saved.</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>FolderPanel</name>
@@ -139,6 +151,72 @@
     </message>
     <message>
         <source>● DUPLICATE</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Compare</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Compare Duplicates</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>● DUPLICATED FOLDER ({0} files)</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>SettingsDialog</name>
+    <message>
+        <source>Settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Language</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Auto (system default)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Theme</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>System Default</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Additional themes coming in a future release.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Please restart DejaView to apply the new language.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>FolderCompareView</name>
+    <message>
+        <source>Close</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DUPLICATED FOLDER (no hash data)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DUPLICATED FOLDER ({0} locations &#x00b7; {1} files each)</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

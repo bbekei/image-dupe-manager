@@ -40,10 +40,6 @@
         <translation>Kilépés</translation>
     </message>
     <message>
-        <source>View</source>
-        <translation>Nézet</translation>
-    </message>
-    <message>
         <source>Scan</source>
         <translation>Vizsgálat</translation>
     </message>
@@ -211,6 +207,23 @@
         <source>✓ Sync complete.</source>
         <translation>✓ Szinkronizálás kész.</translation>
     </message>
+    <!-- Scan summary (Feature Request 2) -->
+    <message>
+        <source>Scan complete: {0} files scanned, {1} duplicates in {2} groups.</source>
+        <translation>Vizsgálat kész: {0} fájl átvizsgálva, {1} duplikátum {2} csoportban.</translation>
+    </message>
+    <message>
+        <source>Scan complete: {0} files scanned. No duplicates found.</source>
+        <translation>Vizsgálat kész: {0} fájl átvizsgálva. Nem találtunk duplikátumot.</translation>
+    </message>
+    <message>
+        <source>Comparing duplicated folder: {0}</source>
+        <translation>Duplikált mappa összehasonlítása: {0}</translation>
+    </message>
+    <message>
+        <source>Settings saved.</source>
+        <translation>Beállítások mentve.</translation>
+    </message>
     <!-- Help menu (Feature Request 1) -->
     <message>
         <source>Help</source>
@@ -302,6 +315,18 @@
         <translation>● DUPLIKÁTUM</translation>
     </message>
     <message>
+        <source>Compare</source>
+        <translation>Összehasonlítás</translation>
+    </message>
+    <message>
+        <source>Compare Duplicates</source>
+        <translation>Duplikátumok összehasonlítása</translation>
+    </message>
+    <message>
+        <source>● DUPLICATED FOLDER ({0} files)</source>
+        <translation>● DUPLIKÁLT MAPPA ({0} fájl)</translation>
+    </message>
+    <message>
         <source>Name</source>
         <translation>Név</translation>
     </message>
@@ -346,6 +371,68 @@
     <message>
         <source>DUPLICATE GROUP ({0} files · SHA: {1}…)</source>
         <translation>DUPLIKÁTUM CSOPORT ({0} fájl · SHA: {1}…)</translation>
+    </message>
+</context>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     SettingsDialog (ui/settings_dialog.py)
+     ═══════════════════════════════════════════════════════════════════════ -->
+<context>
+    <name>SettingsDialog</name>
+    <message>
+        <source>Settings</source>
+        <translation>Beállítások</translation>
+    </message>
+    <message>
+        <source>Language</source>
+        <translation>Nyelv</translation>
+    </message>
+    <message>
+        <source>Auto (system default)</source>
+        <translation>Automatikus (rendszer alapértelmezett)</translation>
+    </message>
+    <message>
+        <source>Theme</source>
+        <translation>Téma</translation>
+    </message>
+    <message>
+        <source>System Default</source>
+        <translation>Rendszer alapértelmezett</translation>
+    </message>
+    <message>
+        <source>Additional themes coming in a future release.</source>
+        <translation>További témák egy jövőbeli kiadásban lesznek elérhetők.</translation>
+    </message>
+    <message>
+        <source>Please restart DejaView to apply the new language.</source>
+        <translation>Kérjük, indítsa újra a DejaView-t az új nyelv alkalmazásához.</translation>
+    </message>
+    <message>
+        <source>Save</source>
+        <translation>Mentés</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Mégse</translation>
+    </message>
+</context>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     FolderCompareView (ui/compare_view.py — folder-level comparison)
+     ═══════════════════════════════════════════════════════════════════════ -->
+<context>
+    <name>FolderCompareView</name>
+    <message>
+        <source>Close</source>
+        <translation>Bezárás</translation>
+    </message>
+    <message>
+        <source>DUPLICATED FOLDER (no hash data)</source>
+        <translation>DUPLIKÁLT MAPPA (nincs hash adat)</translation>
+    </message>
+    <message>
+        <source>DUPLICATED FOLDER ({0} locations · {1} files each)</source>
+        <translation>DUPLIKÁLT MAPPA ({0} helyen · egyenként {1} fájl)</translation>
     </message>
 </context>
 

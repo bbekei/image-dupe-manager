@@ -2,7 +2,7 @@
 ui/main_window.py — DejaView application shell (plan §UI Layout — Main Window).
 
 Layout:
-  Menu bar  : File | View | Scan | Share | Help
+  Menu bar  : File | Scan | Share | Help
   Left pane : FolderPanel (180–300 px wide)
   Right pane: ResultsPanel (Phase 3) or CompareView (Phase 4)
   Bottom bar: ScanControl (buttons + progress)
@@ -37,10 +37,10 @@ from core.scanner import Scanner
 from data.db import Database
 from data.export import build_export_payload, import_payload, validate_username
 from data.sync import DriveSync
-from ui.compare_view import CompareView
+from ui.compare_view import CompareView, FolderCompareView
 from ui.folder_panel import FolderPanel
 from ui.help_dialog import HelpDialog
-from ui.results_panel import ResultsPanel
+from ui.results_panel import FILTER_DUPLICATES_ONLY, ResultsPanel
 from ui.scan_control import ScanControl
 from ui.share_dialog import ShareDialog
 
@@ -88,12 +88,9 @@ class MainWindow(QMainWindow):
         file_menu = mb.addMenu(self.tr("File"))
         file_menu.addAction(self.tr("Add Folder\u2026"), self._on_add_folder)
         file_menu.addSeparator()
-        file_menu.addAction(self.tr("Settings\u2026"))   # Phase 7 placeholder
+        file_menu.addAction(self.tr("Settings\u2026"), self._on_settings)
         file_menu.addSeparator()
         file_menu.addAction(self.tr("Exit"), self.close)
-
-        # View — populated in Phase 3
-        mb.addMenu(self.tr("View"))
 
         # Scan
         scan_menu = mb.addMenu(self.tr("Scan"))
@@ -157,6 +154,7 @@ class MainWindow(QMainWindow):
 
         # Wire ResultsPanel → CompareView (plan §Phase 4 — comparison).
         self._results_panel.compare_view_requested.connect(self._on_compare_requested)
+        self._results_panel.compare_folder_requested.connect(self._on_compare_folder_requested)
 
         # Auto-size left pane to fit folder names.
         self._folder_panel.folders_changed.connect(self._auto_fit_splitter)
@@ -286,7 +284,30 @@ class MainWindow(QMainWindow):
 
     @pyqtSlot()
     def _on_scan_complete(self) -> None:
-        self._status_bar.showMessage(self.tr("Scan complete."))
+        if self._session_id is None:
+            return
+
+        # Compute scan summary.
+        files = self._db.get_files_for_session(self._session_id)
+        total_files = sum(1 for f in files if f["status"] == "active")
+        dup_groups = self._db.get_duplicate_groups(self._session_id)
+        group_count = len(dup_groups)
+        dup_file_count = sum(g["file_count"] for g in dup_groups)
+
+        if group_count > 0:
+            self._results_panel.set_filter(FILTER_DUPLICATES_ONLY)
+            self._status_bar.showMessage(
+                self.tr("Scan complete: {0} files scanned, {1} duplicates in {2} groups.").format(
+                    total_files, dup_file_count, group_count
+                )
+            )
+        else:
+            self._status_bar.showMessage(
+                self.tr("Scan complete: {0} files scanned. No duplicates found.").format(
+                    total_files
+                )
+            )
+
         # Plan §Workflow 5 — after scan complete: upload export.
         self._run_sync(session_id=self._session_id)
 
@@ -320,6 +341,28 @@ class MainWindow(QMainWindow):
         self._splitter.setStretchFactor(self._splitter.indexOf(self._compare_view), 1)
         self._status_bar.showMessage(
             self.tr("Comparing duplicate group (SHA: {0}\u2026)").format(pixel_hash[:8])
+        )
+
+    @pyqtSlot(str)
+    def _on_compare_folder_requested(self, folder_path: str) -> None:
+        """Open the FolderCompareView for a fully-duplicated folder."""
+        if self._session_id is None:
+            return
+        self._compare_view = FolderCompareView(
+            db=self._db,
+            session_id=self._session_id,
+            folder_path=folder_path,
+            parent=self,
+        )
+        self._compare_view.setObjectName("compare_view")
+        self._compare_view.closed.connect(self._close_compare_view)
+        self._results_panel.hide()
+        self._splitter.addWidget(self._compare_view)
+        self._splitter.setStretchFactor(self._splitter.indexOf(self._compare_view), 1)
+        self._status_bar.showMessage(
+            self.tr("Comparing duplicated folder: {0}").format(
+                os.path.basename(folder_path)
+            )
         )
 
     @pyqtSlot()
@@ -519,6 +562,18 @@ class MainWindow(QMainWindow):
         """After sync settings saved, refresh cross-library data."""
         self._results_panel.update_cross_library_data()
         self._status_bar.showMessage(self.tr("Sync settings saved."))
+
+    # ── Settings (Feature Request 2 — Settings Dialog) ─────────────────
+
+    @pyqtSlot()
+    def _on_settings(self) -> None:
+        """File > Settings — open the Settings dialog."""
+        from ui.settings_dialog import SettingsDialog
+        dlg = SettingsDialog(db=self._db, parent=self)
+        dlg.settings_saved.connect(
+            lambda: self._status_bar.showMessage(self.tr("Settings saved."))
+        )
+        dlg.exec()
 
     # ── Help (Feature Request 1 — Help Menu) ─────────────────────────────
 

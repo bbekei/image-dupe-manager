@@ -40,13 +40,30 @@ def _base_dir() -> Path:
     return Path(__file__).parent
 
 
-def _load_translators(app: QApplication) -> None:
+def _load_translators(app: QApplication, db_path: Path | None = None) -> None:
     """
-    Load Hungarian translation if system locale is 'hu'.
+    Load Hungarian translation based on user preference or system locale.
     Falls back to English (built-in source strings) for any other locale.
     Plan §Language / Localization.
     """
-    lang = QLocale.system().name()[:2]   # 'hu', 'en', 'de', …
+    # Read user's language preference from app_config (if DB exists).
+    lang_pref = "auto"
+    if db_path and db_path.exists():
+        try:
+            db = Database(db_path)
+            db.open()
+            config = db.get_app_config()
+            if config:
+                lang_pref = config["language"]
+            db.close()
+        except Exception as exc:
+            log.warning("Could not read language preference: %s", exc)
+
+    if lang_pref == "auto":
+        lang = QLocale.system().name()[:2]   # 'hu', 'en', 'de', …
+    else:
+        lang = lang_pref
+
     if lang != "hu":
         return
 
@@ -139,9 +156,8 @@ def main() -> None:
     app.setApplicationName("DejaView")
     app.setOrganizationName("DejaView")
 
-    _load_translators(app)
-
     db_path = app_dir / "library.db"
+    _load_translators(app, db_path=db_path)
     thumb_dir = app_dir / "thumbs"
     thumb_dir.mkdir(exist_ok=True)
 

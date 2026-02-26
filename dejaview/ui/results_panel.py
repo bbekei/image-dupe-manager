@@ -31,6 +31,8 @@ from PyQt6.QtWidgets import (
     QButtonGroup,
     QHBoxLayout,
     QHeaderView,
+    QMenu,
+    QPushButton,
     QRadioButton,
     QTreeView,
     QVBoxLayout,
@@ -48,6 +50,8 @@ ROLE_PIXEL_HASH = Qt.ItemDataRole.UserRole + 3
 ROLE_IS_DUPLICATE = Qt.ItemDataRole.UserRole + 4
 ROLE_NODE_TYPE = Qt.ItemDataRole.UserRole + 5  # "folder" or "file"
 ROLE_IS_CROSS_LIBRARY = Qt.ItemDataRole.UserRole + 6  # Phase 5
+ROLE_IS_FOLDER_DUPLICATED = Qt.ItemDataRole.UserRole + 7  # Feature 3d
+ROLE_FOLDER_FILE_COUNT = Qt.ItemDataRole.UserRole + 8  # Feature 3d
 
 # Filter modes
 FILTER_ALL = "all"
@@ -100,18 +104,31 @@ class _DuplicateFilterProxy(QSortFilterProxyModel):
         node_type = idx.data(ROLE_NODE_TYPE)
 
         if node_type == "file":
+            # If parent folder is fully duplicated in Duplicates Only mode,
+            # hide individual files — the folder badge represents them.
+            if self._filter_mode == FILTER_DUPLICATES_ONLY and source_parent.isValid():
+                parent_is_folder_dup = source_parent.data(ROLE_IS_FOLDER_DUPLICATED)
+                if parent_is_folder_dup:
+                    return False
+
             if self._filter_mode == FILTER_DUPLICATES_ONLY:
                 return bool(idx.data(ROLE_IS_DUPLICATE))
             if self._filter_mode == FILTER_CROSS_LIBRARY:
                 return bool(idx.data(ROLE_IS_CROSS_LIBRARY))
             return True
 
-        # Folder node: accept if any child is accepted (recursive).
-        model = self.sourceModel()
-        row_count = model.rowCount(idx)
-        for child_row in range(row_count):
-            if self.filterAcceptsRow(child_row, idx):
+        # Folder node.
+        if node_type == "folder":
+            # Fully duplicated folders are always visible in Duplicates filter.
+            if self._filter_mode == FILTER_DUPLICATES_ONLY and idx.data(ROLE_IS_FOLDER_DUPLICATED):
                 return True
+            # Otherwise: accept if any child is accepted (recursive).
+            model = self.sourceModel()
+            for child_row in range(model.rowCount(idx)):
+                if self.filterAcceptsRow(child_row, idx):
+                    return True
+            return False
+
         return False
 
 
@@ -121,6 +138,7 @@ class ResultsPanel(QWidget):
     """
 
     compare_view_requested = pyqtSignal(str)  # pixel_hash
+    compare_folder_requested = pyqtSignal(str)  # folder_path
 
     def __init__(self, db: Database, session_id: int | None = None, parent=None):
         super().__init__(parent)
@@ -192,6 +210,9 @@ class ResultsPanel(QWidget):
                 path=f["path"],
                 pixel_hash=f["pixel_hash"],
             )
+
+        # Compute folder-level duplication badges.
+        self._compute_folder_duplication()
 
         # Dynamic view adjustments.
         self._adjust_indentation()
@@ -279,6 +300,13 @@ class ResultsPanel(QWidget):
         filter_row.addWidget(self._radio_dupes)
         filter_row.addWidget(self._radio_cross)
         filter_row.addStretch()
+
+        # Compare button (enabled when a duplicate is selected).
+        self._compare_btn = QPushButton(self.tr("Compare"), self)
+        self._compare_btn.setObjectName("compare_btn")
+        self._compare_btn.setEnabled(False)
+        filter_row.addWidget(self._compare_btn)
+
         layout.addLayout(filter_row)
 
         # Tree view.
@@ -302,9 +330,22 @@ class ResultsPanel(QWidget):
 
         layout.addWidget(self._tree)
 
+        # Context menu on tree.
+        self._tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._tree.customContextMenuRequested.connect(self._on_context_menu)
+
+        # Enable/disable Compare button based on selection.
+        self._tree.selectionModel().currentChanged.connect(self._on_selection_changed)
+
+        # Folder expansion override: when user expands a fully-duplicated folder,
+        # temporarily clear the flag so children become visible.
+        self._tree.expanded.connect(self._on_folder_expanded)
+        self._tree.collapsed.connect(self._on_folder_collapsed)
+
         # Signals.
         self._filter_group.idToggled.connect(self._on_filter_changed)
         self._tree.doubleClicked.connect(self._on_item_double_clicked)
+        self._compare_btn.clicked.connect(self._on_compare_clicked)
 
     def _build_debounce_timer(self) -> None:
         """200ms debounce timer (plan §Resource Usage — UI update rate-limiting)."""
@@ -339,6 +380,10 @@ class ResultsPanel(QWidget):
         self._pending_hash_ids.clear()
         for file_id in hash_ids:
             self._update_file_badge(file_id)
+
+        # Recompute folder-level duplication after badge updates.
+        if hash_ids:
+            self._compute_folder_duplication()
 
         # Auto-fit columns after incremental updates.
         if file_ids:
@@ -440,6 +485,49 @@ class ResultsPanel(QWidget):
         badge_item = parent.child(item.row(), 1)
         if badge_item:
             badge_item.setText(self.tr("\u25cf DUPLICATE") if is_dup else "")
+
+    # ── Folder-level duplication detection (Feature 3d) ────────────────
+
+    def _compute_folder_duplication(self) -> None:
+        """Walk the tree bottom-up and mark folders where ALL files are duplicates."""
+        self._compute_folder_dup_recursive(self._model.invisibleRootItem())
+
+    def _compute_folder_dup_recursive(self, parent: QStandardItem) -> tuple:
+        """Returns (total_file_count, duplicate_file_count) for subtree."""
+        total = 0
+        duplicated = 0
+
+        for row in range(parent.rowCount()):
+            child = parent.child(row, 0)
+            if child is None:
+                continue
+
+            if child.data(ROLE_NODE_TYPE) == "file":
+                total += 1
+                if child.data(ROLE_IS_DUPLICATE):
+                    duplicated += 1
+
+            elif child.data(ROLE_NODE_TYPE) == "folder":
+                sub_total, sub_dup = self._compute_folder_dup_recursive(child)
+                total += sub_total
+                duplicated += sub_dup
+
+                is_fully_dup = sub_total > 0 and sub_total == sub_dup
+                child.setData(is_fully_dup, ROLE_IS_FOLDER_DUPLICATED)
+                child.setData(sub_total, ROLE_FOLDER_FILE_COUNT)
+
+                badge_item = parent.child(row, 1)
+                if badge_item:
+                    if is_fully_dup:
+                        badge_item.setText(
+                            self.tr("\u25cf DUPLICATED FOLDER ({0} files)").format(sub_total)
+                        )
+                    else:
+                        # Clear any previous folder badge if no longer fully duplicated.
+                        if badge_item.text():
+                            badge_item.setText("")
+
+        return total, duplicated
 
     def _find_file_item(self, file_id: int) -> Optional[QStandardItem]:
         """Linear search for a file item by file_id. Acceptable for thousands of items."""
@@ -619,6 +707,31 @@ class ResultsPanel(QWidget):
 
     # ── Slots ────────────────────────────────────────────────────────────
 
+    @pyqtSlot(QModelIndex)
+    def _on_folder_expanded(self, proxy_index: QModelIndex) -> None:
+        """When user expands a fully-duplicated folder, clear the flag so children show."""
+        if self._proxy.filter_mode != FILTER_DUPLICATES_ONLY:
+            return
+        source = self._proxy.mapToSource(proxy_index)
+        item = self._model.itemFromIndex(source)
+        if item and item.data(ROLE_IS_FOLDER_DUPLICATED):
+            item.setData(False, ROLE_IS_FOLDER_DUPLICATED)
+            self._proxy.invalidateFilter()
+
+    @pyqtSlot(QModelIndex)
+    def _on_folder_collapsed(self, proxy_index: QModelIndex) -> None:
+        """When user collapses a folder that was fully duplicated, restore the flag."""
+        if self._proxy.filter_mode != FILTER_DUPLICATES_ONLY:
+            return
+        source = self._proxy.mapToSource(proxy_index)
+        item = self._model.itemFromIndex(source)
+        if item and item.data(ROLE_NODE_TYPE) == "folder":
+            # Re-check if all children are duplicates.
+            total, duped = self._compute_folder_dup_recursive(item)
+            if total > 0 and total == duped:
+                item.setData(True, ROLE_IS_FOLDER_DUPLICATED)
+                self._proxy.invalidateFilter()
+
     @pyqtSlot(int, bool)
     def _on_filter_changed(self, button_id: int, checked: bool) -> None:
         if not checked:
@@ -641,6 +754,63 @@ class ResultsPanel(QWidget):
         is_dup = item.data(ROLE_IS_DUPLICATE)
         if pixel_hash and is_dup:
             self.compare_view_requested.emit(pixel_hash)
+
+    @pyqtSlot(QModelIndex, QModelIndex)
+    def _on_selection_changed(self, current: QModelIndex, previous: QModelIndex) -> None:
+        """Enable/disable Compare button based on selection."""
+        if not current.isValid():
+            self._compare_btn.setEnabled(False)
+            return
+        source = self._proxy.mapToSource(current)
+        item = self._model.itemFromIndex(source)
+        if item is None:
+            self._compare_btn.setEnabled(False)
+            return
+        is_file = item.data(ROLE_NODE_TYPE) == "file"
+        is_dup = bool(item.data(ROLE_IS_DUPLICATE))
+        is_folder_dup = bool(item.data(ROLE_IS_FOLDER_DUPLICATED)) if item.data(ROLE_NODE_TYPE) == "folder" else False
+        self._compare_btn.setEnabled((is_file and is_dup) or is_folder_dup)
+
+    @pyqtSlot()
+    def _on_compare_clicked(self) -> None:
+        """Compare button clicked — emit compare signal for the selected item."""
+        idx = self._tree.currentIndex()
+        if not idx.isValid():
+            return
+        source = self._proxy.mapToSource(idx)
+        item = self._model.itemFromIndex(source)
+        if item is None:
+            return
+        if item.data(ROLE_NODE_TYPE) == "file":
+            pixel_hash = item.data(ROLE_PIXEL_HASH)
+            if pixel_hash and item.data(ROLE_IS_DUPLICATE):
+                self.compare_view_requested.emit(pixel_hash)
+        elif item.data(ROLE_NODE_TYPE) == "folder" and item.data(ROLE_IS_FOLDER_DUPLICATED):
+            # Find the folder path from the folder_items mapping.
+            for path, folder_item in self._folder_items.items():
+                if folder_item is item:
+                    self.compare_folder_requested.emit(path)
+                    break
+
+    @pyqtSlot("QPoint")
+    def _on_context_menu(self, position) -> None:
+        """Show context menu on right-click."""
+        idx = self._tree.indexAt(position)
+        if not idx.isValid():
+            return
+        source = self._proxy.mapToSource(idx)
+        item = self._model.itemFromIndex(source)
+        if item is None:
+            return
+
+        if item.data(ROLE_NODE_TYPE) == "file" and item.data(ROLE_IS_DUPLICATE):
+            menu = QMenu(self)
+            pixel_hash = item.data(ROLE_PIXEL_HASH)
+            action = menu.addAction(self.tr("Compare Duplicates"))
+            action.triggered.connect(
+                lambda: self.compare_view_requested.emit(pixel_hash)
+            )
+            menu.exec(self._tree.viewport().mapToGlobal(position))
 
     # ── Helpers for tests ────────────────────────────────────────────────
 
