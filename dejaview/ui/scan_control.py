@@ -23,6 +23,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QProgressBar,
     QPushButton,
+    QSizePolicy,
     QWidget,
 )
 
@@ -44,6 +45,7 @@ class ScanControl(QWidget):
     # ── UI construction ──────────────────────────────────────────────────
 
     def _build_ui(self) -> None:
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(6, 4, 6, 4)
 

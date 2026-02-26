@@ -80,6 +80,9 @@ Click **⏸ Pause** at any time. The current file finishes processing, then the 
 ### Stop
 Click **⏹ Stop** to end the scan permanently. Partial results remain visible.
 
+### Downloaded Photos
+Photos downloaded from the internet or received via email may carry a Windows security mark ("Mark of the Web") that can prevent the app from reading them. DejaView automatically removes this mark from image files during scanning so they can be processed normally.
+
 > After scanning, the app automatically switches to the **Duplicates Only** view if any duplicates were found. The status bar shows a summary like: *Scan complete: 150 files scanned, 12 duplicates in 5 groups.*
 
 ---

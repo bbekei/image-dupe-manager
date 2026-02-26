@@ -140,10 +140,10 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        layout.addWidget(self._splitter)
+        layout.addWidget(self._splitter, stretch=1)
 
         self._scan_control = ScanControl(parent=self)
-        layout.addWidget(self._scan_control)
+        layout.addWidget(self._scan_control, stretch=0)
 
         self.setCentralWidget(container)
 
