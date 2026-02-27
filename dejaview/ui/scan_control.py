@@ -147,8 +147,8 @@ class ScanControl(QWidget):
         if total > 0:
             self._progress.setValue(int(current / total * 100))
 
-        # Start timing on the first completed file.
-        if current == 1:
+        # Start timing on the first progress signal.
+        if self._eta_start is None and current > 0:
             self._eta_start = time.monotonic()
             self._eta_text = ""
             if not self._eta_timer.isActive():
