@@ -74,12 +74,48 @@ class TestHashCorrectness:
         # Both should be identical because L(200) → RGB(200,200,200) after convert
         assert h_gray == h_rgb
 
-    def test_hash_is_64_char_hex_string(self, image_factory, thumb_dir):
-        """pixel_hash must always be a 64-character lowercase hex string."""
+    def test_hash_is_32_char_hex_string(self, image_factory, thumb_dir):
+        """pixel_hash must always be a 32-character lowercase hex string (xxh128)."""
         p = image_factory()
         h, _ = hash_file(p, thumb_dir)
-        assert len(h) == 64
+        assert len(h) == 32
         assert all(c in "0123456789abcdef" for c in h)
+
+    def test_hash_deterministic_across_1000_runs(self, image_factory, thumb_dir):
+        """xxhash must produce identical output on every invocation (determinism test)."""
+        p = image_factory(color=(42, 170, 99), mode="RGB", fmt="PNG")
+        reference, _ = hash_file(p, thumb_dir)
+        for _ in range(999):
+            h, _ = hash_file(p, thumb_dir)
+            assert h == reference
+
+    def test_numpy_and_tobytes_produce_same_hash(self, image_factory, thumb_dir):
+        """Verify numpy zero-copy path and tobytes fallback produce identical hashes."""
+        import xxhash
+        from PIL import Image as _PilImage, ImageOps as _ImageOps
+
+        p = image_factory(
+            color=(128, 128, 128), color2=(64, 64, 64), pattern="split_v", fmt="JPEG"
+        )
+        img = _PilImage.open(p)
+        img = _ImageOps.exif_transpose(img)
+        img = img.convert("RGB")
+
+        # tobytes path
+        h_tobytes = xxhash.xxh128_hexdigest(img.tobytes())
+
+        # numpy zero-copy path
+        try:
+            import numpy as np
+            arr = np.asarray(img)
+            h_numpy = xxhash.xxh128_hexdigest(arr.data)
+            assert h_tobytes == h_numpy, (
+                f"numpy zero-copy hash ({h_numpy}) differs from tobytes hash ({h_tobytes})"
+            )
+        except ImportError:
+            pytest.skip("numpy not installed")
+        finally:
+            img.close()
 
     def test_two_copies_of_pattern_image_same_hash(self, image_factory, thumb_dir, tmp_path):
         """

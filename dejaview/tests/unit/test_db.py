@@ -21,8 +21,8 @@ def _now() -> str:
 
 
 def _make_hash(prefix: str = "a") -> str:
-    """Return a valid 64-char hex pixel_hash for testing."""
-    return (prefix * 64)[:64]
+    """Return a valid 32-char hex pixel_hash for testing (xxh128 length)."""
+    return (prefix * 32)[:32]
 
 
 # ---------------------------------------------------------------------------
@@ -251,6 +251,73 @@ class TestFileOperations:
         files = db.get_files_for_session(sid)
         assert len(files) == 5
 
+    def test_update_pixel_hashes_batch(self, db: Database, session_factory, thumb_dir):
+        """Batch update writes pixel_hash and thumbnail_path for multiple files."""
+        sid = session_factory()
+        fids = []
+        for i in range(4):
+            fid = db.insert_file(sid, f"/batch_{i}.jpg", 1000, _now(), _now())
+            fids.append(fid)
+
+        updates = []
+        for i, fid in enumerate(fids):
+            h = _make_hash(str(i))
+            thumb = str(thumb_dir / f"{h}.jpg")
+            updates.append((fid, h, thumb))
+
+        db.update_pixel_hashes_batch(updates)
+
+        for fid, expected_hash, expected_thumb in updates:
+            row = db.get_file(fid)
+            assert row["pixel_hash"] == expected_hash
+            assert row["thumbnail_path"] == expected_thumb
+
+    def test_get_all_duplicate_file_ids(self, db: Database, session_factory, thumb_dir):
+        """Bulk duplicate query returns grouped IDs; singletons excluded."""
+        sid = session_factory()
+        hash_a = _make_hash("a")
+        hash_b = _make_hash("b")
+        hash_c = _make_hash("c")
+
+        # Two files with hash_a (duplicate pair)
+        id1 = db.insert_file(sid, "/x/1.jpg", 100, _now(), _now())
+        db.update_pixel_hash(id1, hash_a, str(thumb_dir / "a.jpg"))
+        id2 = db.insert_file(sid, "/x/2.jpg", 100, _now(), _now())
+        db.update_pixel_hash(id2, hash_a, str(thumb_dir / "a.jpg"))
+
+        # Two files with hash_b (duplicate pair)
+        id3 = db.insert_file(sid, "/x/3.jpg", 200, _now(), _now())
+        db.update_pixel_hash(id3, hash_b, str(thumb_dir / "b.jpg"))
+        id4 = db.insert_file(sid, "/x/4.jpg", 200, _now(), _now())
+        db.update_pixel_hash(id4, hash_b, str(thumb_dir / "b.jpg"))
+
+        # One file with hash_c (singleton — must be excluded)
+        id5 = db.insert_file(sid, "/x/5.jpg", 300, _now(), _now())
+        db.update_pixel_hash(id5, hash_c, str(thumb_dir / "c.jpg"))
+
+        groups = db.get_all_duplicate_file_ids(sid)
+        assert hash_a in groups
+        assert hash_b in groups
+        assert hash_c not in groups
+        assert set(groups[hash_a]) == {id1, id2}
+        assert set(groups[hash_b]) == {id3, id4}
+
+    def test_get_all_duplicate_file_ids_excludes_deleted(
+        self, db: Database, session_factory, thumb_dir
+    ):
+        """Deleted files must not appear in bulk duplicate results."""
+        sid = session_factory()
+        h = _make_hash("d")
+        id1 = db.insert_file(sid, "/y/1.jpg", 100, _now(), _now())
+        db.update_pixel_hash(id1, h, str(thumb_dir / "d.jpg"))
+        id2 = db.insert_file(sid, "/y/2.jpg", 100, _now(), _now())
+        db.update_pixel_hash(id2, h, str(thumb_dir / "d.jpg"))
+
+        # Delete one → group drops below 2 → excluded
+        db.update_file_status(id1, "deleted")
+        groups = db.get_all_duplicate_file_ids(sid)
+        assert h not in groups
+
 
 # ---------------------------------------------------------------------------
 # Sync config
@@ -411,20 +478,26 @@ class TestThumbnailCleanup:
 class TestValidatePixelHash:
     """Plan §pixel_hash format enforcement."""
 
-    def test_valid_hash_accepted(self):
+    def test_valid_sha256_hash_accepted(self):
         assert validate_pixel_hash("a" * 64) is True
 
+    def test_valid_xxh128_hash_accepted(self):
+        assert validate_pixel_hash("a" * 32) is True
+
     def test_hash_too_short_rejected(self):
-        assert validate_pixel_hash("a" * 63) is False
+        assert validate_pixel_hash("a" * 31) is False
 
     def test_hash_too_long_rejected(self):
         assert validate_pixel_hash("a" * 65) is False
 
+    def test_hash_between_32_and_64_rejected(self):
+        assert validate_pixel_hash("a" * 48) is False
+
     def test_uppercase_hex_rejected(self):
-        assert validate_pixel_hash("A" * 64) is False
+        assert validate_pixel_hash("A" * 32) is False
 
     def test_non_hex_chars_rejected(self):
-        assert validate_pixel_hash("g" + "a" * 63) is False
+        assert validate_pixel_hash("g" + "a" * 31) is False
 
     def test_sql_injection_attempt_rejected(self):
         assert validate_pixel_hash("'; DROP TABLE files; --" + "a" * 41) is False
@@ -435,3 +508,79 @@ class TestValidatePixelHash:
     def test_non_string_rejected(self):
         assert validate_pixel_hash(None) is False  # type: ignore[arg-type]
         assert validate_pixel_hash(123) is False   # type: ignore[arg-type]
+
+
+# ---------------------------------------------------------------------------
+# hash_algorithm column (R3)
+# ---------------------------------------------------------------------------
+
+class TestHashAlgorithmColumn:
+    """R3 — hash_algorithm column on files table."""
+
+    def test_new_files_default_to_xxh128(self, db: Database, session_factory):
+        sid = session_factory()
+        fid = db.insert_file(sid, "/photos/a.jpg", 1024, _now(), _now())
+        row = db.get_file(fid)
+        assert row["hash_algorithm"] == "xxh128"
+
+    def test_update_pixel_hash_sets_xxh128_for_32_char(
+        self, db: Database, session_factory, thumb_dir
+    ):
+        sid = session_factory()
+        fid = db.insert_file(sid, "/x.jpg", 100, _now(), _now())
+        h = "a" * 32
+        db.update_pixel_hash(fid, h, str(thumb_dir / "a.jpg"))
+        assert db.get_file(fid)["hash_algorithm"] == "xxh128"
+
+    def test_update_pixel_hash_sets_sha256_for_64_char(
+        self, db: Database, session_factory, thumb_dir
+    ):
+        sid = session_factory()
+        fid = db.insert_file(sid, "/x.jpg", 100, _now(), _now())
+        h = "a" * 64
+        db.update_pixel_hash(fid, h, str(thumb_dir / "a.jpg"))
+        assert db.get_file(fid)["hash_algorithm"] == "sha256"
+
+    def test_batch_update_sets_algorithm_correctly(
+        self, db: Database, session_factory, thumb_dir
+    ):
+        sid = session_factory()
+        fid = db.insert_file(sid, "/x.jpg", 100, _now(), _now())
+        h = "b" * 32
+        db.update_pixel_hashes_batch([(fid, h, str(thumb_dir / "b.jpg"))])
+        assert db.get_file(fid)["hash_algorithm"] == "xxh128"
+
+    def test_duplicate_groups_scoped_by_algorithm(
+        self, db: Database, session_factory, thumb_dir
+    ):
+        """Files with same hash value but different algorithms are NOT grouped."""
+        sid = session_factory()
+        # Two xxh128 files with hash "a"*32
+        id1 = db.insert_file(sid, "/1.jpg", 100, _now(), _now())
+        db.update_pixel_hash(id1, "a" * 32, str(thumb_dir / "a.jpg"))
+        id2 = db.insert_file(sid, "/2.jpg", 100, _now(), _now())
+        db.update_pixel_hash(id2, "a" * 32, str(thumb_dir / "a.jpg"))
+
+        groups = db.get_duplicate_groups(sid)
+        assert len(groups) == 1
+        assert groups[0]["hash_algorithm"] == "xxh128"
+
+
+# ---------------------------------------------------------------------------
+# max_scan_workers (R3)
+# ---------------------------------------------------------------------------
+
+class TestMaxScanWorkers:
+    """R3 — max_scan_workers in app_config."""
+
+    def test_default_returns_zero(self, db: Database):
+        assert db.get_max_scan_workers() == 0
+
+    def test_upsert_and_read(self, db: Database):
+        db.upsert_app_config(language="en", max_scan_workers=8)
+        assert db.get_max_scan_workers() == 8
+
+    def test_update_existing(self, db: Database):
+        db.upsert_app_config(language="en")
+        db.upsert_app_config(max_scan_workers=12)
+        assert db.get_max_scan_workers() == 12

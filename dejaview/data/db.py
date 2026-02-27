@@ -19,11 +19,11 @@ from typing import Optional
 # Validation helper (plan §Security — pixel_hash format enforcement)
 # ---------------------------------------------------------------------------
 
-_HASH_RE = re.compile(r'^[0-9a-f]{64}$')
+_HASH_RE = re.compile(r'^[0-9a-f]{32}(?:[0-9a-f]{32})?$')
 
 
 def validate_pixel_hash(value: str) -> bool:
-    """Return True iff value is a 64-char lowercase hex string."""
+    """Return True iff value is a 32-char (xxh128) or 64-char (sha256) lowercase hex string."""
     return isinstance(value, str) and bool(_HASH_RE.match(value))
 
 
@@ -33,6 +33,9 @@ def validate_pixel_hash(value: str) -> bool:
 
 _DDL = """
 PRAGMA journal_mode=WAL;
+PRAGMA synchronous=NORMAL;
+PRAGMA cache_size=-8000;
+PRAGMA mmap_size=268435456;
 PRAGMA foreign_keys=ON;
 
 CREATE TABLE IF NOT EXISTS sessions (
@@ -56,6 +59,8 @@ CREATE TABLE IF NOT EXISTS files (
     size           INTEGER,
     modified_at    TEXT,
     pixel_hash     TEXT,
+    hash_algorithm TEXT NOT NULL DEFAULT 'xxh128'
+        CHECK (hash_algorithm IN ('sha256', 'xxh128')),
     thumbnail_path TEXT,
     status         TEXT NOT NULL DEFAULT 'active'
         CHECK (status IN ('active', 'deleted', 'renamed')),
@@ -97,16 +102,18 @@ CREATE TABLE IF NOT EXISTS remote_files (
 );
 
 CREATE TABLE IF NOT EXISTS app_config (
-    id       INTEGER PRIMARY KEY CHECK (id = 1),
-    language TEXT NOT NULL DEFAULT 'auto',
-    theme    TEXT NOT NULL DEFAULT 'system'
+    id               INTEGER PRIMARY KEY CHECK (id = 1),
+    language         TEXT    NOT NULL DEFAULT 'auto',
+    theme            TEXT    NOT NULL DEFAULT 'system',
+    max_scan_workers INTEGER NOT NULL DEFAULT 0
+        CHECK (max_scan_workers >= 0 AND max_scan_workers <= 32)
 );
 
 CREATE VIEW IF NOT EXISTS duplicate_groups AS
-    SELECT session_id, pixel_hash, COUNT(*) AS file_count
+    SELECT session_id, pixel_hash, hash_algorithm, COUNT(*) AS file_count
     FROM files
     WHERE pixel_hash IS NOT NULL AND status = 'active'
-    GROUP BY session_id, pixel_hash
+    GROUP BY session_id, pixel_hash, hash_algorithm
     HAVING COUNT(*) > 1;
 
 CREATE INDEX IF NOT EXISTS idx_files_session    ON files(session_id);
@@ -136,6 +143,40 @@ class Database:
         # Apply DDL statements one by one (executescript commits implicitly,
         # but we need WAL set before anything else runs).
         self._conn.executescript(_DDL)
+        self._migrate()
+
+    def _migrate(self) -> None:
+        """Apply incremental schema migrations for existing databases."""
+        c = self.conn
+        # R3: add hash_algorithm column to files (existing rows default to sha256)
+        cols = {r[1] for r in c.execute("PRAGMA table_info(files)").fetchall()}
+        if "hash_algorithm" not in cols:
+            c.execute(
+                "ALTER TABLE files ADD COLUMN hash_algorithm TEXT NOT NULL DEFAULT 'sha256'"
+            )
+            # Recreate the view so it includes hash_algorithm in GROUP BY
+            c.execute("DROP VIEW IF EXISTS duplicate_groups")
+            c.execute(
+                """
+                CREATE VIEW duplicate_groups AS
+                    SELECT session_id, pixel_hash, hash_algorithm,
+                           COUNT(*) AS file_count
+                    FROM files
+                    WHERE pixel_hash IS NOT NULL AND status = 'active'
+                    GROUP BY session_id, pixel_hash, hash_algorithm
+                    HAVING COUNT(*) > 1
+                """
+            )
+            c.commit()
+
+        # R3: add max_scan_workers column to app_config
+        cols = {r[1] for r in c.execute("PRAGMA table_info(app_config)").fetchall()}
+        if "max_scan_workers" not in cols:
+            c.execute(
+                "ALTER TABLE app_config ADD COLUMN max_scan_workers"
+                " INTEGER NOT NULL DEFAULT 0"
+            )
+            c.commit()
 
     def close(self) -> None:
         """Commit any pending work and close the connection."""
@@ -262,9 +303,26 @@ class Database:
         self, file_id: int, pixel_hash: str, thumbnail_path: str
     ) -> None:
         """Write pixel_hash and thumbnail_path after Pass-2 hashing."""
+        algo = "xxh128" if len(pixel_hash) == 32 else "sha256"
         self.conn.execute(
-            "UPDATE files SET pixel_hash = ?, thumbnail_path = ? WHERE id = ?",
-            (pixel_hash, thumbnail_path, file_id),
+            "UPDATE files SET pixel_hash = ?, hash_algorithm = ?, thumbnail_path = ? WHERE id = ?",
+            (pixel_hash, algo, thumbnail_path, file_id),
+        )
+        self.conn.commit()
+
+    def update_pixel_hashes_batch(
+        self, updates: list[tuple[int, str, str]]
+    ) -> None:
+        """Write pixel_hash and thumbnail_path for multiple files in one transaction.
+
+        Each element of updates: (file_id, pixel_hash, thumbnail_path).
+        """
+        self.conn.executemany(
+            "UPDATE files SET pixel_hash = ?, hash_algorithm = ?, thumbnail_path = ? WHERE id = ?",
+            [
+                (h, "xxh128" if len(h) == 32 else "sha256", t, fid)
+                for fid, h, t in updates
+            ],
         )
         self.conn.commit()
 
@@ -332,6 +390,33 @@ class Database:
             """,
             (session_id, pixel_hash),
         ).fetchall()
+
+    def get_all_duplicate_file_ids(
+        self, session_id: int
+    ) -> dict[str, list[int]]:
+        """Return ``{pixel_hash: [file_id, ...]}`` for every duplicate group.
+
+        One query replaces N sequential ``get_files_by_pixel_hash()`` calls.
+        Singleton hashes (unique files) are excluded.
+        """
+        rows = self.conn.execute(
+            """
+            SELECT f.id, f.pixel_hash
+            FROM files f
+            WHERE f.session_id = ? AND f.pixel_hash IS NOT NULL
+              AND f.status = 'active'
+              AND f.pixel_hash IN (
+                  SELECT pixel_hash FROM duplicate_groups
+                  WHERE session_id = ?
+              )
+            ORDER BY f.pixel_hash
+            """,
+            (session_id, session_id),
+        ).fetchall()
+        groups: dict[str, list[int]] = {}
+        for r in rows:
+            groups.setdefault(r["pixel_hash"], []).append(r["id"])
+        return groups
 
     def update_file_status(self, file_id: int, status: str) -> None:
         self.conn.execute(
@@ -427,9 +512,19 @@ class Database:
             "SELECT * FROM app_config WHERE id = 1"
         ).fetchone()
 
+    def get_max_scan_workers(self) -> int:
+        """Return the configured max worker count (0 = auto-detect)."""
+        row = self.get_app_config()
+        if row is None:
+            return 0
+        try:
+            return int(row["max_scan_workers"])
+        except (KeyError, TypeError):
+            return 0
+
     def upsert_app_config(self, **fields) -> None:
         """Insert or update the app_config singleton with the given fields."""
-        allowed = {"language", "theme"}
+        allowed = {"language", "theme", "max_scan_workers"}
         safe = {k: v for k, v in fields.items() if k in allowed}
         if not safe:
             return

@@ -70,7 +70,7 @@ Kattintson a **▶ Indítás** gombra a vezérlősávban. A szkennelés két sza
 Az alkalmazás végigmegy az összes hozzáadott mappán, és megkeresi az összes fájlt. A fájlok azonnal megjelennek az eredménypanelen — még a duplikátum-ellenőrzés előtt. Az előrehaladás sávon ez jelenik meg: *Fájlok keresése...*
 
 ### 2. szakasz — Duplikátum-keresés
-Az alkalmazás összehasonlítja a potenciálisan egyező fájlok vizuális tartalmát, mappánként haladva a legmélyebb almappáktól felfelé. Ahogy egy-egy mappa feldolgozása befejeződik, a **● DUPLIKÁTUM** jelzők és a **● DUPLIKÁLT MAPPA** jelölők azonnal frissülnek — a már kész mappákat böngészheti, miközben a szkennelés folytatódik. A mappapanelen élő előrehaladás jelenik meg mappánként (pl. *120 fájl, 47 feldolgozva*), az előrehaladás sávon pedig a feldolgozott fájlok száma és a becsült hátralévő idő látható (pl. *230 / 490 — ~3p 12mp*).
+Az alkalmazás összehasonlítja a potenciálisan egyező fájlok vizuális tartalmát, több processzormagot használva a gyorsabb feldolgozáshoz. A fájlok a legmélyebb almappáktól felfelé haladva kerülnek feldolgozásra. Ahogy egy-egy mappa feldolgozása befejeződik, a **● DUPLIKÁLT MAPPA** jelölők azonnal frissülnek — a már kész mappákat böngészheti, miközben a szkennelés folytatódik. A **● DUPLIKÁTUM** jelzők rendszeres időközönként frissülnek, ahogy új csoportokat talál az alkalmazás. A mappapanelen élő előrehaladás jelenik meg mappánként (pl. *120 fájl, 47 feldolgozva*), az előrehaladás sávon pedig a feldolgozott fájlok száma és a becsült hátralévő idő látható (pl. *230 / 490 — ~3p 12mp*), amely másodpercenként frissül.
 
 > Amelyik fájl mellett a szkennelés végén nincs jelző, az egyedi — nem találtunk hozzá vizuális másolatot a beolvasott mappákban.
 

@@ -10,18 +10,26 @@ Hash pipeline (plan §Pixel hash normalization spec):
   1. Image.open(path)
   2. ImageOps.exif_transpose()   — normalize EXIF orientation
   3. img.convert("RGB")          — unify RGBA / palette / grayscale to one mode
-  4. hashlib.sha256(img.tobytes()).hexdigest()
+  4. xxhash.xxh128(pixel_bytes).hexdigest()  — 60× faster than SHA-256;
+     uses numpy zero-copy view when available to halve peak memory.
 
 Thumbnail: 400×400 JPEG written to thumb_dir/{pixel_hash}.jpg.
 If the thumbnail already exists it is NOT rewritten (idempotent — plan §Thumbnail caching).
 """
 
-import hashlib
 import os
 import sys
 from pathlib import Path
 
+import xxhash
 from PIL import Image, ImageOps, UnidentifiedImageError
+
+try:
+    import numpy as np
+
+    _HAS_NUMPY = True
+except ImportError:
+    _HAS_NUMPY = False
 
 THUMB_SIZE = (400, 400)
 
@@ -85,8 +93,15 @@ def hash_file(path: str | Path, thumb_dir: str | Path) -> tuple[str, str]:
         # Step 3: unify to RGB (handles RGBA, palette, grayscale, etc.)
         img = img.convert("RGB")
 
-        # Step 4: SHA-256 of raw pixel bytes
-        pixel_hash: str = hashlib.sha256(img.tobytes()).hexdigest()
+        # Step 4: xxHash-128 of raw pixel bytes (R3 — 60× faster than SHA-256).
+        # numpy zero-copy view avoids a full tobytes() allocation (~69 MB for
+        # 24 MP), halving per-worker peak memory.
+        if _HAS_NUMPY:
+            arr = np.asarray(img)
+            pixel_hash: str = xxhash.xxh128_hexdigest(arr.data)
+            del arr
+        else:
+            pixel_hash: str = xxhash.xxh128_hexdigest(img.tobytes())
 
         # Thumbnail generation — idempotent
         thumb_path = thumb_dir / f"{pixel_hash}.jpg"
