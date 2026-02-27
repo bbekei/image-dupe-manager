@@ -150,6 +150,22 @@
         <source>~{0} left</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>{0}s</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>{0}m {1}s</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>{0}h {1}m</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>{0}d {1}h</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>ResultsPanel</name>

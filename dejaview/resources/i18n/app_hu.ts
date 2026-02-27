@@ -299,6 +299,22 @@
         <source>~{0} left</source>
         <translation>~{0} van hátra</translation>
     </message>
+    <message>
+        <source>{0}s</source>
+        <translation>{0} mp</translation>
+    </message>
+    <message>
+        <source>{0}m {1}s</source>
+        <translation>{0} p {1} mp</translation>
+    </message>
+    <message>
+        <source>{0}h {1}m</source>
+        <translation>{0} ó {1} p</translation>
+    </message>
+    <message>
+        <source>{0}d {1}h</source>
+        <translation>{0} n {1} ó</translation>
+    </message>
 </context>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════

@@ -185,17 +185,16 @@ class ScanControl(QWidget):
         self._eta_last_update: float = 0.0
         self._eta_text: str = ""
 
-    @staticmethod
-    def _format_duration(seconds: float) -> str:
+    def _format_duration(self, seconds: float) -> str:
         """Format seconds into a human-readable duration string."""
         s = int(seconds)
         if s < 60:
-            return f"{s}s"
+            return self.tr("{0}s").format(s)
         m, s = divmod(s, 60)
         if m < 60:
-            return f"{m}m {s}s"
+            return self.tr("{0}m {1}s").format(m, s)
         h, m = divmod(m, 60)
         if h < 24:
-            return f"{h}h {m}m"
+            return self.tr("{0}h {1}m").format(h, m)
         d, h = divmod(h, 24)
-        return f"{d}d {h}h"
+        return self.tr("{0}d {1}h").format(d, h)
