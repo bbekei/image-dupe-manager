@@ -9,7 +9,15 @@ Module ownership rules (plan §Architecture):
 Two-pass scan (plan §Two-pass scan and file-size pre-filter):
   Pass 1 — Discovery: walk all folders, insert file rows with pixel_hash = NULL.
   Pass 2 — Hashing: hash only files whose size appears >= 2 times in the session.
-             Uses ThreadPoolExecutor for multi-core parallelism (Pillow/hashlib release the GIL).
+             Uses a sliding-window pipeline over a ThreadPoolExecutor for
+             multi-core parallelism (Pillow/hashlib release the GIL).
+             Candidates are grouped by parent directory and submitted in
+             leaf-first order (deepest subdirectories first), but files from
+             multiple directories are in flight simultaneously to keep all
+             worker threads busy.  When all files in a directory complete,
+             the directory_hashed signal fires so the UI can flush pending
+             updates and recompute folder-level duplication badges, enabling
+             incremental browsing of completed directories mid-scan.
 
 Pause/resume state machine (plan §Pause/resume state machine):
   PASS1         → walks folders, inserts files with pixel_hash=NULL
@@ -42,6 +50,11 @@ log = logging.getLogger(__name__)
 
 # Image extensions to consider during discovery (case-insensitive).
 # Limited to formats actually produced by digital cameras (DSLR, iPhone, Android).
+# Number of futures per worker to keep in flight for pipeline efficiency.
+# Doubling the worker count provides a backpressure buffer so threads
+# never idle waiting for the next submission.
+_PIPELINE_BUFFER_FACTOR = 2
+
 _IMAGE_EXTENSIONS = frozenset({
     ".jpg", ".jpeg", ".heic", ".heif",
 })
@@ -295,30 +308,54 @@ class Scanner(QThread):
         workers = 1 if scan_delay_ms > 0 else self._max_workers
         db_lock = threading.Lock()
 
+        # ── Sliding-window pipeline ───────────────────────────────────────
+        # Submit files from multiple directories simultaneously to keep all
+        # worker threads busy.  Track per-directory completion to emit
+        # directory_hashed at the right time.
+
+        def _candidate_iter():
+            """Yield (dir_path, file_row) tuples in leaf-first order."""
+            for d in sorted_dirs:
+                for fr in dir_groups[d]:
+                    yield d, fr
+
+        candidate_it = _candidate_iter()
+        window_size = workers * _PIPELINE_BUFFER_FACTOR
+
+        # active: future → (file_row, dir_path)
+        active: dict[concurrent.futures.Future, tuple] = {}
+        # dir_pending: directory → number of unfinished futures
+        dir_pending: dict[str, int] = {}
+
+        def _submit_next() -> bool:
+            """Submit the next candidate. Returns False if exhausted or stopped."""
+            if self._stop_requested or self._pause_requested:
+                return False
+            try:
+                d, fr = next(candidate_it)
+            except StopIteration:
+                return False
+            f = executor.submit(hash_file, fr["path"], self._thumb_dir)
+            active[f] = (fr, d)
+            dir_pending[d] = dir_pending.get(d, 0) + 1
+            return True
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
-            for dir_path in sorted_dirs:
-                # ── Pause/stop checkpoint between directory batches ───
-                if self._stop_requested or self._pause_requested:
+            # Seed the window.
+            for _ in range(window_size):
+                if not _submit_next():
                     break
 
-                # Submit all files in this directory batch.
-                future_to_file: dict[concurrent.futures.Future, dict] = {}
-                for file_row in dir_groups[dir_path]:
-                    if self._stop_requested or self._pause_requested:
-                        break
-                    f = executor.submit(
-                        hash_file, file_row["path"], self._thumb_dir
-                    )
-                    future_to_file[f] = file_row
+            # Drain completions one at a time for responsive pause/stop.
+            while active:
+                if self._stop_requested or self._pause_requested:
+                    for f in list(active):
+                        f.cancel()
+                    break
 
-                # Process results as they complete within this directory.
-                for future in concurrent.futures.as_completed(future_to_file):
-                    if self._stop_requested or self._pause_requested:
-                        for pending_f in future_to_file:
-                            pending_f.cancel()
-                        break
-
-                    file_row = future_to_file[future]
+                # Wait for exactly one future to complete.
+                for future in concurrent.futures.as_completed(list(active)):
+                    file_row, dir_path = active.pop(future)
                     file_id = file_row["id"]
                     path = file_row["path"]
 
@@ -330,7 +367,6 @@ class Scanner(QThread):
                             )
                             self.hash_complete.emit(file_id, pixel_hash)
 
-                            # Check if this hash is now part of a duplicate group.
                             dupes = self._db.get_files_by_pixel_hash(
                                 self._session_id, pixel_hash
                             )
@@ -349,6 +385,16 @@ class Scanner(QThread):
                     if scan_delay_ms > 0:
                         time.sleep(scan_delay_ms / 1000.0)
 
-                # ── Directory batch complete ──────────────────────────
-                if not self._stop_requested and not self._pause_requested:
-                    self.directory_hashed.emit(dir_path)
+                    # Directory complete?
+                    dir_pending[dir_path] -= 1
+                    if dir_pending[dir_path] == 0:
+                        del dir_pending[dir_path]
+                        if not self._stop_requested and not self._pause_requested:
+                            self.directory_hashed.emit(dir_path)
+
+                    # Refill the window.
+                    _submit_next()
+
+                    # Process one future per outer-loop iteration so we
+                    # re-check pause/stop after every completion.
+                    break

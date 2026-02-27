@@ -195,7 +195,10 @@ def test_directory_hashed_signal_emitted_per_directory(
 def test_directories_processed_leaf_first(
     qtbot, db, scan_dir, session_id, thumb_dir
 ):
-    """Deeper directories are hashed before their parents."""
+    """Both parent and child directories are hashed; leaf-first submission
+    order is preserved but completion order is nondeterministic with the
+    sliding-window pipeline (files from multiple dirs are in flight
+    simultaneously)."""
     parent = scan_dir / "parent"
     child = parent / "child"
     parent.mkdir()
@@ -215,8 +218,8 @@ def test_directories_processed_leaf_first(
         scanner.start()
 
     assert len(dirs_hashed) == 2
-    # child should appear before parent in the emission order.
-    assert dirs_hashed.index(str(child)) < dirs_hashed.index(str(parent))
+    # Both directories must be hashed (order is nondeterministic).
+    assert set(dirs_hashed) == {str(child), str(parent)}
 
 
 def test_progress_remains_global_across_directory_batches(
@@ -248,3 +251,30 @@ def test_progress_remains_global_across_directory_batches(
     currents = [c for c, _ in progress]
     assert currents == sorted(currents)
     assert currents[-1] == 4
+
+
+def test_pipeline_hashes_multiple_directories_concurrently(
+    qtbot, db, scan_dir, session_id, thumb_dir
+):
+    """Pipeline submits files from multiple directories simultaneously;
+    all directories are hashed and scan completes correctly."""
+    dirs = []
+    for name in ("d1", "d2", "d3", "d4"):
+        d = scan_dir / name
+        d.mkdir()
+        dirs.append(d)
+        _jpg(d / "a.jpg")
+        _jpg(d / "b.jpg")
+
+    dirs_hashed: list[str] = []
+    scanner = Scanner(db=db, session_id=session_id, thumb_dir=thumb_dir)
+    scanner.directory_hashed.connect(lambda d: dirs_hashed.append(d))
+
+    with qtbot.waitSignal(scanner.scan_complete, timeout=10_000):
+        scanner.start()
+
+    # All 4 directories must receive a directory_hashed signal.
+    assert set(dirs_hashed) == {str(d) for d in dirs}
+    # All 8 files should be hashed in the DB.
+    rows = db.get_unhashed_files_grouped_by_size(session_id)
+    assert len(rows) == 0

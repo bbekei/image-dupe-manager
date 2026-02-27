@@ -106,7 +106,7 @@ during feature work. Remove entries once resolved.
 
 | Issue | Location | Since | Notes |
 |-------|----------|-------|-------|
-| `test_regression_wf6_manual_export_import_round_trip[hash_only]` fails | `tests/integration/test_regression.py` | Pre-multithreading | Bob's single file never enters Pass 2 (size must appear >= 2 times), so `pixel_hash` stays NULL and cross-library match returns empty. Test logic issue — not a product bug. |
+| *(none)* | | | |
 
 ---
 

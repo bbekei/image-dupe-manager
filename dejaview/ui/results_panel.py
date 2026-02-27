@@ -149,6 +149,10 @@ class ResultsPanel(QWidget):
         self._pending_file_ids: list[int] = []
         self._pending_hash_ids: list[int] = []
 
+        # Flag: only run _compute_folder_duplication() when a directory
+        # boundary has been reached, not on every debounce tick.
+        self._needs_folder_recompute: bool = False
+
         # Track duplicate pixel_hashes for badge updates.
         self._duplicate_hashes: set[str] = set()
 
@@ -265,6 +269,7 @@ class ResultsPanel(QWidget):
         folder-level duplication badges so completed directories show
         accurate results for mid-scan browsing.
         """
+        self._needs_folder_recompute = True
         self._flush_pending()
 
     # ── Filter controls ──────────────────────────────────────────────────
@@ -391,9 +396,11 @@ class ResultsPanel(QWidget):
         for file_id in hash_ids:
             self._update_file_badge(file_id)
 
-        # Recompute folder-level duplication after badge updates.
-        if hash_ids:
+        # Recompute folder-level duplication only at directory boundaries,
+        # not on every debounce tick (O(N) tree walk is expensive mid-scan).
+        if hash_ids and self._needs_folder_recompute:
             self._compute_folder_duplication()
+            self._needs_folder_recompute = False
 
         # Auto-fit columns after incremental updates.
         if file_ids:
