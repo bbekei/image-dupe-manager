@@ -70,7 +70,7 @@ Click **▶ Start** in the bottom bar. The scan runs in two stages:
 The app walks through all added folders and finds every file. All files appear in the results panel immediately — before any duplicate checking begins. The progress bar shows *Discovering files...*
 
 ### Stage 2 — Duplicate Detection
-The app checks which files could be duplicates and compares their visual content, processing one folder at a time starting from the deepest subfolders. As each folder completes, **● DUPLICATE** badges and **● DUPLICATED FOLDER** markers update immediately — you can start browsing completed folders while the rest of the scan continues. The folder panel shows live progress per root folder (e.g. *120 files, 47 hashed*), and the progress bar shows *230 / 490* style progress with an estimated time remaining.
+The app checks which files could be duplicates and compares their visual content using multiple CPU cores for speed. Files are processed starting from the deepest subfolders. As each folder completes, **● DUPLICATED FOLDER** markers update immediately — you can start browsing completed folders while the rest of the scan continues. **● DUPLICATE** badges appear periodically as new groups are detected. The folder panel shows live progress per root folder (e.g. *120 files, 47 hashed*), and the progress bar shows *230 / 490* style progress with an estimated time remaining that updates every second.
 
 > Files with no badge after the scan are unique — no visual duplicate was found anywhere in your scanned folders.
 
