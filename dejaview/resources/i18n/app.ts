@@ -358,4 +358,86 @@
         <translation type="unfinished"></translation>
     </message>
 </context>
+<context>
+    <name>Scanner</name>
+    <message>
+        <source>Discovering files&#x2026;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Folder unreachable, skipping: {0}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hashing {0} candidate(s)&#x2026;</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>ScanProgressWidget</name>
+    <message>
+        <source>Scanning in progress&#x2026;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pass 1: Discovering files&#x2026;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pass 1: Discovering files&#x2026;  ({0} found)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Scan complete</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Scan paused</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Scan stopped</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>{0} / {1} files &#x2014; {2}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>{0} / {1} files</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pass 1: Discovery &#x2713;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pass 1: Discovery &#x2713;  ({0} files)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pass 2: Hashing&#x2026;  ({0} / {1})</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>~{0} left</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>{0}s</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>{0}m {1}s</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>{0}h {1}m</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>{0}d {1}h</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
 </TS>

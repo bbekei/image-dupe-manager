@@ -106,7 +106,8 @@ CREATE TABLE IF NOT EXISTS app_config (
     language         TEXT    NOT NULL DEFAULT 'auto',
     theme            TEXT    NOT NULL DEFAULT 'system',
     max_scan_workers INTEGER NOT NULL DEFAULT 0
-        CHECK (max_scan_workers >= 0 AND max_scan_workers <= 32)
+        CHECK (max_scan_workers >= 0 AND max_scan_workers <= 32),
+    perf_logging     INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE VIEW IF NOT EXISTS duplicate_groups AS
@@ -120,6 +121,8 @@ CREATE INDEX IF NOT EXISTS idx_files_session    ON files(session_id);
 CREATE INDEX IF NOT EXISTS idx_files_hash       ON files(pixel_hash);
 CREATE INDEX IF NOT EXISTS idx_files_path       ON files(path);
 CREATE INDEX IF NOT EXISTS idx_files_status     ON files(status);
+CREATE INDEX IF NOT EXISTS idx_files_session_hash_status
+    ON files(session_id, pixel_hash, status);
 CREATE INDEX IF NOT EXISTS idx_remote_files_hash ON remote_files(pixel_hash);
 """
 
@@ -174,6 +177,15 @@ class Database:
         if "max_scan_workers" not in cols:
             c.execute(
                 "ALTER TABLE app_config ADD COLUMN max_scan_workers"
+                " INTEGER NOT NULL DEFAULT 0"
+            )
+            c.commit()
+
+        # Telemetry: add perf_logging column to app_config
+        cols = {r[1] for r in c.execute("PRAGMA table_info(app_config)").fetchall()}
+        if "perf_logging" not in cols:
+            c.execute(
+                "ALTER TABLE app_config ADD COLUMN perf_logging"
                 " INTEGER NOT NULL DEFAULT 0"
             )
             c.commit()
@@ -522,9 +534,19 @@ class Database:
         except (KeyError, TypeError):
             return 0
 
+    def get_perf_logging(self) -> bool:
+        """Return True if performance telemetry is enabled in settings."""
+        row = self.get_app_config()
+        if row is None:
+            return False
+        try:
+            return bool(row["perf_logging"])
+        except (KeyError, TypeError):
+            return False
+
     def upsert_app_config(self, **fields) -> None:
         """Insert or update the app_config singleton with the given fields."""
-        allowed = {"language", "theme", "max_scan_workers"}
+        allowed = {"language", "theme", "max_scan_workers", "perf_logging"}
         safe = {k: v for k, v in fields.items() if k in allowed}
         if not safe:
             return

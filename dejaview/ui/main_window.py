@@ -42,6 +42,7 @@ from ui.folder_panel import FolderPanel
 from ui.help_dialog import HelpDialog
 from ui.results_panel import FILTER_DUPLICATES_ONLY, ResultsPanel
 from ui.scan_control import ScanControl
+from ui.scan_progress import ScanProgressWidget
 from ui.share_dialog import ShareDialog
 
 log = logging.getLogger(__name__)
@@ -64,9 +65,11 @@ class MainWindow(QMainWindow):
         self._db = db
         self._thumb_dir = thumb_dir
         self._drive_sync = drive_sync
+        self._perf_monitor = None  # set via set_perf_monitor() before scan
         self._scanner: Scanner | None = None
         self._session_id: int | None = None
         self._compare_view: CompareView | None = None
+        self._scan_progress: ScanProgressWidget | None = None
         self._sync_worker: _SyncWorker | None = None
         self._auth_worker: "_AuthWorker | None" = None
         self._share_dialog: ShareDialog | None = None
@@ -78,6 +81,11 @@ class MainWindow(QMainWindow):
         self._build_central()
         self._build_status_bar()
         self._restore_session()
+
+    def set_perf_monitor(self, perf_monitor) -> None:
+        """Attach a PerformanceMonitor for scan telemetry (None = disabled)."""
+        self._perf_monitor = perf_monitor
+        self._results_panel._perf = perf_monitor
 
     # ── UI construction ──────────────────────────────────────────────────
 
@@ -245,14 +253,31 @@ class MainWindow(QMainWindow):
         )
 
         session_id = self._get_or_create_session()
+
+        # Create a fresh PerformanceMonitor per scan if enabled in settings
+        # or via --perf / DEJAVIEW_PERF=1.
+        perf = self._perf_monitor
+        if perf is None and self._db.get_perf_logging():
+            from core.perf_monitor import PerformanceMonitor
+            app_dir = Path(os.environ.get(
+                "APPDATA", Path.home() / "AppData" / "Roaming"
+            )) / "DejaView"
+            perf = PerformanceMonitor(output_dir=app_dir, enabled=True)
+            self._perf_monitor = perf
+            self._results_panel._perf = perf
+            log.info("Performance telemetry enabled via settings")
+
         self._scanner = Scanner(
             db=self._db,
             session_id=session_id,
             thumb_dir=self._thumb_dir,
             parent=self,
+            perf_monitor=perf,
         )
         if is_resume:
             self._scanner.set_resuming(True)
+        # Show progress view, hide results tree.
+        self._show_scan_progress()
         self._wire_scanner(self._scanner)
         self._scanner.start()
 
@@ -268,6 +293,7 @@ class MainWindow(QMainWindow):
             self._scanner.wait(5000)
 
     def _wire_scanner(self, scanner: Scanner) -> None:
+        # ScanControl (bottom bar): buttons + progress bar + ETA.
         scanner.scan_started.connect(self._scan_control.on_scan_started)
         scanner.scan_paused.connect(self._scan_control.on_scan_paused)
         scanner.scan_resumed.connect(self._scan_control.on_scan_resumed)
@@ -276,15 +302,23 @@ class MainWindow(QMainWindow):
         scanner.progress_updated.connect(self._scan_control.on_progress_updated)
         scanner.status_message.connect(self._status_bar.showMessage)
         scanner.scan_error.connect(self._on_scan_error)
+        # MainWindow lifecycle hooks.
         scanner.scan_complete.connect(self._on_scan_complete)
-        # ResultsPanel live updates (plan §Phase 3 — live badge updates).
-        scanner.file_discovered.connect(self._results_panel.on_file_discovered)
-        scanner.hash_complete.connect(self._results_panel.on_hash_complete)
-        scanner.duplicate_found.connect(self._results_panel.on_duplicate_found)
-        # Directory-batched updates: flush ResultsPanel + update FolderPanel counts.
-        scanner.directory_hashed.connect(self._results_panel.on_directory_hashed)
-        scanner.directory_hashed.connect(self._folder_panel.on_directory_hashed)
-        # FolderPanel count init/reset.
+        scanner.scan_paused.connect(self._on_scan_paused)
+        scanner.scan_stopped.connect(self._on_scan_stopped)
+        # ScanProgressWidget (centered progress display in splitter).
+        if self._scan_progress:
+            scanner.scan_started.connect(self._scan_progress.on_scan_started)
+            scanner.progress_updated.connect(self._scan_progress.on_progress_updated)
+            scanner.status_message.connect(self._scan_progress.on_status_message)
+            scanner.file_discovered.connect(self._scan_progress.on_file_discovered)
+            scanner.scan_complete.connect(self._scan_progress.on_scan_complete)
+            scanner.scan_paused.connect(self._scan_progress.on_scan_paused)
+            scanner.scan_stopped.connect(self._scan_progress.on_scan_stopped)
+        # ResultsPanel is NOT wired to live scanner signals.
+        # The tree is populated once on scan_complete/pause/stop via reload().
+        # FolderPanel: throttled count updates during scan.
+        scanner.directories_hashed.connect(self._folder_panel.on_directories_hashed)
         scanner.scan_started.connect(self._folder_panel.update_all_counts)
         scanner.scan_complete.connect(self._folder_panel.reset_display_text)
         scanner.scan_stopped.connect(self._folder_panel.reset_display_text)
@@ -293,6 +327,10 @@ class MainWindow(QMainWindow):
     def _on_scan_complete(self) -> None:
         if self._session_id is None:
             return
+
+        # Swap back to results tree and populate from DB.
+        self._hide_scan_progress()
+        self._results_panel.reload()
 
         # Compute scan summary.
         files = self._db.get_files_for_session(self._session_id)
@@ -317,6 +355,39 @@ class MainWindow(QMainWindow):
 
         # Plan §Workflow 5 — after scan complete: upload export.
         self._run_sync(session_id=self._session_id)
+
+    @pyqtSlot()
+    def _on_scan_paused(self) -> None:
+        """Swap back to results tree so user can browse partial results."""
+        self._hide_scan_progress()
+        self._results_panel.reload()
+
+    @pyqtSlot()
+    def _on_scan_stopped(self) -> None:
+        """Swap back to results tree showing partial results."""
+        self._hide_scan_progress()
+        self._results_panel.reload()
+
+    # ── Scan progress panel swap ────────────────────────────────────────
+
+    def _show_scan_progress(self) -> None:
+        """Hide results tree, show centered progress widget in the splitter."""
+        if self._scan_progress is None:
+            self._scan_progress = ScanProgressWidget(parent=self)
+        self._results_panel.hide()
+        self._splitter.addWidget(self._scan_progress)
+        self._splitter.setStretchFactor(
+            self._splitter.indexOf(self._scan_progress), 1
+        )
+        self._scan_progress.show()
+
+    def _hide_scan_progress(self) -> None:
+        """Hide progress widget, restore results tree."""
+        if self._scan_progress is not None:
+            self._scan_progress.hide()
+            self._scan_progress.deleteLater()
+            self._scan_progress = None
+        self._results_panel.show()
 
     @pyqtSlot(str, str)
     def _on_scan_error(self, path: str, message: str) -> None:

@@ -52,6 +52,7 @@ ROLE_NODE_TYPE = Qt.ItemDataRole.UserRole + 5  # "folder" or "file"
 ROLE_IS_CROSS_LIBRARY = Qt.ItemDataRole.UserRole + 6  # Phase 5
 ROLE_IS_FOLDER_DUPLICATED = Qt.ItemDataRole.UserRole + 7  # Feature 3d
 ROLE_FOLDER_FILE_COUNT = Qt.ItemDataRole.UserRole + 8  # Feature 3d
+ROLE_FOLDER_DUP_COUNT = Qt.ItemDataRole.UserRole + 9  # Incremental folder recompute
 
 # Filter modes
 FILTER_ALL = "all"
@@ -140,18 +141,18 @@ class ResultsPanel(QWidget):
     compare_view_requested = pyqtSignal(str)  # pixel_hash
     compare_folder_requested = pyqtSignal(str)  # folder_path
 
-    def __init__(self, db: Database, session_id: int | None = None, parent=None):
+    def __init__(self, db: Database, session_id: int | None = None, parent=None, perf_monitor=None):
         super().__init__(parent)
         self._db = db
         self._session_id = session_id
+        self._perf = perf_monitor  # None = no telemetry overhead
 
         # Pending updates queued by scanner signals, flushed by debounce timer.
         self._pending_file_ids: list[int] = []
-        self._pending_hash_ids: list[int] = []
+        self._pending_hash_updates: list[tuple[int, str]] = []  # (file_id, pixel_hash)
 
-        # Flag: only run _compute_folder_duplication() when a directory
-        # boundary has been reached, not on every debounce tick.
-        self._needs_folder_recompute: bool = False
+        # Directories that completed hashing and need folder-badge recompute.
+        self._pending_folder_recomputes: list[str] = []
 
         # Track duplicate pixel_hashes for badge updates.
         self._duplicate_hashes: set[str] = set()
@@ -161,6 +162,9 @@ class ResultsPanel(QWidget):
 
         # Folder path → QStandardItem mapping for incremental tree building.
         self._folder_items: dict[str, QStandardItem] = {}
+
+        # file_id → QStandardItem for O(1) lookup (replaces recursive tree search).
+        self._file_id_to_item: dict[int, QStandardItem] = {}
 
         # Saved view state for persistence across reloads.
         self._saved_state: _ViewState | None = None
@@ -187,6 +191,7 @@ class ResultsPanel(QWidget):
         self._model.clear()
         self._model.setHorizontalHeaderLabels([self.tr("Name"), self.tr("Status")])
         self._folder_items.clear()
+        self._file_id_to_item.clear()
         self._duplicate_hashes.clear()
         self._cross_library_hashes.clear()
 
@@ -247,30 +252,39 @@ class ResultsPanel(QWidget):
     @pyqtSlot(int, str)
     def on_hash_complete(self, file_id: int, pixel_hash: str) -> None:
         """Called during Pass 2 — queue for debounced badge update."""
-        self._pending_hash_ids.append(file_id)
+        self._pending_hash_updates.append((file_id, pixel_hash))
+        self._ensure_timer_running()
+
+    @pyqtSlot(str, list)
+    def on_duplicate_found(self, pixel_hash: str, file_ids: list[int]) -> None:
+        """Called when a new duplicate group is first detected (exactly once per hash)."""
+        self._duplicate_hashes.add(pixel_hash)
+        # Queue badge refresh for the affected files.
+        for fid in file_ids:
+            self._pending_hash_updates.append((fid, pixel_hash))
         self._ensure_timer_running()
 
     @pyqtSlot(list)
-    def on_duplicate_found(self, file_ids: list[int]) -> None:
-        """Called when a new duplicate group is confirmed."""
-        # Refresh duplicate hashes from DB (cheap query).
-        if self._session_id is not None:
-            for row in self._db.get_duplicate_groups(self._session_id):
-                self._duplicate_hashes.add(row["pixel_hash"])
-        # Queue badge refresh for affected files.
-        self._pending_hash_ids.extend(file_ids)
+    def on_hash_complete_batch(self, updates: list) -> None:
+        """Called during Pass 2 — batch of (file_id, pixel_hash) tuples."""
+        self._pending_hash_updates.extend(updates)
+        self._ensure_timer_running()
+
+    @pyqtSlot(list)
+    def on_directories_hashed(self, dir_paths: list) -> None:
+        """Called with a batch of completed directory paths."""
+        self._pending_folder_recomputes.extend(dir_paths)
         self._ensure_timer_running()
 
     @pyqtSlot(str)
     def on_directory_hashed(self, dir_path: str) -> None:
         """Called after all files in a directory have been hashed.
 
-        Forces an immediate flush of pending updates and recomputes
-        folder-level duplication badges so completed directories show
-        accurate results for mid-scan browsing.
+        Queues a folder-badge recompute for the completed directory.
+        Processing happens on the next debounce timer tick (not immediately).
         """
-        self._needs_folder_recompute = True
-        self._flush_pending()
+        self._pending_folder_recomputes.append(dir_path)
+        self._ensure_timer_running()
 
     # ── Filter controls ──────────────────────────────────────────────────
 
@@ -378,6 +392,10 @@ class ResultsPanel(QWidget):
     @pyqtSlot()
     def _flush_pending(self) -> None:
         """Process queued file discoveries and hash completions."""
+        if self._perf:
+            self._perf.record_ui_backlog(
+                len(self._pending_file_ids), len(self._pending_hash_updates)
+            )
         # Process new file discoveries (Pass 1).
         file_ids = self._pending_file_ids[:]
         self._pending_file_ids.clear()
@@ -391,23 +409,28 @@ class ResultsPanel(QWidget):
                 )
 
         # Process hash completions / duplicate badge updates (Pass 2).
-        hash_ids = self._pending_hash_ids[:]
-        self._pending_hash_ids.clear()
-        for file_id in hash_ids:
-            self._update_file_badge(file_id)
+        # Deduplicate by file_id, keeping the last pixel_hash seen.
+        seen: dict[int, str] = {}
+        for file_id, pixel_hash in self._pending_hash_updates:
+            seen[file_id] = pixel_hash
+        self._pending_hash_updates.clear()
+        for file_id, pixel_hash in seen.items():
+            self._update_file_badge(file_id, pixel_hash)
 
-        # Recompute folder-level duplication only at directory boundaries,
-        # not on every debounce tick (O(N) tree walk is expensive mid-scan).
-        if hash_ids and self._needs_folder_recompute:
-            self._compute_folder_duplication()
-            self._needs_folder_recompute = False
+        # Incremental folder-badge recompute: only process completed dirs
+        # and their parent chain, not the entire tree.
+        if self._pending_folder_recomputes:
+            dirs = self._pending_folder_recomputes[:]
+            self._pending_folder_recomputes.clear()
+            for dir_path in dirs:
+                self._recompute_folder_chain(dir_path)
 
         # Auto-fit columns after incremental updates.
         if file_ids:
             self._fit_columns()
 
         # Stop timer if nothing pending.
-        if not self._pending_file_ids and not self._pending_hash_ids:
+        if not self._pending_file_ids and not self._pending_hash_updates:
             self._debounce_timer.stop()
 
     # ── Tree model helpers ───────────────────────────────────────────────
@@ -444,6 +467,7 @@ class ResultsPanel(QWidget):
         badge_item.setEditable(False)
 
         parent_item.appendRow([name_item, badge_item])
+        self._file_id_to_item[file_id] = name_item
 
     def _get_or_create_folder(self, dir_path: str) -> QStandardItem:
         """Return (and cache) the QStandardItem for a folder node, creating parents as needed."""
@@ -481,13 +505,8 @@ class ResultsPanel(QWidget):
         self._folder_items[dir_path] = folder_item
         return folder_item
 
-    def _update_file_badge(self, file_id: int) -> None:
-        """Re-read a file's pixel_hash from DB and update its badge in the tree."""
-        row = self._db.get_file(file_id)
-        if not row:
-            return
-
-        pixel_hash = row["pixel_hash"]
+    def _update_file_badge(self, file_id: int, pixel_hash: str) -> None:
+        """Update a file's duplicate badge in the tree using the supplied pixel_hash."""
         is_dup = pixel_hash in self._duplicate_hashes if pixel_hash else False
 
         item = self._find_file_item(file_id)
@@ -532,6 +551,7 @@ class ResultsPanel(QWidget):
                 is_fully_dup = sub_total > 0 and sub_total == sub_dup
                 child.setData(is_fully_dup, ROLE_IS_FOLDER_DUPLICATED)
                 child.setData(sub_total, ROLE_FOLDER_FILE_COUNT)
+                child.setData(sub_dup, ROLE_FOLDER_DUP_COUNT)
 
                 badge_item = parent.child(row, 1)
                 if badge_item:
@@ -546,24 +566,63 @@ class ResultsPanel(QWidget):
 
         return total, duplicated
 
-    def _find_file_item(self, file_id: int) -> Optional[QStandardItem]:
-        """Linear search for a file item by file_id. Acceptable for thousands of items."""
-        return self._find_file_item_recursive(self._model.invisibleRootItem(), file_id)
+    def _recompute_folder_chain(self, dir_path: str) -> None:
+        """Recompute duplication badge for *dir_path* and its ancestors.
 
-    def _find_file_item_recursive(
-        self, parent: QStandardItem, file_id: int
-    ) -> Optional[QStandardItem]:
-        for row_idx in range(parent.rowCount()):
-            child = parent.child(row_idx, 0)
+        Only walks the subtree of the target folder instead of the full tree,
+        then propagates totals upward through parent folders.
+        """
+        folder_item = self._folder_items.get(dir_path)
+        if folder_item is None:
+            return
+
+        # Walk up from the target folder to the root, recomputing each.
+        item = folder_item
+        while item is not None:
+            total, dup = self._compute_folder_dup_single(item)
+
+            is_fully_dup = total > 0 and total == dup
+            item.setData(is_fully_dup, ROLE_IS_FOLDER_DUPLICATED)
+            item.setData(total, ROLE_FOLDER_FILE_COUNT)
+            item.setData(dup, ROLE_FOLDER_DUP_COUNT)
+
+            parent = item.parent() or self._model.invisibleRootItem()
+            badge_item = parent.child(item.row(), 1)
+            if badge_item:
+                if is_fully_dup:
+                    badge_item.setText(
+                        self.tr("\u25cf DUPLICATED FOLDER ({0} files)").format(total)
+                    )
+                else:
+                    if badge_item.text():
+                        badge_item.setText("")
+
+            # Move to the parent folder; stop at invisible root.
+            item = item.parent()
+            if item is None:
+                break
+
+    def _compute_folder_dup_single(self, parent: QStandardItem) -> tuple:
+        """Returns (total_file_count, duplicate_file_count) for a single folder's children."""
+        total = 0
+        duplicated = 0
+        for row in range(parent.rowCount()):
+            child = parent.child(row, 0)
             if child is None:
                 continue
-            if child.data(ROLE_NODE_TYPE) == "file" and child.data(ROLE_FILE_ID) == file_id:
-                return child
-            if child.data(ROLE_NODE_TYPE) == "folder":
-                result = self._find_file_item_recursive(child, file_id)
-                if result:
-                    return result
-        return None
+            if child.data(ROLE_NODE_TYPE) == "file":
+                total += 1
+                if child.data(ROLE_IS_DUPLICATE):
+                    duplicated += 1
+            elif child.data(ROLE_NODE_TYPE) == "folder":
+                # Use cached totals from subfolder (already computed).
+                total += child.data(ROLE_FOLDER_FILE_COUNT) or 0
+                duplicated += child.data(ROLE_FOLDER_DUP_COUNT) or 0
+        return total, duplicated
+
+    def _find_file_item(self, file_id: int) -> Optional[QStandardItem]:
+        """O(1) lookup for a file item by file_id."""
+        return self._file_id_to_item.get(file_id)
 
     # ── View state persistence ──────────────────────────────────────────
 

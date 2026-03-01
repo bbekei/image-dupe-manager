@@ -595,4 +595,75 @@
         <translation>Bezárás</translation>
     </message>
 </context>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     ScanProgressWidget (ui/scan_progress.py — progress panel during scanning)
+     ═══════════════════════════════════════════════════════════════════════ -->
+<context>
+    <name>ScanProgressWidget</name>
+    <message>
+        <source>Scanning in progress…</source>
+        <translation>Vizsgálat folyamatban…</translation>
+    </message>
+    <message>
+        <source>Pass 1: Discovering files…</source>
+        <translation>1. lépés: Fájlok keresése…</translation>
+    </message>
+    <message>
+        <source>Pass 1: Discovering files…  ({0} found)</source>
+        <translation>1. lépés: Fájlok keresése…  ({0} találat)</translation>
+    </message>
+    <message>
+        <source>Scan complete</source>
+        <translation>Vizsgálat kész</translation>
+    </message>
+    <message>
+        <source>Scan paused</source>
+        <translation>Vizsgálat szüneteltetve</translation>
+    </message>
+    <message>
+        <source>Scan stopped</source>
+        <translation>Vizsgálat leállítva</translation>
+    </message>
+    <message>
+        <source>{0} / {1} files — {2}</source>
+        <translation>{0} / {1} fájl — {2}</translation>
+    </message>
+    <message>
+        <source>{0} / {1} files</source>
+        <translation>{0} / {1} fájl</translation>
+    </message>
+    <message>
+        <source>Pass 1: Discovery ✓</source>
+        <translation>1. lépés: Keresés ✓</translation>
+    </message>
+    <message>
+        <source>Pass 1: Discovery ✓  ({0} files)</source>
+        <translation>1. lépés: Keresés ✓  ({0} fájl)</translation>
+    </message>
+    <message>
+        <source>Pass 2: Hashing…  ({0} / {1})</source>
+        <translation>2. lépés: Hashelés…  ({0} / {1})</translation>
+    </message>
+    <message>
+        <source>~{0} left</source>
+        <translation>~{0} van hátra</translation>
+    </message>
+    <message>
+        <source>{0}s</source>
+        <translation>{0} mp</translation>
+    </message>
+    <message>
+        <source>{0}m {1}s</source>
+        <translation>{0} p {1} mp</translation>
+    </message>
+    <message>
+        <source>{0}h {1}m</source>
+        <translation>{0} ó {1} p</translation>
+    </message>
+    <message>
+        <source>{0}d {1}h</source>
+        <translation>{0} n {1} ó</translation>
+    </message>
+</context>
 </TS>

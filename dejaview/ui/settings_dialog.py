@@ -10,6 +10,7 @@ Settings are persisted in the app_config table via Database.upsert_app_config().
 
 from PyQt6.QtCore import pyqtSignal, pyqtSlot
 from PyQt6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDialog,
     QFormLayout,
@@ -65,6 +66,26 @@ class SettingsDialog(QDialog):
         hint.setStyleSheet("color: #888; font-size: 11px;")
         form.addRow("", hint)
 
+        # Performance telemetry checkbox.
+        self._perf_check = QCheckBox(
+            self.tr("Enable performance telemetry"), self
+        )
+        self._perf_check.setObjectName("perf_check")
+        self._perf_check.setToolTip(
+            self.tr(
+                "Log scan timing, lock contention, and signal rates to a CSV\n"
+                "file in the DejaView data folder for diagnostics."
+            )
+        )
+        form.addRow(self.tr("Diagnostics"), self._perf_check)
+
+        perf_hint = QLabel(
+            self.tr("CSV saved to %APPDATA%\\DejaView on next scan start."),
+            self,
+        )
+        perf_hint.setStyleSheet("color: #888; font-size: 11px;")
+        form.addRow("", perf_hint)
+
         layout.addLayout(form)
         layout.addStretch()
 
@@ -102,6 +123,11 @@ class SettingsDialog(QDialog):
                 self._theme_combo.setCurrentIndex(i)
                 break
 
+        try:
+            self._perf_check.setChecked(bool(config["perf_logging"]))
+        except (KeyError, TypeError):
+            pass
+
     @pyqtSlot()
     def _on_save(self) -> None:
         """Save settings to DB and close."""
@@ -112,7 +138,10 @@ class SettingsDialog(QDialog):
         config = self._db.get_app_config()
         old_lang = config["language"] if config else "auto"
 
-        self._db.upsert_app_config(language=new_lang, theme=new_theme)
+        new_perf = 1 if self._perf_check.isChecked() else 0
+        self._db.upsert_app_config(
+            language=new_lang, theme=new_theme, perf_logging=new_perf
+        )
 
         if new_lang != old_lang:
             QMessageBox.information(

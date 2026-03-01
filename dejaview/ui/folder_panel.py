@@ -10,7 +10,7 @@ Emits folders_changed(list[str]) whenever the list changes.
 import logging
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, pyqtSignal, pyqtSlot
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, pyqtSlot
 from PyQt6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
@@ -48,6 +48,11 @@ class FolderPanel(QWidget):
         super().__init__(parent)
         self._db = db
         self._session_id = session_id
+        self._dirty_folders: set[str] = set()  # root folders needing count update
+        self._folder_timer = QTimer(self)
+        self._folder_timer.setInterval(500)
+        self._folder_timer.setSingleShot(True)
+        self._folder_timer.timeout.connect(self._flush_dirty_folders)
         self._build_ui()
 
     # ── Public API ───────────────────────────────────────────────────────
@@ -141,9 +146,25 @@ class FolderPanel(QWidget):
 
     # ── Scan progress display ─────────────────────────────────────────
 
+    @pyqtSlot(list)
+    def on_directories_hashed(self, dir_paths: list) -> None:
+        """Queue file-count updates for a batch of completed directories."""
+        if self._session_id is None:
+            return
+        for dir_path in dir_paths:
+            norm = str(Path(dir_path))
+            for i in range(self._list.count()):
+                item = self._list.item(i)
+                folder = item.data(Qt.ItemDataRole.UserRole) or item.text()
+                if norm.startswith(folder):
+                    self._dirty_folders.add(folder)
+                    break
+        if self._dirty_folders and not self._folder_timer.isActive():
+            self._folder_timer.start()
+
     @pyqtSlot(str)
     def on_directory_hashed(self, dir_path: str) -> None:
-        """Update file counts for the root folder containing *dir_path*."""
+        """Queue a file-count update for the root folder containing *dir_path*."""
         if self._session_id is None:
             return
         norm = str(Path(dir_path))
@@ -151,12 +172,28 @@ class FolderPanel(QWidget):
             item = self._list.item(i)
             folder = item.data(Qt.ItemDataRole.UserRole) or item.text()
             if norm.startswith(folder):
+                self._dirty_folders.add(folder)
+                if not self._folder_timer.isActive():
+                    self._folder_timer.start()
+                break
+
+    @pyqtSlot()
+    def _flush_dirty_folders(self) -> None:
+        """Update file counts for all dirty root folders in one batch."""
+        if self._session_id is None:
+            self._dirty_folders.clear()
+            return
+        dirty = self._dirty_folders.copy()
+        self._dirty_folders.clear()
+        for i in range(self._list.count()):
+            item = self._list.item(i)
+            folder = item.data(Qt.ItemDataRole.UserRole) or item.text()
+            if folder in dirty:
                 total, hashed = self._db.get_folder_file_counts(
                     self._session_id, folder
                 )
                 item.setText(f"{folder} ({total} files, {hashed} hashed)")
                 item.setData(Qt.ItemDataRole.UserRole, folder)
-                break
 
     def update_all_counts(self) -> None:
         """Show initial file counts for all root folders (called after Pass 1)."""

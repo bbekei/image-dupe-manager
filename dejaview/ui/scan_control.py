@@ -70,6 +70,13 @@ class ScanControl(QWidget):
         self._progress.setRange(0, 100)
         self._progress.setValue(0)
         self._progress.setTextVisible(False)
+        # Explicit chunk color avoids Qt 6 / Windows 11 native-style bug
+        # where the bar disappears in inactive windows.
+        self._progress.setStyleSheet(
+            "QProgressBar { border: 1px solid #bbb; border-radius: 3px;"
+            " background: #f0f0f0; }"
+            " QProgressBar::chunk { background: #0078d4; border-radius: 2px; }"
+        )
         layout.addWidget(self._progress, stretch=1)
 
         self._status_label = QLabel("", self)
@@ -145,7 +152,7 @@ class ScanControl(QWidget):
         self._total = total
 
         if total > 0:
-            self._progress.setValue(int(current / total * 100))
+            self._progress.setValue(min(100, int(current / total * 100)))
 
         # Start timing on the first progress signal.
         if self._eta_start is None and current > 0:
@@ -191,7 +198,7 @@ class ScanControl(QWidget):
         if elapsed <= 0:
             return
         rate = self._current / elapsed
-        remaining = (self._total - self._current) / rate
+        remaining = max(0, (self._total - self._current)) / rate
         self._eta_text = self.tr("~{0} left").format(
             self._format_duration(remaining)
         )

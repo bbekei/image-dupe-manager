@@ -57,6 +57,7 @@ from pathlib import Path
 from PyQt6.QtCore import QThread, pyqtSignal
 
 from core.hasher import HashError, hash_file
+from core.perf_monitor import ENABLED as _PERF_ENABLED
 from data.db import Database
 
 log = logging.getLogger(__name__)
@@ -67,8 +68,7 @@ log = logging.getLogger(__name__)
 # Doubling the worker count provides a backpressure buffer so threads
 # never idle waiting for the next submission.
 _PIPELINE_BUFFER_FACTOR = 4
-_DB_BATCH_SIZE = 32
-_DUPE_CHECK_INTERVAL = 500  # Deferred dupe detection every N completed files
+_DB_BATCH_SIZE = 128
 
 _IMAGE_EXTENSIONS = frozenset({
     ".jpg", ".jpeg", ".heic", ".heif",
@@ -163,7 +163,8 @@ class Scanner(QThread):
     # ── Signals ──────────────────────────────────────────────────────────
     file_discovered  = pyqtSignal(int, str)   # file_id, path
     hash_complete    = pyqtSignal(int, str)   # file_id, pixel_hash
-    duplicate_found  = pyqtSignal(list)       # [file_id, ...]
+    hash_complete_batch = pyqtSignal(list)    # [(file_id, pixel_hash), ...]
+    duplicate_found  = pyqtSignal(str, list)   # pixel_hash, [file_id, ...]
     progress_updated = pyqtSignal(int, int)   # current, total
     scan_started     = pyqtSignal()
     scan_paused      = pyqtSignal()
@@ -173,6 +174,7 @@ class Scanner(QThread):
     scan_error       = pyqtSignal(str, str)   # path, message
     status_message   = pyqtSignal(str)        # for the status bar
     directory_hashed = pyqtSignal(str)        # directory path, after all files in it are hashed
+    directories_hashed = pyqtSignal(list)     # [dir_path, ...] batch of completed directories
 
     def __init__(
         self,
@@ -181,6 +183,7 @@ class Scanner(QThread):
         thumb_dir: str | Path,
         parent=None,
         max_workers: int | None = None,
+        perf_monitor=None,
     ):
         super().__init__(parent)
         self._db = db
@@ -189,6 +192,7 @@ class Scanner(QThread):
         self._pause_requested = False
         self._stop_requested = False
         self._is_resuming = False
+        self._perf = perf_monitor  # None = no telemetry overhead
         # R3: cap workers by core count, user setting, and available RAM.
         cpu_cap = min(os.cpu_count() or 4, 16)
         user_cap = max_workers or db.get_max_scan_workers() or 0
@@ -231,30 +235,46 @@ class Scanner(QThread):
         # ── Pass 1: Discovery ─────────────────────────────────────────────
         if not self._is_resuming:
             self.scan_started.emit()
+            if self._perf:
+                self._perf.stage_begin("discovery")
             self._run_pass1(folders)
+            if self._perf:
+                self._perf.stage_end("discovery")
         else:
             self.scan_resumed.emit()
 
         if self._stop_requested:
             self._db.update_session_status(self._session_id, "stopped")
             self.scan_stopped.emit()
+            if self._perf:
+                self._perf.finalize()
             return
 
         # ── Pass 2: Hashing ───────────────────────────────────────────────
+        if self._perf:
+            self._perf.stage_begin("hashing")
         self._run_pass2(scan_delay_ms)
+        if self._perf:
+            self._perf.stage_end("hashing")
 
         if self._stop_requested:
             self._db.update_session_status(self._session_id, "stopped")
             self.scan_stopped.emit()
+            if self._perf:
+                self._perf.finalize()
             return
 
         if self._pause_requested:
             self._db.update_session_status(self._session_id, "paused")
             self.scan_paused.emit()
+            if self._perf:
+                self._perf.finalize()
             return
 
         self._db.update_session_status(self._session_id, "complete")
         self.scan_complete.emit()
+        if self._perf:
+            self._perf.finalize()
 
     # ── Pass 1: Discovery ────────────────────────────────────────────────
 
@@ -334,6 +354,8 @@ class Scanner(QThread):
                 ).fetchone()
                 if row:
                     self.file_discovered.emit(row["id"], path)
+                    if self._perf:
+                        self._perf.record_signal("file_discovered")
             except Exception as exc:
                 log.warning(
                     "Scanner: failed to fetch file id for %s: %s", path, exc
@@ -374,7 +396,7 @@ class Scanner(QThread):
             workers = max(2, self._max_workers // 2)
         else:
             workers = max(1, self._max_workers // 4)
-        db_lock = threading.Lock()
+        db_lock = self._perf.tracked_lock() if self._perf else threading.Lock()
 
         # ── Sliding-window pipeline ───────────────────────────────────────
         # Submit files from multiple directories simultaneously to keep all
@@ -422,28 +444,35 @@ class Scanner(QThread):
                 d, fr = next(candidate_it)
             except StopIteration:
                 # Drain any remaining deferred items regardless of locality.
+                # IMPORTANT: submit directly and return — do NOT fall through
+                # to the locality gate, which would re-defer the item and
+                # create an infinite submission cycle (RCA3).
                 if _deferred:
                     d, fr = _deferred.pop(0)
-                else:
-                    return False
+                    f = executor.submit(hash_file, fr["path"], self._thumb_dir)
+                    active[f] = (fr, d)
+                    dir_pending[d] = dir_pending.get(d, 0) + 1
+                    return True
+                return False
 
             # Locality gate: if this file's directory is new and we're at the
-            # inflight-dir cap, defer it and try another from a known dir.
+            # inflight-dir cap, try to swap with a file from a known dir.
+            # The original is only deferred if a swap is found; otherwise
+            # it is submitted directly (locality is best-effort).  RCA3 fix:
+            # never append-then-submit, which caused infinite re-deferring.
             if d not in dir_pending and len(dir_pending) >= max_inflight_dirs:
-                _deferred.append((d, fr))
-                # Attempt to pull another candidate from a known directory.
                 for _ in range(64):  # bounded retry
                     try:
                         d2, fr2 = next(candidate_it)
                     except StopIteration:
                         break
                     if d2 in dir_pending:
+                        _deferred.append((d, fr))  # defer original
                         d, fr = d2, fr2
                         break
                     _deferred.append((d2, fr2))
-                else:
-                    # All retries exhausted — submit the original deferred item.
-                    d, fr = _deferred.pop(0)
+                # If no swap found, submit the original (d, fr unchanged).
+                # Locality is best-effort; don't defer indefinitely.
 
             f = executor.submit(hash_file, fr["path"], self._thumb_dir)
             active[f] = (fr, d)
@@ -461,13 +490,26 @@ class Scanner(QThread):
             pending_updates: list[tuple[int, str, str]] = []  # (file_id, hash, thumb)
             # Parallel list for post-commit signal emission.
             pending_signals: list[tuple[int, str, str]] = []  # (file_id, hash, dir)
-            last_dupe_check = 0  # deferred duplicate detection counter
+            # Incremental duplicate detection: track hash→[file_ids] in memory.
+            hash_to_ids: dict[str, list[int]] = {}
+            known_dup_hashes: set[str] = set()
+            _overshoot_logged = False
 
             while active:
                 if self._stop_requested or self._pause_requested:
                     for f in list(active):
                         f.cancel()
                     break
+
+                # ── Telemetry: queue pressure snapshot ─────────────────
+                if self._perf:
+                    try:
+                        q_depth = executor._work_queue.qsize()
+                    except Exception:
+                        q_depth = -1
+                    self._perf.record_queue_state(
+                        q_depth, len(active), len(pending_updates)
+                    )
 
                 done, _ = concurrent.futures.wait(
                     list(active),
@@ -492,6 +534,14 @@ class Scanner(QThread):
 
                     current += 1
 
+                    if current > total and not _overshoot_logged:
+                        _overshoot_logged = True
+                        log.warning(
+                            "Scanner: current (%d) exceeded total (%d) — "
+                            "possible deferred-queue bug",
+                            current, total,
+                        )
+
                     # Refill the window immediately.
                     _submit_next()
 
@@ -499,42 +549,60 @@ class Scanner(QThread):
                 if pending_updates and (
                     len(pending_updates) >= _DB_BATCH_SIZE or not active
                 ):
+                    _db_t0 = time.monotonic()
                     with db_lock:
                         self._db.update_pixel_hashes_batch(pending_updates)
+                    if self._perf:
+                        self._perf.record_db_batch_ms(
+                            (time.monotonic() - _db_t0) * 1000
+                        )
+                        self._perf.record_files_hashed(len(pending_updates))
                     pending_updates.clear()
 
-                    # Emit hash_complete per file (ResultsPanel needs
-                    # individual file_ids) but without interleaved DB
-                    # queries — duplicate detection is deferred.
+                    # Emit batch signal for all hash completions at once,
+                    # plus per-file signals, duplicate detection, and directory tracking.
+                    batch_hash_updates: list[tuple[int, str]] = []
+                    completed_dirs: list[str] = []
+
                     for file_id, pixel_hash, dir_path in pending_signals:
+                        batch_hash_updates.append((file_id, pixel_hash))
                         self.hash_complete.emit(file_id, pixel_hash)
+                        if self._perf:
+                            self._perf.record_signal("hash_complete")
+
+                        # Incremental duplicate detection: O(1) per file.
+                        ids = hash_to_ids.setdefault(pixel_hash, [])
+                        ids.append(file_id)
+                        if len(ids) == 2:
+                            known_dup_hashes.add(pixel_hash)
+                            self.duplicate_found.emit(pixel_hash, list(ids))
+                            if self._perf:
+                                self._perf.record_signal("duplicate_found")
 
                         dir_pending[dir_path] -= 1
                         if dir_pending[dir_path] == 0:
                             del dir_pending[dir_path]
                             if not self._stop_requested and not self._pause_requested:
+                                completed_dirs.append(dir_path)
                                 self.directory_hashed.emit(dir_path)
+                                if self._perf:
+                                    self._perf.record_signal("directory_hashed")
+
+                    # Batch signals: one cross-thread event per batch.
+                    if batch_hash_updates:
+                        self.hash_complete_batch.emit(batch_hash_updates)
+                    if completed_dirs:
+                        self.directories_hashed.emit(completed_dirs)
 
                     pending_signals.clear()
 
                     # Batched progress: one signal per batch, not per file.
                     self.progress_updated.emit(current, total)
-
-                    # Periodic deferred duplicate detection for large scans.
-                    if current - last_dupe_check >= _DUPE_CHECK_INTERVAL:
-                        self._emit_deferred_duplicates()
-                        last_dupe_check = current
+                    if self._perf:
+                        self._perf.record_signal("progress_updated")
 
                     if scan_delay_ms > 0:
                         time.sleep(scan_delay_ms / 1000.0)
 
-        # Final deferred duplicate detection after all hashing completes.
-        if not self._stop_requested and not self._pause_requested:
-            self._emit_deferred_duplicates()
-
-    def _emit_deferred_duplicates(self) -> None:
-        """Bulk duplicate detection — single query instead of per-hash queries."""
-        groups = self._db.get_all_duplicate_file_ids(self._session_id)
-        for file_ids in groups.values():
-            if len(file_ids) > 1:
-                self.duplicate_found.emit(file_ids)
+        # No final duplicate detection needed — duplicates are detected
+        # incrementally as each hash completes (O(1) per file).

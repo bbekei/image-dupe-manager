@@ -141,6 +141,18 @@ def _create_drive_sync(db: Database, app_dir: Path) -> DriveSync | None:
 
 
 def main() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(description="DejaView — duplicate image finder")
+    parser.add_argument(
+        "--perf", action="store_true",
+        help="Enable performance telemetry CSV (also via DEJAVIEW_PERF=1)",
+    )
+    args = parser.parse_args()
+
+    if args.perf:
+        os.environ["DEJAVIEW_PERF"] = "1"
+
     app_dir = _app_dir()
 
     # Log to a file so errors are visible even in windowed/frozen builds
@@ -170,6 +182,14 @@ def main() -> None:
     drive_sync = _create_drive_sync(db, app_dir)
 
     window = MainWindow(db=db, thumb_dir=thumb_dir, drive_sync=drive_sync)
+
+    # Performance telemetry (--perf flag or DEJAVIEW_PERF=1 env var).
+    if os.environ.get("DEJAVIEW_PERF"):
+        from core.perf_monitor import PerformanceMonitor
+        perf = PerformanceMonitor(output_dir=app_dir, enabled=True)
+        window.set_perf_monitor(perf)
+        log.info("Performance telemetry enabled")
+
     window.show()
 
     # Plan §Workflow 5 — On app start: silently download peer exports.

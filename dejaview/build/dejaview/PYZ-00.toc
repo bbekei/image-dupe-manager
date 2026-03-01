@@ -631,6 +631,10 @@
    'C:\\Users\\bekei\\My Python '
    'stuff\\image-dupe-manager\\dejaview\\core\\hasher.py',
    'PYMODULE'),
+  ('core.perf_monitor',
+   'C:\\Users\\bekei\\My Python '
+   'stuff\\image-dupe-manager\\dejaview\\core\\perf_monitor.py',
+   'PYMODULE'),
   ('core.scanner',
    'C:\\Users\\bekei\\My Python '
    'stuff\\image-dupe-manager\\dejaview\\core\\scanner.py',
@@ -2559,6 +2563,10 @@
   ('ui.scan_control',
    'C:\\Users\\bekei\\My Python '
    'stuff\\image-dupe-manager\\dejaview\\ui\\scan_control.py',
+   'PYMODULE'),
+  ('ui.scan_progress',
+   'C:\\Users\\bekei\\My Python '
+   'stuff\\image-dupe-manager\\dejaview\\ui\\scan_progress.py',
    'PYMODULE'),
   ('ui.settings_dialog',
    'C:\\Users\\bekei\\My Python '

@@ -88,7 +88,7 @@ def test_badge_signal_emitted_for_confirmed_duplicate(
 
     duplicate_groups: list[list[int]] = []
     scanner = Scanner(db=db, session_id=session_id, thumb_dir=thumb_dir)
-    scanner.duplicate_found.connect(lambda ids: duplicate_groups.append(list(ids)))
+    scanner.duplicate_found.connect(lambda ph, ids: duplicate_groups.append(list(ids)))
 
     with qtbot.waitSignal(scanner.scan_complete, timeout=10_000):
         scanner.start()
@@ -115,7 +115,7 @@ def test_unique_file_never_emits_duplicate_signal(
 
     duplicates_seen: list = []
     scanner = Scanner(db=db, session_id=session_id, thumb_dir=thumb_dir)
-    scanner.duplicate_found.connect(lambda ids: duplicates_seen.extend(ids))
+    scanner.duplicate_found.connect(lambda ph, ids: duplicates_seen.extend(ids))
 
     with qtbot.waitSignal(scanner.scan_complete, timeout=10_000):
         scanner.start()
@@ -184,7 +184,7 @@ def test_directory_hashed_signal_emitted_per_directory(
 
     dirs_hashed: list[str] = []
     scanner = Scanner(db=db, session_id=session_id, thumb_dir=thumb_dir)
-    scanner.directory_hashed.connect(lambda d: dirs_hashed.append(d))
+    scanner.directories_hashed.connect(lambda ds: dirs_hashed.extend(ds))
 
     with qtbot.waitSignal(scanner.scan_complete, timeout=10_000):
         scanner.start()
@@ -212,7 +212,7 @@ def test_directories_processed_leaf_first(
 
     dirs_hashed: list[str] = []
     scanner = Scanner(db=db, session_id=session_id, thumb_dir=thumb_dir)
-    scanner.directory_hashed.connect(lambda d: dirs_hashed.append(d))
+    scanner.directories_hashed.connect(lambda ds: dirs_hashed.extend(ds))
 
     with qtbot.waitSignal(scanner.scan_complete, timeout=10_000):
         scanner.start()
@@ -268,13 +268,54 @@ def test_pipeline_hashes_multiple_directories_concurrently(
 
     dirs_hashed: list[str] = []
     scanner = Scanner(db=db, session_id=session_id, thumb_dir=thumb_dir)
-    scanner.directory_hashed.connect(lambda d: dirs_hashed.append(d))
+    scanner.directories_hashed.connect(lambda ds: dirs_hashed.extend(ds))
 
     with qtbot.waitSignal(scanner.scan_complete, timeout=10_000):
         scanner.start()
 
-    # All 4 directories must receive a directory_hashed signal.
+    # All 4 directories must receive a directories_hashed signal.
     assert set(dirs_hashed) == {str(d) for d in dirs}
     # All 8 files should be hashed in the DB.
+    rows = db.get_unhashed_files_grouped_by_size(session_id)
+    assert len(rows) == 0
+
+
+def test_deferred_queue_drains_without_infinite_loop(
+    qtbot, db, scan_dir, session_id, thumb_dir
+):
+    """Regression test for RCA3: when more directories exist than
+    max_inflight_dirs, the deferred queue must drain completely and the
+    scan must terminate with current == total (no re-deferring cycle).
+
+    With max_workers=1, max_inflight_dirs = max(2, 1//2) = 2.
+    We create 6 directories (well above the cap) each with same-size
+    files so all are hashing candidates.
+    """
+    dirs = []
+    for i in range(6):
+        d = scan_dir / f"dir{i}"
+        d.mkdir()
+        dirs.append(d)
+        # All files identical size → all are size-duplicate candidates.
+        _jpg(d / "img.jpg")
+
+    progress: list[tuple[int, int]] = []
+    scanner = Scanner(
+        db=db, session_id=session_id, thumb_dir=thumb_dir, max_workers=1
+    )
+    scanner.progress_updated.connect(lambda c, t: progress.append((c, t)))
+
+    with qtbot.waitSignal(scanner.scan_complete, timeout=10_000):
+        scanner.start()
+
+    # Scan must terminate (reaching here proves no infinite loop).
+    # Final current must equal total — no overshoot.
+    assert progress, "Expected at least one progress signal"
+    final_current, final_total = progress[-1]
+    assert final_current == final_total, (
+        f"current ({final_current}) != total ({final_total}) — "
+        f"deferred queue did not drain correctly"
+    )
+    # All files hashed in DB.
     rows = db.get_unhashed_files_grouped_by_size(session_id)
     assert len(rows) == 0

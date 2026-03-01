@@ -254,7 +254,7 @@ def test_debounce_updates_badge_on_hash_complete(qtbot, db, session_id):
     db.update_pixel_hash(fid2, hash_val, f"/thumbs/{hash_val}.jpg")
 
     # Signal duplicate found.
-    p.on_duplicate_found([fid1, fid2])
+    p.on_duplicate_found(hash_val, [fid1, fid2])
     p._flush_pending()
 
     visible = p.visible_items_data()
