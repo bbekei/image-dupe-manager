@@ -1,5 +1,5 @@
 """
-tests/e2e/conftest.py — Fixtures and helpers for E2E binary tests (E2E_TEST_PLAN.md).
+tests/e2e/conftest.py — Fixtures and helpers for E2E tests.
 
 Architecture
 ------------
@@ -23,6 +23,7 @@ Tools
 - subprocess: process lifecycle.
 """
 
+import json
 import os
 import shutil
 import sqlite3
@@ -77,6 +78,10 @@ def pytest_configure(config) -> None:  # noqa: D401
         "markers",
         "e2e: end-to-end tests that build and exercise the compiled binary",
     )
+    config.addinivalue_line(
+        "markers",
+        "headless_e2e: headless end-to-end workflow tests (no GUI, no build required)",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -87,6 +92,23 @@ def pytest_configure(config) -> None:  # noqa: D401
 requires_pywinauto = pytest.mark.skipif(
     not _HAS_PYWINAUTO,
     reason="pywinauto not installed — run: pip install pywinauto",
+)
+
+# ---------------------------------------------------------------------------
+# E2E fixture image paths
+# ---------------------------------------------------------------------------
+
+#: Directory containing pre-populated E2E test images.
+E2E_IMAGES_DIR: Path = Path(__file__).parent.parent / "fixtures" / "images" / "e2e_dataset"
+
+#: Manifest file mapping images to expected duplicate groups.
+E2E_MANIFEST_PATH: Path = Path(__file__).parent.parent / "fixtures" / "e2e_manifest.json"
+
+#: Decorator: skip the test if e2e fixture images are not populated.
+requires_e2e_images = pytest.mark.skipif(
+    not E2E_IMAGES_DIR.exists() or not any(E2E_IMAGES_DIR.iterdir())
+    if E2E_IMAGES_DIR.exists() else True,
+    reason="E2E fixture images not found — populate tests/fixtures/e2e_dataset/",
 )
 
 
@@ -412,3 +434,142 @@ def dismiss_dialog_ok(pwa_app, dialog_title_re: str = ".*", timeout: float = 5.0
             pass
         time.sleep(0.3)
     return False
+
+
+# ---------------------------------------------------------------------------
+# E2E manifest and fixture image helpers
+# ---------------------------------------------------------------------------
+
+
+def load_e2e_manifest() -> dict:
+    """Load and parse the E2E test manifest.
+
+    Returns the parsed JSON dict.
+    Raises FileNotFoundError if the manifest doesn't exist.
+    """
+    if not E2E_MANIFEST_PATH.exists():
+        raise FileNotFoundError(
+            f"E2E manifest not found: {E2E_MANIFEST_PATH}\n"
+            "Create tests/fixtures/e2e_manifest.json with your test image layout."
+        )
+    with open(E2E_MANIFEST_PATH, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def copy_e2e_images(tmp_path: Path, manifest: dict) -> Path:
+    """Copy fixture images from e2e_dataset/ into a temp scan directory.
+
+    Preserves relative paths from the manifest (e.g. ``subdir/img.jpg``).
+    Returns the scan directory path.
+
+    Args:
+        tmp_path: pytest tmp_path for the test.
+        manifest: parsed manifest dict from ``load_e2e_manifest()``.
+    """
+    scan_dir = tmp_path / "scan"
+    scan_dir.mkdir()
+
+    for rel_path in manifest.get("files", {}):
+        src = E2E_IMAGES_DIR / rel_path
+        if not src.exists():
+            raise FileNotFoundError(
+                f"Manifest references '{rel_path}' but file not found at {src}"
+            )
+        dest = scan_dir / rel_path
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(str(src), str(dest))
+
+    return scan_dir
+
+
+def get_manifest_corrupt_basenames(manifest: dict) -> list[str]:
+    """Extract basenames of corrupt files from the manifest."""
+    return [
+        Path(p).name
+        for p, info in manifest.get("files", {}).items()
+        if info.get("is_corrupt")
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Extended DB helpers (for planning / execution assertions)
+# ---------------------------------------------------------------------------
+
+
+def get_file_actions(appdata: Path, session_id: int) -> list[dict]:
+    """Return all file_actions rows for a session from the binary's DB."""
+    db_path = appdata / "DejaView" / "library.db"
+    with sqlite3.connect(str(db_path)) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT * FROM file_actions WHERE session_id = ?", (session_id,)
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_soft_deletes(appdata: Path, session_id: int) -> list[dict]:
+    """Return soft_deletes rows for a session from the binary's DB."""
+    db_path = appdata / "DejaView" / "library.db"
+    with sqlite3.connect(str(db_path)) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT * FROM soft_deletes WHERE session_id = ? AND recovered_at IS NULL",
+            (session_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_plan_summary_db(appdata: Path, session_id: int) -> dict:
+    """Return plan summary counts from the binary's DB.
+
+    Returns dict with keys: delete_count, keep_count, ignore_count.
+    Only counts non-executed actions (executed_at IS NULL).
+    """
+    db_path = appdata / "DejaView" / "library.db"
+    with sqlite3.connect(str(db_path)) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """
+            SELECT action, COUNT(*) as cnt
+            FROM file_actions
+            WHERE session_id = ? AND executed_at IS NULL
+            GROUP BY action
+            """,
+            (session_id,),
+        ).fetchall()
+    summary = {"delete_count": 0, "keep_count": 0, "ignore_count": 0}
+    for r in rows:
+        key = f"{r['action']}_count"
+        if key in summary:
+            summary[key] = r["cnt"]
+    return summary
+
+
+def wait_for_soft_deletes(
+    appdata: Path,
+    expected_count: int,
+    timeout: float = 30.0,
+) -> list[dict]:
+    """Poll DB until soft_deletes reaches expected count or timeout.
+
+    Returns the soft_deletes rows once the expected count is reached.
+    Raises TimeoutError if the deadline passes.
+    """
+    db_path = appdata / "DejaView" / "library.db"
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if db_path.exists():
+            try:
+                with sqlite3.connect(str(db_path)) as conn:
+                    conn.row_factory = sqlite3.Row
+                    rows = conn.execute(
+                        "SELECT * FROM soft_deletes WHERE recovered_at IS NULL"
+                    ).fetchall()
+                    if len(rows) >= expected_count:
+                        return [dict(r) for r in rows]
+            except sqlite3.OperationalError:
+                pass
+        time.sleep(0.3)
+    raise TimeoutError(
+        f"soft_deletes did not reach {expected_count} rows within {timeout} s"
+    )

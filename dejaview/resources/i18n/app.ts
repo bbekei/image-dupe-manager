@@ -49,7 +49,11 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Google sign-in failed.</source>
+        <source>Google sign-in failed: {0}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unknown error</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -94,6 +98,59 @@
     </message>
     <message>
         <source>Settings saved.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Plan Actions&#x2026;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Planning mode &#x2014; mark duplicates with actions.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Confirm Deletion</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Move {0} files to .dejaview_trash?
+Files are recoverable for 30 days.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Execution complete: {0} files deleted, {1} errors.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Execution complete: {0} files deleted.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Executing plan&#x2026;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Plan cleared.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Family Discovery &#x2014; coming soon.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Request Approval &#x2014; coming soon.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Welcome to DejaView.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Last scan: {0} files, {1} duplicates in {2} groups.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Last scan: {0} files scanned. No duplicates found.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -195,6 +252,46 @@
     </message>
     <message>
         <source>● DUPLICATED FOLDER ({0} files)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>✦ CROSS-LIB ({0})</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&#x2605; MASTER</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Status</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Action</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tree View</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cluster View</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Search files...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>{0} groups &#x00b7; {1} files &#x00b7; {2} potential savings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>{0} duplicate groups found</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -437,6 +534,496 @@
     </message>
     <message>
         <source>{0}d {1}h</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>Dashboard</name>
+    <message>
+        <source>DejaView</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Family photo deduplication and synchronization</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Local Duplicates</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Family Photos</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pending Requests</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Last synced: never</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sync Now</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Start New Scan</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No scan yet</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>{0} duplicate groups</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No duplicates found</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Photos your family has that you don&apos;t</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Import or sync to discover family photos</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No pending requests</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Last synced: {0}</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>CleanupScreen</name>
+    <message>
+        <source>Comparing duplicate group (SHA: {0}&#x2026;)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Comparing duplicated folder: {0}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Ready.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Planning mode &#x2014; mark duplicates with actions.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Smart select: {0} kept, {1} marked for deletion</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Smart Select Complete</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>{0} files kept, {1} marked for deletion.
+
+Would you like to review the plan?</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>PlanningPanel</name>
+    <message>
+        <source>&#x2190; Back to Results</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Planning Mode</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep Newest Only</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Local Duplicates</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cross-Library</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>All</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Review Plan &#xbb;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No actionable items</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>All {0} items decided</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>{0} / {1} decided</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Automatically mark all older copies for deletion,
+keeping only the newest copy of each duplicate group.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This will mark {0} older copies for deletion, keeping only the newest copy of each duplicate group.
+
+Cross-library matches are excluded.
+
+Continue?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mark Others for Deletion?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>You kept {0}.
+
+Mark the other {1} copies for deletion?</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>PlanReviewScreen</name>
+    <message>
+        <source>&#x2190; Back to Planning</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Plan Review</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clear Plan</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Files to Delete (0)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Files to Delete ({0})</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Path</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Size</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Files to Request (0)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Request queue will be available
+after Family Discovery is enabled.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Storage saved: 0 B</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Storage saved: {0}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Files kept: 0</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Files kept: {0}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Apply Changes &#xbb;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remove folder from plan</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remove from plan</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>ExecutionScreen</name>
+    <message>
+        <source>Executing plan&#x2026;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Local Cleanup</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cloud Sync</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Waiting for cleanup to complete&#x2026;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&#x25b6; Show Log</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&#x25bc; Hide Log</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Minimize to Tray</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Done</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Syncing&#x2026;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Complete</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Execution complete &#x2014; {0} deleted, {1} errors</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Execution complete &#x2014; {0} files deleted</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>{0} / {1} files &#x2014; {2}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>{0} / {1} files</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>~{0} left</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>{0}s</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>{0}m {1}s</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>{0}h {1}m</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>{0}d {1}h</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     Phase 5: FilterSidebar (ui/filter_sidebar.py)
+     ═══════════════════════════════════════════════════════════════════════ -->
+<context>
+    <name>FilterSidebar</name>
+    <message>
+        <source>&#x2699; Filters</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Date Range</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>From:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>To:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Any</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enable date filter</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>File Type</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Redundancy</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Min copies:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Full duplicate folders only</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show only folders where every file is a duplicate</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sort By</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Waste (total size)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Number of copies</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Path length</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Apply</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     Phase 5: ClusterModel (ui/cluster_model.py)
+     ═══════════════════════════════════════════════════════════════════════ -->
+<context>
+    <name>ClusterModel</name>
+    <message>
+        <source>Name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Copies</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Size</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Modified</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>{0} copies &#x00b7; {1} total</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&#x2605; Master Copy</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     Phase 5: BatchActions (ui/batch_actions.py)
+     ═══════════════════════════════════════════════════════════════════════ -->
+<context>
+    <name>BatchActions</name>
+    <message>
+        <source>&#x2728; Smart Select</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Apply a selection preset to all duplicate groups</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&#x2731; Select by Pattern</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mark files matching a pattern for deletion</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep Largest File</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep Newest</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep Deepest Path</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep Shortest Path</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Smart Select</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose a selection rule:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Confirm Smart Select</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Apply &quot;{0}&quot; to all duplicate groups?
+
+This will mark files for keep/delete.
+Existing decisions will be overwritten.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Select by Pattern</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enter a filename pattern (e.g. *_copy*, *(1)*):
+Files matching this pattern will be marked for deletion.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No Matches</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No duplicate files matched the pattern &quot;{0}&quot;.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

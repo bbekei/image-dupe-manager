@@ -584,3 +584,319 @@ class TestMaxScanWorkers:
         db.upsert_app_config(language="en")
         db.upsert_app_config(max_scan_workers=12)
         assert db.get_max_scan_workers() == 12
+
+
+# ---------------------------------------------------------------------------
+# File actions (Pluggable Views)
+# ---------------------------------------------------------------------------
+
+class TestFileActions:
+    """Pluggable Views — file_actions CRUD."""
+
+    @pytest.fixture(autouse=True)
+    def _setup(self, db: Database):
+        """Create a session with two files for action tests."""
+        self.db = db
+        self.sid = db.create_session("test", _now())
+        self.fid1 = db.insert_file(self.sid, "/a/img1.jpg", 100, _now(), _now())
+        self.fid2 = db.insert_file(self.sid, "/a/img2.jpg", 200, _now(), _now())
+
+    def test_set_and_get_file_action(self):
+        self.db.set_file_action(self.sid, self.fid1, "delete")
+        rows = self.db.get_file_actions_for_session(self.sid)
+        assert len(rows) == 1
+        assert rows[0]["file_id"] == self.fid1
+        assert rows[0]["action"] == "delete"
+        assert rows[0]["scope"] == "file"
+
+    def test_set_action_with_scope_and_timestamp(self):
+        ts = _now()
+        self.db.set_file_action(self.sid, self.fid1, "keep", scope="folder", decided_at=ts)
+        rows = self.db.get_file_actions_for_session(self.sid)
+        assert rows[0]["scope"] == "folder"
+        assert rows[0]["decided_at"] == ts
+
+    def test_upsert_overwrites_existing_action(self):
+        self.db.set_file_action(self.sid, self.fid1, "delete")
+        self.db.set_file_action(self.sid, self.fid1, "keep")
+        rows = self.db.get_file_actions_for_session(self.sid)
+        assert len(rows) == 1
+        assert rows[0]["action"] == "keep"
+
+    def test_set_file_actions_batch(self):
+        ts = _now()
+        batch = [
+            (self.sid, self.fid1, "delete", "folder", ts),
+            (self.sid, self.fid2, "keep", "folder", ts),
+        ]
+        self.db.set_file_actions_batch(batch)
+        rows = self.db.get_file_actions_for_session(self.sid)
+        assert len(rows) == 2
+        actions = {r["file_id"]: r["action"] for r in rows}
+        assert actions[self.fid1] == "delete"
+        assert actions[self.fid2] == "keep"
+
+    def test_get_decided_file_ids(self):
+        self.db.set_file_action(self.sid, self.fid1, "delete")
+        self.db.set_file_action(self.sid, self.fid2, "ignore")
+        decided = self.db.get_decided_file_ids(self.sid)
+        assert decided == {self.fid1, self.fid2}
+
+    def test_get_decided_file_ids_empty_session(self):
+        decided = self.db.get_decided_file_ids(self.sid)
+        assert decided == set()
+
+    def test_clear_file_action(self):
+        self.db.set_file_action(self.sid, self.fid1, "delete")
+        self.db.set_file_action(self.sid, self.fid2, "keep")
+        self.db.clear_file_action(self.sid, self.fid1)
+        decided = self.db.get_decided_file_ids(self.sid)
+        assert decided == {self.fid2}
+
+    def test_clear_all_actions(self):
+        self.db.set_file_action(self.sid, self.fid1, "delete")
+        self.db.set_file_action(self.sid, self.fid2, "keep")
+        self.db.clear_all_actions(self.sid)
+        assert self.db.get_decided_file_ids(self.sid) == set()
+        assert self.db.get_file_actions_for_session(self.sid) == []
+
+    def test_invalid_action_rejected(self):
+        with pytest.raises(sqlite3.IntegrityError):
+            self.db.set_file_action(self.sid, self.fid1, "move")
+
+    def test_invalid_scope_rejected(self):
+        with pytest.raises(sqlite3.IntegrityError):
+            self.db.set_file_action(self.sid, self.fid1, "delete", scope="invalid")
+
+    def test_cascade_deletes_on_session_delete(self):
+        self.db.set_file_action(self.sid, self.fid1, "delete")
+        self.db.delete_session(self.sid)
+        # After session delete, file_actions should be gone too
+        rows = self.db.conn.execute(
+            "SELECT * FROM file_actions WHERE session_id = ?", (self.sid,)
+        ).fetchall()
+        assert len(rows) == 0
+
+    def test_table_and_indexes_exist(self, db: Database):
+        tables = {
+            r["name"]
+            for r in db.conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+        assert "file_actions" in tables
+        indexes = {
+            r["name"]
+            for r in db.conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='index'"
+            ).fetchall()
+        }
+        assert "idx_file_actions_session" in indexes
+        assert "idx_file_actions_file" in indexes
+
+
+# ---------------------------------------------------------------------------
+# Filtered duplicate groups (Phase 5)
+# ---------------------------------------------------------------------------
+
+class TestFilteredDuplicateGroups:
+    """Phase 5 — get_filtered_duplicate_groups()."""
+
+    @pytest.fixture(autouse=True)
+    def _setup(self, db: Database, session_factory):
+        self.db = db
+        self.sid = session_factory()
+        # Group A: 2 JPEG files, modified 2024-01-01
+        h_a = _make_hash("a")
+        for i, path in enumerate(["/photos/a1.jpg", "/photos/a2.jpg"]):
+            fid = db.insert_file(self.sid, path, 1000 + i * 500, "2024-01-15", _now())
+            db.update_pixel_hash(fid, h_a, f"/thumbs/{h_a}.jpg")
+        # Group B: 3 HEIC files, modified 2024-06-01
+        h_b = _make_hash("b")
+        for i, path in enumerate(["/photos/b1.heic", "/photos/b2.heic", "/photos/b3.heic"]):
+            fid = db.insert_file(self.sid, path, 2000 + i * 100, "2024-06-01", _now())
+            db.update_pixel_hash(fid, h_b, f"/thumbs/{h_b}.jpg")
+        self.h_a = h_a
+        self.h_b = h_b
+
+    def test_basic_query(self):
+        groups = self.db.get_filtered_duplicate_groups(self.sid)
+        assert len(groups) == 2
+
+    def test_min_copies_filter(self):
+        groups = self.db.get_filtered_duplicate_groups(self.sid, min_copies=3)
+        assert len(groups) == 1
+        assert groups[0]["pixel_hash"] == self.h_b
+
+    def test_date_from_filter(self):
+        groups = self.db.get_filtered_duplicate_groups(
+            self.sid, date_from="2024-03-01"
+        )
+        assert len(groups) == 1
+        assert groups[0]["pixel_hash"] == self.h_b
+
+    def test_date_to_filter(self):
+        groups = self.db.get_filtered_duplicate_groups(
+            self.sid, date_to="2024-03-01"
+        )
+        assert len(groups) == 1
+        assert groups[0]["pixel_hash"] == self.h_a
+
+    def test_extension_filter_jpg(self):
+        groups = self.db.get_filtered_duplicate_groups(
+            self.sid, extensions=[".jpg"]
+        )
+        assert len(groups) == 1
+        assert groups[0]["pixel_hash"] == self.h_a
+
+    def test_extension_filter_heic(self):
+        groups = self.db.get_filtered_duplicate_groups(
+            self.sid, extensions=[".heic"]
+        )
+        assert len(groups) == 1
+        assert groups[0]["pixel_hash"] == self.h_b
+
+    def test_sort_by_copies(self):
+        groups = self.db.get_filtered_duplicate_groups(
+            self.sid, sort_by="copies", sort_desc=True
+        )
+        assert groups[0]["file_count"] >= groups[-1]["file_count"]
+
+    def test_sort_by_waste_ascending(self):
+        groups = self.db.get_filtered_duplicate_groups(
+            self.sid, sort_by="waste", sort_desc=False
+        )
+        assert groups[0]["total_size"] <= groups[-1]["total_size"]
+
+    def test_deleted_files_excluded(self):
+        """Deleted files should not appear in filtered groups."""
+        # Delete all files in group A by marking them deleted
+        rows = self.db.get_cluster_files(self.sid, self.h_a)
+        for r in rows:
+            self.db.update_file_status(r["id"], "deleted")
+        groups = self.db.get_filtered_duplicate_groups(self.sid)
+        hashes = {g["pixel_hash"] for g in groups}
+        assert self.h_a not in hashes
+
+    def test_result_columns(self):
+        groups = self.db.get_filtered_duplicate_groups(self.sid)
+        g = groups[0]
+        assert "pixel_hash" in g.keys()
+        assert "file_count" in g.keys()
+        assert "total_size" in g.keys()
+        assert "oldest_date" in g.keys()
+        assert "newest_date" in g.keys()
+
+
+# ---------------------------------------------------------------------------
+# Cluster files (Phase 5)
+# ---------------------------------------------------------------------------
+
+class TestClusterFiles:
+    """Phase 5 — get_cluster_files()."""
+
+    def test_returns_files_for_hash(self, db: Database, session_factory):
+        sid = session_factory()
+        h = _make_hash("c")
+        f1 = db.insert_file(sid, "/a.jpg", 500, "2024-01-01", _now())
+        db.update_pixel_hash(f1, h, "/thumbs/c.jpg")
+        f2 = db.insert_file(sid, "/b.jpg", 1000, "2024-01-01", _now())
+        db.update_pixel_hash(f2, h, "/thumbs/c.jpg")
+
+        rows = db.get_cluster_files(sid, h)
+        assert len(rows) == 2
+        # Ordered by size DESC
+        assert rows[0]["size"] >= rows[1]["size"]
+
+    def test_excludes_deleted(self, db: Database, session_factory):
+        sid = session_factory()
+        h = _make_hash("d")
+        f1 = db.insert_file(sid, "/a.jpg", 500, "2024-01-01", _now())
+        db.update_pixel_hash(f1, h, "/thumbs/d.jpg")
+        f2 = db.insert_file(sid, "/b.jpg", 1000, "2024-01-01", _now())
+        db.update_pixel_hash(f2, h, "/thumbs/d.jpg")
+        db.update_file_status(f1, "deleted")
+
+        rows = db.get_cluster_files(sid, h)
+        assert len(rows) == 1
+        assert rows[0]["id"] == f2
+
+    def test_empty_for_unknown_hash(self, db: Database, session_factory):
+        sid = session_factory()
+        rows = db.get_cluster_files(sid, _make_hash("z"))
+        assert rows == []
+
+    def test_result_columns(self, db: Database, session_factory):
+        sid = session_factory()
+        h = _make_hash("e")
+        fid = db.insert_file(sid, "/x.jpg", 100, "2024-01-01", _now())
+        db.update_pixel_hash(fid, h, "/thumbs/e.jpg")
+        # Need at least 2 to form a group, but get_cluster_files doesn't require it
+        rows = db.get_cluster_files(sid, h)
+        assert len(rows) == 1
+        r = rows[0]
+        assert "id" in r.keys()
+        assert "path" in r.keys()
+        assert "size" in r.keys()
+        assert "modified_at" in r.keys()
+        assert "thumbnail_path" in r.keys()
+
+
+# ---------------------------------------------------------------------------
+# Full dupe folder paths (Phase 5)
+# ---------------------------------------------------------------------------
+
+class TestFullDupeFolderPaths:
+    """Phase 5 — get_full_dupe_folder_paths()."""
+
+    def test_fully_duplicated_folder(self, db: Database, session_factory):
+        sid = session_factory()
+        h1 = _make_hash("1")
+        h2 = _make_hash("2")
+        # Folder /photos has 2 files, both duplicates
+        f1 = db.insert_file(sid, "/photos/a.jpg", 100, "2024-01-01", _now())
+        db.update_pixel_hash(f1, h1, "/t/1.jpg")
+        f2 = db.insert_file(sid, "/photos/b.jpg", 200, "2024-01-01", _now())
+        db.update_pixel_hash(f2, h2, "/t/2.jpg")
+        # Duplicates live elsewhere
+        f3 = db.insert_file(sid, "/backup/a.jpg", 100, "2024-01-01", _now())
+        db.update_pixel_hash(f3, h1, "/t/1.jpg")
+        f4 = db.insert_file(sid, "/backup/b.jpg", 200, "2024-01-01", _now())
+        db.update_pixel_hash(f4, h2, "/t/2.jpg")
+
+        paths = db.get_full_dupe_folder_paths(sid)
+        # Both /photos and /backup are fully duplicated
+        assert len(paths) == 2
+
+    def test_partially_duplicated_folder_excluded(self, db: Database, session_factory):
+        sid = session_factory()
+        h = _make_hash("1")
+        # /photos has 2 files: one dupe, one unique
+        f1 = db.insert_file(sid, "/photos/dupe.jpg", 100, "2024-01-01", _now())
+        db.update_pixel_hash(f1, h, "/t/1.jpg")
+        f2 = db.insert_file(sid, "/photos/unique.jpg", 200, "2024-01-01", _now())
+        db.update_pixel_hash(f2, _make_hash("u"), "/t/u.jpg")  # unique hash
+        # Dupe copy elsewhere
+        f3 = db.insert_file(sid, "/backup/dupe.jpg", 100, "2024-01-01", _now())
+        db.update_pixel_hash(f3, h, "/t/1.jpg")
+
+        paths = db.get_full_dupe_folder_paths(sid)
+        # /photos has a unique file, so it's NOT full dupe
+        # /backup has only one file and it IS a dupe → full dupe
+        assert "/photos" not in {p.replace("\\", "/") for p in paths}
+
+    def test_empty_session(self, db: Database, session_factory):
+        sid = session_factory()
+        paths = db.get_full_dupe_folder_paths(sid)
+        assert paths == set()
+
+    def test_no_duplicates(self, db: Database, session_factory):
+        sid = session_factory()
+        # All files have unique hashes → no duplicates → no full dupe folders
+        for i in range(3):
+            h = _make_hash(str(i))
+            fid = db.insert_file(sid, f"/photos/img{i}.jpg", 100, "2024-01-01", _now())
+            db.update_pixel_hash(fid, h, f"/t/{i}.jpg")
+
+        paths = db.get_full_dupe_folder_paths(sid)
+        assert paths == set()

@@ -124,6 +124,36 @@ CREATE INDEX IF NOT EXISTS idx_files_status     ON files(status);
 CREATE INDEX IF NOT EXISTS idx_files_session_hash_status
     ON files(session_id, pixel_hash, status);
 CREATE INDEX IF NOT EXISTS idx_remote_files_hash ON remote_files(pixel_hash);
+
+CREATE TABLE IF NOT EXISTS file_actions (
+    id          INTEGER PRIMARY KEY,
+    session_id  INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    file_id     INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    action      TEXT NOT NULL
+        CHECK (action IN ('keep', 'delete', 'ignore')),
+    scope       TEXT NOT NULL DEFAULT 'file'
+        CHECK (scope IN ('file', 'folder')),
+    decided_at  TEXT,
+    executed_at TEXT,
+    UNIQUE (session_id, file_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_file_actions_session ON file_actions(session_id);
+CREATE INDEX IF NOT EXISTS idx_file_actions_file    ON file_actions(file_id);
+
+CREATE TABLE IF NOT EXISTS soft_deletes (
+    id            INTEGER PRIMARY KEY,
+    session_id    INTEGER NOT NULL REFERENCES sessions(id),
+    file_id       INTEGER NOT NULL REFERENCES files(id),
+    original_path TEXT NOT NULL,
+    trash_path    TEXT NOT NULL,
+    deleted_at    TEXT NOT NULL,
+    expires_at    TEXT NOT NULL,
+    recovered_at  TEXT,
+    UNIQUE (session_id, file_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_soft_deletes_session ON soft_deletes(session_id);
 """
 
 
@@ -189,6 +219,55 @@ class Database:
                 " INTEGER NOT NULL DEFAULT 0"
             )
             c.commit()
+
+        # Pluggable Views: add file_actions table
+        tables = {
+            r[0]
+            for r in c.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+        if "file_actions" not in tables:
+            c.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS file_actions (
+                    id          INTEGER PRIMARY KEY,
+                    session_id  INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+                    file_id     INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+                    action      TEXT NOT NULL
+                        CHECK (action IN ('keep', 'delete', 'ignore')),
+                    scope       TEXT NOT NULL DEFAULT 'file'
+                        CHECK (scope IN ('file', 'folder')),
+                    decided_at  TEXT,
+                    executed_at TEXT,
+                    UNIQUE (session_id, file_id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_file_actions_session
+                    ON file_actions(session_id);
+                CREATE INDEX IF NOT EXISTS idx_file_actions_file
+                    ON file_actions(file_id);
+                """
+            )
+
+        # UX Redesign Phase 2: add soft_deletes table
+        if "soft_deletes" not in tables:
+            c.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS soft_deletes (
+                    id            INTEGER PRIMARY KEY,
+                    session_id    INTEGER NOT NULL REFERENCES sessions(id),
+                    file_id       INTEGER NOT NULL REFERENCES files(id),
+                    original_path TEXT NOT NULL,
+                    trash_path    TEXT NOT NULL,
+                    deleted_at    TEXT NOT NULL,
+                    expires_at    TEXT NOT NULL,
+                    recovered_at  TEXT,
+                    UNIQUE (session_id, file_id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_soft_deletes_session
+                    ON soft_deletes(session_id);
+                """
+            )
 
     def close(self) -> None:
         """Commit any pending work and close the connection."""
@@ -429,6 +508,144 @@ class Database:
         for r in rows:
             groups.setdefault(r["pixel_hash"], []).append(r["id"])
         return groups
+
+    # ------------------------------------------------------------------
+    # Filtered duplicate queries (UX Redesign Phase 5 — Advanced Cleanup)
+    # ------------------------------------------------------------------
+
+    def get_filtered_duplicate_groups(
+        self,
+        session_id: int,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
+        extensions: Optional[list[str]] = None,
+        min_copies: int = 2,
+        sort_by: str = "waste",
+        sort_desc: bool = True,
+    ) -> list[sqlite3.Row]:
+        """Return duplicate groups with optional filtering and sorting.
+
+        Args:
+            session_id: Active session.
+            date_from: ISO8601 lower bound on files.modified_at (inclusive).
+            date_to: ISO8601 upper bound on files.modified_at (inclusive).
+            extensions: List of lowercase extensions including dot (e.g. ['.jpg']).
+            min_copies: Minimum file count per group (default 2).
+            sort_by: 'waste' | 'copies' | 'path_length'.
+            sort_desc: Descending sort (default True).
+
+        Returns:
+            Rows with: pixel_hash, file_count, total_size, oldest_date, newest_date.
+        """
+        clauses = [
+            "session_id = ?",
+            "status = 'active'",
+            "pixel_hash IS NOT NULL",
+        ]
+        params: list = [session_id]
+
+        if date_from:
+            clauses.append("modified_at >= ?")
+            params.append(date_from)
+        if date_to:
+            clauses.append("modified_at <= ?")
+            params.append(date_to)
+        if extensions:
+            ext_conditions = []
+            for ext in extensions:
+                ext_lower = ext.lower()
+                ext_conditions.append("LOWER(path) LIKE ?")
+                params.append(f"%{ext_lower}")
+            clauses.append(f"({' OR '.join(ext_conditions)})")
+
+        where = " AND ".join(clauses)
+        params.append(max(min_copies, 2))
+
+        order_map = {
+            "waste": "total_size",
+            "copies": "file_count",
+            "path_length": "min_path_len",
+        }
+        order_col = order_map.get(sort_by, "total_size")
+        direction = "DESC" if sort_desc else "ASC"
+
+        sql = f"""
+            SELECT pixel_hash,
+                   COUNT(*)        AS file_count,
+                   SUM(size)       AS total_size,
+                   MIN(modified_at) AS oldest_date,
+                   MAX(modified_at) AS newest_date,
+                   MIN(LENGTH(path)) AS min_path_len
+            FROM files
+            WHERE {where}
+            GROUP BY pixel_hash
+            HAVING COUNT(*) >= ?
+            ORDER BY {order_col} {direction}
+        """
+        return self.conn.execute(sql, params).fetchall()
+
+    def get_cluster_files(
+        self, session_id: int, pixel_hash: str
+    ) -> list[sqlite3.Row]:
+        """Return all active files for a single pixel_hash cluster.
+
+        Returns rows with: id, path, size, modified_at, thumbnail_path.
+        """
+        return self.conn.execute(
+            """
+            SELECT id, path, size, modified_at, thumbnail_path
+            FROM files
+            WHERE session_id = ? AND pixel_hash = ? AND status = 'active'
+            ORDER BY size DESC, modified_at DESC
+            """,
+            (session_id, pixel_hash),
+        ).fetchall()
+
+    def get_full_dupe_folder_paths(self, session_id: int) -> set[str]:
+        """Return folder paths where every file is a duplicate.
+
+        A folder qualifies when ALL of its files have a pixel_hash that
+        appears in at least one other file in the session.
+        """
+        dup_hashes = {
+            r["pixel_hash"]
+            for r in self.conn.execute(
+                """
+                SELECT pixel_hash FROM files
+                WHERE session_id = ? AND status = 'active'
+                      AND pixel_hash IS NOT NULL
+                GROUP BY pixel_hash HAVING COUNT(*) > 1
+                """,
+                (session_id,),
+            ).fetchall()
+        }
+        if not dup_hashes:
+            return set()
+
+        rows = self.conn.execute(
+            """
+            SELECT path, pixel_hash FROM files
+            WHERE session_id = ? AND status = 'active'
+                  AND pixel_hash IS NOT NULL
+            """,
+            (session_id,),
+        ).fetchall()
+
+        # Group files by parent folder, count total and duplicate
+        from collections import defaultdict
+
+        folder_total: dict[str, int] = defaultdict(int)
+        folder_dup: dict[str, int] = defaultdict(int)
+        for r in rows:
+            folder = str(Path(r["path"]).parent)
+            folder_total[folder] += 1
+            if r["pixel_hash"] in dup_hashes:
+                folder_dup[folder] += 1
+
+        return {
+            f for f, total in folder_total.items()
+            if total > 0 and folder_dup.get(f, 0) == total
+        }
 
     def update_file_status(self, file_id: int, status: str) -> None:
         self.conn.execute(
@@ -672,6 +889,237 @@ class Database:
             """,
             (session_id,),
         ).fetchall()
+
+    def get_family_treasure_count(self, session_id: int) -> int:
+        """Return count of remote hashes that do NOT exist locally.
+
+        These are the 'Family Treasures' — photos that family members have
+        but the current user does not.
+        """
+        row = self.conn.execute(
+            """
+            SELECT COUNT(DISTINCT rf.pixel_hash) AS cnt
+            FROM remote_files rf
+            WHERE rf.pixel_hash NOT IN (
+                SELECT pixel_hash FROM files
+                WHERE session_id = ? AND status = 'active'
+                      AND pixel_hash IS NOT NULL
+            )
+            """,
+            (session_id,),
+        ).fetchone()
+        return row["cnt"] if row else 0
+
+    # ------------------------------------------------------------------
+    # File actions (Pluggable Views — action planning)
+    # ------------------------------------------------------------------
+
+    def set_file_action(
+        self,
+        session_id: int,
+        file_id: int,
+        action: str,
+        scope: str = "file",
+        decided_at: Optional[str] = None,
+    ) -> None:
+        """Record a keep/delete/ignore decision for a single file."""
+        self.conn.execute(
+            """
+            INSERT INTO file_actions (session_id, file_id, action, scope, decided_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(session_id, file_id) DO UPDATE SET
+                action     = excluded.action,
+                scope      = excluded.scope,
+                decided_at = excluded.decided_at
+            """,
+            (session_id, file_id, action, scope, decided_at),
+        )
+        self.conn.commit()
+
+    def set_file_actions_batch(
+        self, rows: list[tuple[int, int, str, str, Optional[str]]]
+    ) -> None:
+        """Bulk-insert action decisions.
+
+        Each tuple: (session_id, file_id, action, scope, decided_at).
+        """
+        self.conn.executemany(
+            """
+            INSERT INTO file_actions (session_id, file_id, action, scope, decided_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(session_id, file_id) DO UPDATE SET
+                action     = excluded.action,
+                scope      = excluded.scope,
+                decided_at = excluded.decided_at
+            """,
+            rows,
+        )
+        self.conn.commit()
+
+    def get_file_actions_for_session(
+        self, session_id: int
+    ) -> list[sqlite3.Row]:
+        """Return all action rows for a session."""
+        return self.conn.execute(
+            "SELECT * FROM file_actions WHERE session_id = ?",
+            (session_id,),
+        ).fetchall()
+
+    def get_decided_file_ids(self, session_id: int) -> set[int]:
+        """Return the set of file_ids that have a decision in this session."""
+        rows = self.conn.execute(
+            "SELECT file_id FROM file_actions WHERE session_id = ?",
+            (session_id,),
+        ).fetchall()
+        return {r["file_id"] for r in rows}
+
+    def clear_file_action(self, session_id: int, file_id: int) -> None:
+        """Remove a single file's action decision (undo)."""
+        self.conn.execute(
+            "DELETE FROM file_actions WHERE session_id = ? AND file_id = ?",
+            (session_id, file_id),
+        )
+        self.conn.commit()
+
+    def clear_all_actions(self, session_id: int) -> None:
+        """Remove all action decisions for a session (reset plan)."""
+        self.conn.execute(
+            "DELETE FROM file_actions WHERE session_id = ?",
+            (session_id,),
+        )
+        self.conn.commit()
+
+    # ------------------------------------------------------------------
+    # Soft deletes (UX Redesign Phase 2 — nondestructive file removal)
+    # ------------------------------------------------------------------
+
+    def record_soft_delete(
+        self,
+        session_id: int,
+        file_id: int,
+        original_path: str,
+        trash_path: str,
+        deleted_at: str,
+        expires_at: str,
+    ) -> int:
+        """Record a soft-deleted file in the database."""
+        cur = self.conn.execute(
+            """
+            INSERT INTO soft_deletes
+                (session_id, file_id, original_path, trash_path, deleted_at, expires_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(session_id, file_id) DO UPDATE SET
+                trash_path = excluded.trash_path,
+                deleted_at = excluded.deleted_at,
+                expires_at = excluded.expires_at,
+                recovered_at = NULL
+            """,
+            (session_id, file_id, original_path, trash_path, deleted_at, expires_at),
+        )
+        self.conn.commit()
+        return cur.lastrowid  # type: ignore[return-value]
+
+    def record_recovery(self, soft_delete_id: int, recovered_at: str) -> None:
+        """Mark a soft-deleted file as recovered."""
+        self.conn.execute(
+            "UPDATE soft_deletes SET recovered_at = ? WHERE id = ?",
+            (recovered_at, soft_delete_id),
+        )
+        self.conn.commit()
+
+    def get_active_soft_deletes(self, session_id: int) -> list[sqlite3.Row]:
+        """Return soft-deleted files that have NOT been recovered."""
+        return self.conn.execute(
+            """
+            SELECT * FROM soft_deletes
+            WHERE session_id = ? AND recovered_at IS NULL
+            ORDER BY deleted_at DESC
+            """,
+            (session_id,),
+        ).fetchall()
+
+    def get_expired_soft_deletes(self, cutoff_iso: str) -> list[sqlite3.Row]:
+        """Return soft-deleted files whose expires_at is before cutoff_iso."""
+        return self.conn.execute(
+            """
+            SELECT * FROM soft_deletes
+            WHERE recovered_at IS NULL AND expires_at < ?
+            """,
+            (cutoff_iso,),
+        ).fetchall()
+
+    # ------------------------------------------------------------------
+    # Plan summary (UX Redesign Phase 2 — Plan Review impact totals)
+    # ------------------------------------------------------------------
+
+    def get_plan_summary(self, session_id: int) -> dict:
+        """Return impact totals for the current plan.
+
+        Returns:
+            dict with keys: delete_count, delete_bytes, keep_count,
+            ignore_count, folder_delete_count.
+        """
+        row = self.conn.execute(
+            """
+            SELECT
+                COALESCE(SUM(CASE WHEN fa.action = 'delete' THEN 1 ELSE 0 END), 0)
+                    AS delete_count,
+                COALESCE(SUM(CASE WHEN fa.action = 'delete' THEN f.size ELSE 0 END), 0)
+                    AS delete_bytes,
+                COALESCE(SUM(CASE WHEN fa.action = 'keep' THEN 1 ELSE 0 END), 0)
+                    AS keep_count,
+                COALESCE(SUM(CASE WHEN fa.action = 'ignore' THEN 1 ELSE 0 END), 0)
+                    AS ignore_count,
+                COALESCE(SUM(CASE WHEN fa.action = 'delete' AND fa.scope = 'folder'
+                             THEN 1 ELSE 0 END), 0)
+                    AS folder_delete_count
+            FROM file_actions fa
+            JOIN files f ON f.id = fa.file_id
+            WHERE fa.session_id = ? AND fa.executed_at IS NULL
+            """,
+            (session_id,),
+        ).fetchone()
+        return {
+            "delete_count": row["delete_count"],
+            "delete_bytes": row["delete_bytes"],
+            "keep_count": row["keep_count"],
+            "ignore_count": row["ignore_count"],
+            "folder_delete_count": row["folder_delete_count"],
+        }
+
+    def get_delete_actions_with_paths(
+        self, session_id: int
+    ) -> list[sqlite3.Row]:
+        """Return file details for all pending delete actions in a session.
+
+        Each row includes: file_id, path, size, pixel_hash, scope, decided_at.
+        Used by the Plan Review screen to display the deletion list.
+        """
+        return self.conn.execute(
+            """
+            SELECT fa.id AS action_id, fa.file_id, fa.scope, fa.decided_at,
+                   f.path, f.size, f.pixel_hash
+            FROM file_actions fa
+            JOIN files f ON f.id = fa.file_id
+            WHERE fa.session_id = ? AND fa.action = 'delete'
+                  AND fa.executed_at IS NULL
+            ORDER BY f.path
+            """,
+            (session_id,),
+        ).fetchall()
+
+    def mark_file_action_executed(
+        self, session_id: int, file_id: int, executed_at: str
+    ) -> None:
+        """Set executed_at timestamp on a file_action row."""
+        self.conn.execute(
+            """
+            UPDATE file_actions SET executed_at = ?
+            WHERE session_id = ? AND file_id = ?
+            """,
+            (executed_at, session_id, file_id),
+        )
+        self.conn.commit()
 
     # ------------------------------------------------------------------
     # Thumbnail cleanup (plan §Post-Action Cleanup)

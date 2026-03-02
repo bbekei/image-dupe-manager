@@ -18,7 +18,6 @@ from PyQt6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QPushButton,
-    QVBoxLayout,
     QWidget,
 )
 
@@ -104,24 +103,26 @@ class FolderPanel(QWidget):
     # ── UI construction ──────────────────────────────────────────────────
 
     def _build_ui(self) -> None:
-        layout = QVBoxLayout(self)
+        layout = QHBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(6)
 
-        label = QLabel(self.tr("Scan Folders"), self)
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        label = QLabel(self.tr("Scan Folders:"), self)
         layout.addWidget(label)
 
         self._list = QListWidget(self)
         self._list.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
-        layout.addWidget(self._list)
+        self._list.setMaximumHeight(80)
+        layout.addWidget(self._list, stretch=1)
 
-        btn_row = QHBoxLayout()
         self._add_btn = QPushButton(self.tr("+ Add\u2026"), self)
         self._remove_btn = QPushButton(self.tr("- Remove"), self)
         self._remove_btn.setEnabled(False)
-        btn_row.addWidget(self._add_btn)
-        btn_row.addWidget(self._remove_btn)
-        layout.addLayout(btn_row)
+        layout.addWidget(self._add_btn)
+        layout.addWidget(self._remove_btn)
+
+        self.setMaximumHeight(100)
+        self.setStyleSheet("FolderPanel { border-bottom: 1px solid #d1d5db; }")
 
         self._add_btn.clicked.connect(self._on_add)
         self._remove_btn.clicked.connect(self._on_remove)

@@ -111,6 +111,10 @@ class ScanControl(QWidget):
         """Called by MainWindow when restoring a paused session on startup."""
         self.on_scan_paused()
 
+    def set_state_complete(self) -> None:
+        """Called by MainWindow when restoring a completed session on startup."""
+        self.on_scan_complete()
+
     @pyqtSlot()
     def on_scan_started(self) -> None:
         self._start_btn.setEnabled(False)

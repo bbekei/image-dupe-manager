@@ -627,6 +627,10 @@
    'C:\\Users\\bekei\\My Python '
    'stuff\\image-dupe-manager\\dejaview\\core\\__init__.py',
    'PYMODULE'),
+  ('core.executor',
+   'C:\\Users\\bekei\\My Python '
+   'stuff\\image-dupe-manager\\dejaview\\core\\executor.py',
+   'PYMODULE'),
   ('core.hasher',
    'C:\\Users\\bekei\\My Python '
    'stuff\\image-dupe-manager\\dejaview\\core\\hasher.py',
@@ -638,6 +642,14 @@
   ('core.scanner',
    'C:\\Users\\bekei\\My Python '
    'stuff\\image-dupe-manager\\dejaview\\core\\scanner.py',
+   'PYMODULE'),
+  ('core.selection',
+   'C:\\Users\\bekei\\My Python '
+   'stuff\\image-dupe-manager\\dejaview\\core\\selection.py',
+   'PYMODULE'),
+  ('core.trash',
+   'C:\\Users\\bekei\\My Python '
+   'stuff\\image-dupe-manager\\dejaview\\core\\trash.py',
    'PYMODULE'),
   ('cryptography',
    'C:\\Users\\bekei\\anaconda3\\Lib\\site-packages\\cryptography\\__init__.py',
@@ -2540,9 +2552,33 @@
    'C:\\Users\\bekei\\My Python '
    'stuff\\image-dupe-manager\\dejaview\\ui\\__init__.py',
    'PYMODULE'),
+  ('ui.batch_actions',
+   'C:\\Users\\bekei\\My Python '
+   'stuff\\image-dupe-manager\\dejaview\\ui\\batch_actions.py',
+   'PYMODULE'),
+  ('ui.cleanup_screen',
+   'C:\\Users\\bekei\\My Python '
+   'stuff\\image-dupe-manager\\dejaview\\ui\\cleanup_screen.py',
+   'PYMODULE'),
+  ('ui.cluster_model',
+   'C:\\Users\\bekei\\My Python '
+   'stuff\\image-dupe-manager\\dejaview\\ui\\cluster_model.py',
+   'PYMODULE'),
   ('ui.compare_view',
    'C:\\Users\\bekei\\My Python '
    'stuff\\image-dupe-manager\\dejaview\\ui\\compare_view.py',
+   'PYMODULE'),
+  ('ui.dashboard',
+   'C:\\Users\\bekei\\My Python '
+   'stuff\\image-dupe-manager\\dejaview\\ui\\dashboard.py',
+   'PYMODULE'),
+  ('ui.execution_screen',
+   'C:\\Users\\bekei\\My Python '
+   'stuff\\image-dupe-manager\\dejaview\\ui\\execution_screen.py',
+   'PYMODULE'),
+  ('ui.filter_sidebar',
+   'C:\\Users\\bekei\\My Python '
+   'stuff\\image-dupe-manager\\dejaview\\ui\\filter_sidebar.py',
    'PYMODULE'),
   ('ui.folder_panel',
    'C:\\Users\\bekei\\My Python '
@@ -2555,6 +2591,22 @@
   ('ui.main_window',
    'C:\\Users\\bekei\\My Python '
    'stuff\\image-dupe-manager\\dejaview\\ui\\main_window.py',
+   'PYMODULE'),
+  ('ui.navigation',
+   'C:\\Users\\bekei\\My Python '
+   'stuff\\image-dupe-manager\\dejaview\\ui\\navigation.py',
+   'PYMODULE'),
+  ('ui.plan_review',
+   'C:\\Users\\bekei\\My Python '
+   'stuff\\image-dupe-manager\\dejaview\\ui\\plan_review.py',
+   'PYMODULE'),
+  ('ui.planning_panel',
+   'C:\\Users\\bekei\\My Python '
+   'stuff\\image-dupe-manager\\dejaview\\ui\\planning_panel.py',
+   'PYMODULE'),
+  ('ui.results_model',
+   'C:\\Users\\bekei\\My Python '
+   'stuff\\image-dupe-manager\\dejaview\\ui\\results_model.py',
    'PYMODULE'),
   ('ui.results_panel',
    'C:\\Users\\bekei\\My Python '
@@ -2575,6 +2627,14 @@
   ('ui.share_dialog',
    'C:\\Users\\bekei\\My Python '
    'stuff\\image-dupe-manager\\dejaview\\ui\\share_dialog.py',
+   'PYMODULE'),
+  ('ui.tray',
+   'C:\\Users\\bekei\\My Python '
+   'stuff\\image-dupe-manager\\dejaview\\ui\\tray.py',
+   'PYMODULE'),
+  ('ui.workflow',
+   'C:\\Users\\bekei\\My Python '
+   'stuff\\image-dupe-manager\\dejaview\\ui\\workflow.py',
    'PYMODULE'),
   ('unittest',
    'C:\\Users\\bekei\\anaconda3\\Lib\\unittest\\__init__.py',

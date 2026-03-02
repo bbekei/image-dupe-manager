@@ -14,23 +14,22 @@ Emits compare_view_requested(str pixel_hash) when a duplicate file is clicked.
 """
 
 import logging
-import os
-from dataclasses import dataclass, field
 from typing import Optional
 
 from PyQt6.QtCore import (
     QModelIndex,
-    QSortFilterProxyModel,
     Qt,
     QTimer,
     pyqtSignal,
     pyqtSlot,
 )
-from PyQt6.QtGui import QStandardItem, QStandardItemModel
+from PyQt6.QtGui import QStandardItem
 from PyQt6.QtWidgets import (
     QButtonGroup,
     QHBoxLayout,
     QHeaderView,
+    QLabel,
+    QLineEdit,
     QMenu,
     QPushButton,
     QRadioButton,
@@ -41,96 +40,37 @@ from PyQt6.QtWidgets import (
 
 from data.db import Database
 
+# Re-export from results_model for backward compatibility.
+from ui.results_model import (  # noqa: F401
+    ROLE_FILE_ID,
+    ROLE_FILE_PATH,
+    ROLE_PIXEL_HASH,
+    ROLE_IS_DUPLICATE,
+    ROLE_NODE_TYPE,
+    ROLE_IS_CROSS_LIBRARY,
+    ROLE_IS_FOLDER_DUPLICATED,
+    ROLE_FOLDER_FILE_COUNT,
+    ROLE_FOLDER_DUP_COUNT,
+    ROLE_ACTION,
+    ROLE_HAS_DECISION,
+    ROLE_IS_MASTER,
+    FILTER_ALL,
+    FILTER_DUPLICATES_ONLY,
+    FILTER_CROSS_LIBRARY,
+    DuplicateFilterProxy,
+    ResultsTreeModel,
+    ViewState,
+    _DEBOUNCE_MS,
+    _DEFAULT_INDENT,
+    _MIN_INDENT,
+)
+from ui.cluster_model import ClusterModel
+
 log = logging.getLogger(__name__)
 
-# Custom data roles stored on each leaf item (file row).
-ROLE_FILE_ID = Qt.ItemDataRole.UserRole + 1
-ROLE_FILE_PATH = Qt.ItemDataRole.UserRole + 2
-ROLE_PIXEL_HASH = Qt.ItemDataRole.UserRole + 3
-ROLE_IS_DUPLICATE = Qt.ItemDataRole.UserRole + 4
-ROLE_NODE_TYPE = Qt.ItemDataRole.UserRole + 5  # "folder" or "file"
-ROLE_IS_CROSS_LIBRARY = Qt.ItemDataRole.UserRole + 6  # Phase 5
-ROLE_IS_FOLDER_DUPLICATED = Qt.ItemDataRole.UserRole + 7  # Feature 3d
-ROLE_FOLDER_FILE_COUNT = Qt.ItemDataRole.UserRole + 8  # Feature 3d
-ROLE_FOLDER_DUP_COUNT = Qt.ItemDataRole.UserRole + 9  # Incremental folder recompute
-
-# Filter modes
-FILTER_ALL = "all"
-FILTER_DUPLICATES_ONLY = "duplicates_only"
-FILTER_CROSS_LIBRARY = "cross_library"  # Phase 5
-
-# Debounce interval (plan §Resource Usage — UI update rate-limiting).
-_DEBOUNCE_MS = 200
-
-# Tree indentation bounds (dynamic indent fitting).
-_DEFAULT_INDENT = 20
-_MIN_INDENT = 8
-
-
-@dataclass
-class _ViewState:
-    """Snapshot of user-adjustable view settings, saved/restored across reloads."""
-
-    filter_mode: str = FILTER_ALL
-    expanded_paths: set[str] = field(default_factory=set)
-    scroll_value: int = 0
-    selected_path: str | None = None
-
-
-class _DuplicateFilterProxy(QSortFilterProxyModel):
-    """Proxy that hides non-duplicate files when Duplicates Only filter is active.
-
-    Shows files in their original folder context (plan §Workflow 2):
-      "Files are still shown in their original folder context."
-    A folder node is visible iff it has at least one visible descendant.
-    """
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self._filter_mode: str = FILTER_ALL
-
-    def set_filter_mode(self, mode: str) -> None:
-        self._filter_mode = mode
-        self.invalidateFilter()
-
-    @property
-    def filter_mode(self) -> str:
-        return self._filter_mode
-
-    def filterAcceptsRow(self, source_row: int, source_parent: QModelIndex) -> bool:
-        if self._filter_mode == FILTER_ALL:
-            return True
-
-        idx = self.sourceModel().index(source_row, 0, source_parent)
-        node_type = idx.data(ROLE_NODE_TYPE)
-
-        if node_type == "file":
-            # If parent folder is fully duplicated in Duplicates Only mode,
-            # hide individual files — the folder badge represents them.
-            if self._filter_mode == FILTER_DUPLICATES_ONLY and source_parent.isValid():
-                parent_is_folder_dup = source_parent.data(ROLE_IS_FOLDER_DUPLICATED)
-                if parent_is_folder_dup:
-                    return False
-
-            if self._filter_mode == FILTER_DUPLICATES_ONLY:
-                return bool(idx.data(ROLE_IS_DUPLICATE))
-            if self._filter_mode == FILTER_CROSS_LIBRARY:
-                return bool(idx.data(ROLE_IS_CROSS_LIBRARY))
-            return True
-
-        # Folder node.
-        if node_type == "folder":
-            # Fully duplicated folders are always visible in Duplicates filter.
-            if self._filter_mode == FILTER_DUPLICATES_ONLY and idx.data(ROLE_IS_FOLDER_DUPLICATED):
-                return True
-            # Otherwise: accept if any child is accepted (recursive).
-            model = self.sourceModel()
-            for child_row in range(model.rowCount(idx)):
-                if self.filterAcceptsRow(child_row, idx):
-                    return True
-            return False
-
-        return False
+# Backward-compatible aliases for internal names used by old imports.
+_DuplicateFilterProxy = DuplicateFilterProxy
+_ViewState = ViewState
 
 
 class ResultsPanel(QWidget):
@@ -141,11 +81,20 @@ class ResultsPanel(QWidget):
     compare_view_requested = pyqtSignal(str)  # pixel_hash
     compare_folder_requested = pyqtSignal(str)  # folder_path
 
-    def __init__(self, db: Database, session_id: int | None = None, parent=None, perf_monitor=None):
+    def __init__(self, db: Database, session_id: int | None = None, parent=None,
+                 perf_monitor=None, tree_model: ResultsTreeModel | None = None):
         super().__init__(parent)
         self._db = db
         self._session_id = session_id
         self._perf = perf_monitor  # None = no telemetry overhead
+
+        # Shared tree model (or create a private one).
+        self._tree_model = tree_model or ResultsTreeModel()
+        self._model = self._tree_model.model
+
+        # Phase 5: Cluster view model (loaded on-demand).
+        self._cluster_model = ClusterModel()
+        self._view_mode = "tree"  # "tree" or "cluster"
 
         # Pending updates queued by scanner signals, flushed by debounce timer.
         self._pending_file_ids: list[int] = []
@@ -154,23 +103,29 @@ class ResultsPanel(QWidget):
         # Directories that completed hashing and need folder-badge recompute.
         self._pending_folder_recomputes: list[str] = []
 
-        # Track duplicate pixel_hashes for badge updates.
-        self._duplicate_hashes: set[str] = set()
-
-        # Track cross-library pixel_hashes (Phase 5).
-        self._cross_library_hashes: set[str] = set()
-
-        # Folder path → QStandardItem mapping for incremental tree building.
-        self._folder_items: dict[str, QStandardItem] = {}
-
-        # file_id → QStandardItem for O(1) lookup (replaces recursive tree search).
-        self._file_id_to_item: dict[int, QStandardItem] = {}
-
         # Saved view state for persistence across reloads.
-        self._saved_state: _ViewState | None = None
+        self._saved_state: ViewState | None = None
 
         self._build_ui()
         self._build_debounce_timer()
+
+    # ── Convenience accessors for shared model data ───────────────────
+
+    @property
+    def _duplicate_hashes(self) -> set[str]:
+        return self._tree_model.duplicate_hashes
+
+    @property
+    def _cross_library_hashes(self) -> set[str]:
+        return self._tree_model.cross_library_hashes
+
+    @property
+    def _folder_items(self) -> dict[str, QStandardItem]:
+        return self._tree_model.folder_items
+
+    @property
+    def _file_id_to_item(self) -> dict[int, QStandardItem]:
+        return self._tree_model.file_id_to_item
 
     # ── Public API ───────────────────────────────────────────────────────
 
@@ -188,40 +143,11 @@ class ResultsPanel(QWidget):
             else self._saved_state
         )
 
-        self._model.clear()
-        self._model.setHorizontalHeaderLabels([self.tr("Name"), self.tr("Status")])
-        self._folder_items.clear()
-        self._file_id_to_item.clear()
-        self._duplicate_hashes.clear()
-        self._cross_library_hashes.clear()
-
-        if self._session_id is None:
-            return
-
-        # Load duplicate hashes.
-        for row in self._db.get_duplicate_groups(self._session_id):
-            self._duplicate_hashes.add(row["pixel_hash"])
-
-        # Load cross-library hashes (Phase 5).
-        for row in self._db.get_cross_library_matches(self._session_id):
-            self._cross_library_hashes.add(row["pixel_hash"])
+        # Delegate tree rebuild to the shared model.
+        self._tree_model.load_from_db(self._db, self._session_id)
 
         # Enable/disable Cross-Library radio based on data availability.
         self._radio_cross.setEnabled(len(self._cross_library_hashes) > 0)
-
-        # Load all files for this session and build the tree.
-        files = self._db.get_files_for_session(self._session_id)
-        for f in files:
-            if f["status"] != "active":
-                continue
-            self._add_file_to_tree(
-                file_id=f["id"],
-                path=f["path"],
-                pixel_hash=f["pixel_hash"],
-            )
-
-        # Compute folder-level duplication badges.
-        self._compute_folder_duplication()
 
         # Dynamic view adjustments.
         self._adjust_indentation()
@@ -232,6 +158,8 @@ class ResultsPanel(QWidget):
             self._restore_view_state(state)
         else:
             self._smart_expand()
+
+        self._update_stats()
 
     def update_cross_library_data(self) -> None:
         """Refresh cross-library hashes after an import and update filter/tags.
@@ -309,6 +237,38 @@ class ResultsPanel(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(2)
 
+        # Phase 5: View toggle + search bar toolbar.
+        toolbar_row = QHBoxLayout()
+        toolbar_row.setContentsMargins(6, 4, 6, 0)
+
+        self._view_group = QButtonGroup(self)
+        self._tree_btn = QPushButton(self.tr("Tree View"), self)
+        self._tree_btn.setCheckable(True)
+        self._tree_btn.setChecked(True)
+        self._cluster_btn = QPushButton(self.tr("Cluster View"), self)
+        self._cluster_btn.setCheckable(True)
+        self._view_group.addButton(self._tree_btn, 0)
+        self._view_group.addButton(self._cluster_btn, 1)
+        self._view_group.setExclusive(True)
+        toolbar_row.addWidget(self._tree_btn)
+        toolbar_row.addWidget(self._cluster_btn)
+
+        toolbar_row.addSpacing(12)
+
+        self._search_input = QLineEdit(self)
+        self._search_input.setPlaceholderText(self.tr("Search files..."))
+        self._search_input.setClearButtonEnabled(True)
+        self._search_input.setMaximumWidth(250)
+        toolbar_row.addWidget(self._search_input)
+        toolbar_row.addStretch()
+        layout.addLayout(toolbar_row)
+
+        # Phase 5: Stats header.
+        self._stats_label = QLabel("", self)
+        self._stats_label.setContentsMargins(6, 0, 6, 0)
+        self._stats_label.setStyleSheet("color: #666; font-size: 11px;")
+        layout.addWidget(self._stats_label)
+
         # Filter bar (plan §Workflow 2 — filter bar above the tree).
         filter_row = QHBoxLayout()
         filter_row.setContentsMargins(6, 4, 6, 0)
@@ -339,10 +299,7 @@ class ResultsPanel(QWidget):
         layout.addLayout(filter_row)
 
         # Tree view.
-        self._model = QStandardItemModel(self)
-        self._model.setHorizontalHeaderLabels([self.tr("Name"), self.tr("Status")])
-
-        self._proxy = _DuplicateFilterProxy(self)
+        self._proxy = DuplicateFilterProxy(self)
         self._proxy.setSourceModel(self._model)
 
         self._tree = QTreeView(self)
@@ -356,6 +313,9 @@ class ResultsPanel(QWidget):
         header.setStretchLastSection(False)
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+
+        # Hide Action column (used only by PlanningPanel).
+        self._tree.setColumnHidden(2, True)
 
         layout.addWidget(self._tree)
 
@@ -375,6 +335,8 @@ class ResultsPanel(QWidget):
         self._filter_group.idToggled.connect(self._on_filter_changed)
         self._tree.doubleClicked.connect(self._on_item_double_clicked)
         self._compare_btn.clicked.connect(self._on_compare_clicked)
+        self._view_group.idToggled.connect(self._on_view_toggled)
+        self._search_input.textChanged.connect(self._on_search_changed)
 
     def _build_debounce_timer(self) -> None:
         """200ms debounce timer (plan §Resource Usage — UI update rate-limiting)."""
@@ -402,7 +364,7 @@ class ResultsPanel(QWidget):
         for file_id in file_ids:
             row = self._db.get_file(file_id)
             if row and row["status"] == "active":
-                self._add_file_to_tree(
+                self._tree_model.add_file_to_tree(
                     file_id=row["id"],
                     path=row["path"],
                     pixel_hash=row["pixel_hash"],
@@ -415,7 +377,7 @@ class ResultsPanel(QWidget):
             seen[file_id] = pixel_hash
         self._pending_hash_updates.clear()
         for file_id, pixel_hash in seen.items():
-            self._update_file_badge(file_id, pixel_hash)
+            self._tree_model.update_file_badge(file_id, pixel_hash)
 
         # Incremental folder-badge recompute: only process completed dirs
         # and their parent chain, not the entire tree.
@@ -423,7 +385,7 @@ class ResultsPanel(QWidget):
             dirs = self._pending_folder_recomputes[:]
             self._pending_folder_recomputes.clear()
             for dir_path in dirs:
-                self._recompute_folder_chain(dir_path)
+                self._tree_model.recompute_folder_chain(dir_path)
 
         # Auto-fit columns after incremental updates.
         if file_ids:
@@ -433,202 +395,11 @@ class ResultsPanel(QWidget):
         if not self._pending_file_ids and not self._pending_hash_updates:
             self._debounce_timer.stop()
 
-    # ── Tree model helpers ───────────────────────────────────────────────
-
-    def _add_file_to_tree(
-        self, file_id: int, path: str, pixel_hash: Optional[str]
-    ) -> None:
-        """Insert a file leaf under its folder hierarchy."""
-        # Derive folder chain from the file path.
-        dir_path = os.path.dirname(path)
-        filename = os.path.basename(path)
-
-        parent_item = self._get_or_create_folder(dir_path)
-
-        # Check if file already exists (idempotent for resume).
-        for row_idx in range(parent_item.rowCount()):
-            child = parent_item.child(row_idx, 0)
-            if child and child.data(ROLE_FILE_ID) == file_id:
-                return  # already in tree
-
-        is_dup = pixel_hash in self._duplicate_hashes if pixel_hash else False
-        is_cross = pixel_hash in self._cross_library_hashes if pixel_hash else False
-
-        name_item = QStandardItem(filename)
-        name_item.setData(file_id, ROLE_FILE_ID)
-        name_item.setData(path, ROLE_FILE_PATH)
-        name_item.setData(pixel_hash, ROLE_PIXEL_HASH)
-        name_item.setData(is_dup, ROLE_IS_DUPLICATE)
-        name_item.setData(is_cross, ROLE_IS_CROSS_LIBRARY)
-        name_item.setData("file", ROLE_NODE_TYPE)
-        name_item.setEditable(False)
-
-        badge_item = QStandardItem(self.tr("\u25cf DUPLICATE") if is_dup else "")
-        badge_item.setEditable(False)
-
-        parent_item.appendRow([name_item, badge_item])
-        self._file_id_to_item[file_id] = name_item
-
-    def _get_or_create_folder(self, dir_path: str) -> QStandardItem:
-        """Return (and cache) the QStandardItem for a folder node, creating parents as needed."""
-        if not dir_path:
-            return self._model.invisibleRootItem()
-
-        if dir_path in self._folder_items:
-            return self._folder_items[dir_path]
-
-        # Walk up to find the nearest existing ancestor.
-        parent_dir = os.path.dirname(dir_path)
-        folder_name = os.path.basename(dir_path)
-
-        # For drive roots like "C:\", basename is empty; use the full path.
-        if not folder_name:
-            folder_name = dir_path
-
-        parent_item = self._get_or_create_folder(parent_dir) if parent_dir != dir_path else self._model.invisibleRootItem()
-
-        # Check if this folder already exists under the parent.
-        for row_idx in range(parent_item.rowCount()):
-            child = parent_item.child(row_idx, 0)
-            if child and child.data(ROLE_NODE_TYPE) == "folder" and child.text() == folder_name:
-                self._folder_items[dir_path] = child
-                return child
-
-        folder_item = QStandardItem(folder_name)
-        folder_item.setData("folder", ROLE_NODE_TYPE)
-        folder_item.setEditable(False)
-
-        spacer_item = QStandardItem("")
-        spacer_item.setEditable(False)
-
-        parent_item.appendRow([folder_item, spacer_item])
-        self._folder_items[dir_path] = folder_item
-        return folder_item
-
-    def _update_file_badge(self, file_id: int, pixel_hash: str) -> None:
-        """Update a file's duplicate badge in the tree using the supplied pixel_hash."""
-        is_dup = pixel_hash in self._duplicate_hashes if pixel_hash else False
-
-        item = self._find_file_item(file_id)
-        if item is None:
-            return
-
-        item.setData(pixel_hash, ROLE_PIXEL_HASH)
-        item.setData(is_dup, ROLE_IS_DUPLICATE)
-
-        # Update the badge column (sibling at column 1).
-        parent = item.parent() or self._model.invisibleRootItem()
-        badge_item = parent.child(item.row(), 1)
-        if badge_item:
-            badge_item.setText(self.tr("\u25cf DUPLICATE") if is_dup else "")
-
-    # ── Folder-level duplication detection (Feature 3d) ────────────────
-
-    def _compute_folder_duplication(self) -> None:
-        """Walk the tree bottom-up and mark folders where ALL files are duplicates."""
-        self._compute_folder_dup_recursive(self._model.invisibleRootItem())
-
-    def _compute_folder_dup_recursive(self, parent: QStandardItem) -> tuple:
-        """Returns (total_file_count, duplicate_file_count) for subtree."""
-        total = 0
-        duplicated = 0
-
-        for row in range(parent.rowCount()):
-            child = parent.child(row, 0)
-            if child is None:
-                continue
-
-            if child.data(ROLE_NODE_TYPE) == "file":
-                total += 1
-                if child.data(ROLE_IS_DUPLICATE):
-                    duplicated += 1
-
-            elif child.data(ROLE_NODE_TYPE) == "folder":
-                sub_total, sub_dup = self._compute_folder_dup_recursive(child)
-                total += sub_total
-                duplicated += sub_dup
-
-                is_fully_dup = sub_total > 0 and sub_total == sub_dup
-                child.setData(is_fully_dup, ROLE_IS_FOLDER_DUPLICATED)
-                child.setData(sub_total, ROLE_FOLDER_FILE_COUNT)
-                child.setData(sub_dup, ROLE_FOLDER_DUP_COUNT)
-
-                badge_item = parent.child(row, 1)
-                if badge_item:
-                    if is_fully_dup:
-                        badge_item.setText(
-                            self.tr("\u25cf DUPLICATED FOLDER ({0} files)").format(sub_total)
-                        )
-                    else:
-                        # Clear any previous folder badge if no longer fully duplicated.
-                        if badge_item.text():
-                            badge_item.setText("")
-
-        return total, duplicated
-
-    def _recompute_folder_chain(self, dir_path: str) -> None:
-        """Recompute duplication badge for *dir_path* and its ancestors.
-
-        Only walks the subtree of the target folder instead of the full tree,
-        then propagates totals upward through parent folders.
-        """
-        folder_item = self._folder_items.get(dir_path)
-        if folder_item is None:
-            return
-
-        # Walk up from the target folder to the root, recomputing each.
-        item = folder_item
-        while item is not None:
-            total, dup = self._compute_folder_dup_single(item)
-
-            is_fully_dup = total > 0 and total == dup
-            item.setData(is_fully_dup, ROLE_IS_FOLDER_DUPLICATED)
-            item.setData(total, ROLE_FOLDER_FILE_COUNT)
-            item.setData(dup, ROLE_FOLDER_DUP_COUNT)
-
-            parent = item.parent() or self._model.invisibleRootItem()
-            badge_item = parent.child(item.row(), 1)
-            if badge_item:
-                if is_fully_dup:
-                    badge_item.setText(
-                        self.tr("\u25cf DUPLICATED FOLDER ({0} files)").format(total)
-                    )
-                else:
-                    if badge_item.text():
-                        badge_item.setText("")
-
-            # Move to the parent folder; stop at invisible root.
-            item = item.parent()
-            if item is None:
-                break
-
-    def _compute_folder_dup_single(self, parent: QStandardItem) -> tuple:
-        """Returns (total_file_count, duplicate_file_count) for a single folder's children."""
-        total = 0
-        duplicated = 0
-        for row in range(parent.rowCount()):
-            child = parent.child(row, 0)
-            if child is None:
-                continue
-            if child.data(ROLE_NODE_TYPE) == "file":
-                total += 1
-                if child.data(ROLE_IS_DUPLICATE):
-                    duplicated += 1
-            elif child.data(ROLE_NODE_TYPE) == "folder":
-                # Use cached totals from subfolder (already computed).
-                total += child.data(ROLE_FOLDER_FILE_COUNT) or 0
-                duplicated += child.data(ROLE_FOLDER_DUP_COUNT) or 0
-        return total, duplicated
-
-    def _find_file_item(self, file_id: int) -> Optional[QStandardItem]:
-        """O(1) lookup for a file item by file_id."""
-        return self._file_id_to_item.get(file_id)
-
     # ── View state persistence ──────────────────────────────────────────
 
-    def _save_view_state(self) -> _ViewState:
+    def _save_view_state(self) -> ViewState:
         """Capture current filter, expansion, scroll, and selection."""
-        state = _ViewState()
+        state = ViewState()
         state.filter_mode = self._proxy.filter_mode
 
         state.expanded_paths = set()
@@ -658,7 +429,7 @@ class ResultsPanel(QWidget):
                             break
                 self._collect_expanded(child, paths)
 
-    def _restore_view_state(self, state: _ViewState) -> None:
+    def _restore_view_state(self, state: ViewState) -> None:
         """Restore filter, expansion, scroll, and selection from a snapshot."""
         self.set_filter(state.filter_mode)
 
@@ -708,19 +479,9 @@ class ResultsPanel(QWidget):
         if self._tree.columnWidth(0) < min_name_width:
             self._tree.setColumnWidth(0, min_name_width)
 
-    def _max_depth(self, parent: Optional[QStandardItem] = None, current: int = 0) -> int:
-        """Return the maximum folder nesting depth in the tree."""
-        effective: QStandardItem = parent if parent is not None else self._model.invisibleRootItem()
-        deepest = current
-        for row in range(effective.rowCount()):
-            child = effective.child(row, 0)
-            if child and child.data(ROLE_NODE_TYPE) == "folder":
-                deepest = max(deepest, self._max_depth(child, current + 1))
-        return deepest
-
     def _adjust_indentation(self) -> None:
         """Scale tree indentation inversely with depth."""
-        depth = self._max_depth()
+        depth = self._tree_model.max_depth()
         if depth <= 4:
             indent = _DEFAULT_INDENT
         else:
@@ -803,7 +564,7 @@ class ResultsPanel(QWidget):
         item = self._model.itemFromIndex(source)
         if item and item.data(ROLE_NODE_TYPE) == "folder":
             # Re-check if all children are duplicates.
-            total, duped = self._compute_folder_dup_recursive(item)
+            total, duped = self._tree_model._compute_folder_dup_recursive(item)
             if total > 0 and total == duped:
                 item.setData(True, ROLE_IS_FOLDER_DUPLICATED)
                 self._proxy.invalidateFilter()
@@ -887,6 +648,129 @@ class ResultsPanel(QWidget):
                 lambda: self.compare_view_requested.emit(pixel_hash)
             )
             menu.exec(self._tree.viewport().mapToGlobal(position))
+
+    # ── Phase 5: View toggle, search, stats ─────────────────────────────
+
+    @pyqtSlot(int, bool)
+    def _on_view_toggled(self, button_id: int, checked: bool) -> None:
+        """Switch between tree view and cluster view."""
+        if not checked:
+            return
+        if button_id == 0:
+            self._switch_to_tree_view()
+        elif button_id == 1:
+            self._switch_to_cluster_view()
+
+    def _switch_to_tree_view(self) -> None:
+        """Switch the QTreeView back to the folder-based tree model."""
+        self._view_mode = "tree"
+        self._tree.setModel(self._proxy)
+        self._tree.setColumnHidden(2, True)
+        # Restore filter bar (relevant for tree view).
+        self._radio_all.setVisible(True)
+        self._radio_dupes.setVisible(True)
+        self._radio_cross.setVisible(True)
+        self._adjust_indentation()
+        self._fit_columns()
+        self._update_stats()
+
+    def _switch_to_cluster_view(self) -> None:
+        """Switch the QTreeView to the cluster model (grouped by hash)."""
+        self._view_mode = "cluster"
+        if self._session_id is not None:
+            search = self._search_input.text().strip() or None
+            self._cluster_model.load_from_db(
+                self._db, self._session_id, search_text=search,
+            )
+        self._tree.setModel(self._cluster_model)
+        self._tree.setColumnHidden(2, False)
+        # Hide filter bar radios (cluster view uses filter sidebar instead).
+        self._radio_all.setVisible(False)
+        self._radio_dupes.setVisible(False)
+        self._radio_cross.setVisible(False)
+        self._tree.expandAll()
+        self._fit_columns()
+        self._update_stats()
+
+    @pyqtSlot(str)
+    def _on_search_changed(self, text: str) -> None:
+        """Filter the current view by filename search text."""
+        if self._view_mode == "cluster" and self._session_id is not None:
+            search = text.strip() or None
+            self._cluster_model.load_from_db(
+                self._db, self._session_id, search_text=search,
+            )
+            self._tree.expandAll()
+        # For tree view, search is informational only (full filter in sidebar).
+        self._update_stats()
+
+    def apply_filter_criteria(self, criteria) -> None:
+        """Apply FilterCriteria from the sidebar to the current view.
+
+        Args:
+            criteria: A FilterCriteria dataclass instance from filter_sidebar.
+        """
+        if self._session_id is None:
+            return
+
+        if self._view_mode == "cluster":
+            self._cluster_model.load_from_db(
+                self._db,
+                self._session_id,
+                date_from=criteria.date_from,
+                date_to=criteria.date_to,
+                extensions=criteria.extensions,
+                min_copies=criteria.min_copies,
+                sort_by=criteria.sort_by,
+                sort_desc=criteria.sort_descending,
+                search_text=criteria.search_text or self._search_input.text().strip() or None,
+            )
+            self._tree.expandAll()
+        # Tree view: the filter sidebar criteria are applied via the proxy in future enhancement.
+        self._update_stats()
+
+    def _update_stats(self) -> None:
+        """Refresh the stats header label."""
+        if self._view_mode == "cluster":
+            groups = self._cluster_model.cluster_count()
+            files = self._cluster_model.total_files()
+            waste = self._cluster_model.total_waste_bytes()
+            waste_str = self._format_size(waste)
+            self._stats_label.setText(
+                self.tr("{0} groups \u00b7 {1} files \u00b7 {2} potential savings").format(
+                    groups, files, waste_str
+                )
+            )
+        else:
+            dup_count = len(self._duplicate_hashes)
+            if dup_count > 0:
+                self._stats_label.setText(
+                    self.tr("{0} duplicate groups found").format(dup_count)
+                )
+            else:
+                self._stats_label.setText("")
+
+    @staticmethod
+    def _format_size(size_bytes: int) -> str:
+        """Format bytes into human-readable string."""
+        if size_bytes < 1024:
+            return f"{size_bytes} B"
+        elif size_bytes < 1024 * 1024:
+            return f"{size_bytes / 1024:.1f} KB"
+        elif size_bytes < 1024 * 1024 * 1024:
+            return f"{size_bytes / (1024 * 1024):.1f} MB"
+        else:
+            return f"{size_bytes / (1024 * 1024 * 1024):.2f} GB"
+
+    @property
+    def view_mode(self) -> str:
+        """Return current view mode: 'tree' or 'cluster'."""
+        return self._view_mode
+
+    @property
+    def cluster_model(self) -> ClusterModel:
+        """Access the cluster model (for wiring from cleanup_screen)."""
+        return self._cluster_model
 
     # ── Helpers for tests ────────────────────────────────────────────────
 

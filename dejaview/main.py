@@ -102,6 +102,17 @@ def _startup_thumbnail_cleanup(db: Database, thumb_dir: Path) -> None:
         log.warning("Startup thumbnail cleanup failed: %s", exc)
 
 
+def _startup_trash_purge(trash_root: Path) -> None:
+    """Purge expired soft-deleted files at startup (30-day recovery window)."""
+    try:
+        from core.trash import purge_expired
+        purged = purge_expired(trash_root)
+        if purged:
+            log.info("Purged %d expired trash files at startup.", len(purged))
+    except Exception as exc:
+        log.warning("Startup trash purge failed: %s", exc)
+
+
 def _create_drive_sync(db: Database, app_dir: Path) -> DriveSync | None:
     """Create a DriveSync instance if sync is configured.
 
@@ -177,6 +188,9 @@ def main() -> None:
     db.open()
 
     _startup_thumbnail_cleanup(db, thumb_dir)
+
+    # UX Redesign Phase 3 — purge expired soft-deleted files (30-day window).
+    _startup_trash_purge(app_dir / ".dejaview_trash")
 
     # Plan §Phase 6 — create DriveSync if configured.
     drive_sync = _create_drive_sync(db, app_dir)

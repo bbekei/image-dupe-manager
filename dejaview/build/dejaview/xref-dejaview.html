@@ -30,6 +30,7 @@ imports:
  &#8226;   <a href="#collections.abc">collections.abc</a>
  &#8226;   <a href="#copyreg">copyreg</a>
  &#8226;   <a href="#core.perf_monitor">core.perf_monitor</a>
+ &#8226;   <a href="#core.trash">core.trash</a>
  &#8226;   <a href="#data.db">data.db</a>
  &#8226;   <a href="#data.sync">data.sync</a>
  &#8226;   <a href="#encodings">encodings</a>
@@ -2861,12 +2862,23 @@ imports:
 imported by:
     <a href="#PyQt6.QtGui">PyQt6.QtGui</a>
  &#8226;   <a href="#PyQt6.QtWidgets">PyQt6.QtWidgets</a>
+ &#8226;   <a href="#core.executor">core.executor</a>
  &#8226;   <a href="#core.scanner">core.scanner</a>
  &#8226;   <a href="#main.py">main.py</a>
+ &#8226;   <a href="#ui.batch_actions">ui.batch_actions</a>
+ &#8226;   <a href="#ui.cleanup_screen">ui.cleanup_screen</a>
+ &#8226;   <a href="#ui.cluster_model">ui.cluster_model</a>
  &#8226;   <a href="#ui.compare_view">ui.compare_view</a>
+ &#8226;   <a href="#ui.dashboard">ui.dashboard</a>
+ &#8226;   <a href="#ui.execution_screen">ui.execution_screen</a>
+ &#8226;   <a href="#ui.filter_sidebar">ui.filter_sidebar</a>
  &#8226;   <a href="#ui.folder_panel">ui.folder_panel</a>
  &#8226;   <a href="#ui.help_dialog">ui.help_dialog</a>
  &#8226;   <a href="#ui.main_window">ui.main_window</a>
+ &#8226;   <a href="#ui.navigation">ui.navigation</a>
+ &#8226;   <a href="#ui.plan_review">ui.plan_review</a>
+ &#8226;   <a href="#ui.planning_panel">ui.planning_panel</a>
+ &#8226;   <a href="#ui.results_model">ui.results_model</a>
  &#8226;   <a href="#ui.results_panel">ui.results_panel</a>
  &#8226;   <a href="#ui.scan_control">ui.scan_control</a>
  &#8226;   <a href="#ui.scan_progress">ui.scan_progress</a>
@@ -2894,7 +2906,13 @@ imported by:
     <a href="#PyQt6">PyQt6</a>
  &#8226;   <a href="#PyQt6.QtWidgets">PyQt6.QtWidgets</a>
  &#8226;   <a href="#ui.compare_view">ui.compare_view</a>
+ &#8226;   <a href="#ui.dashboard">ui.dashboard</a>
+ &#8226;   <a href="#ui.execution_screen">ui.execution_screen</a>
+ &#8226;   <a href="#ui.plan_review">ui.plan_review</a>
+ &#8226;   <a href="#ui.planning_panel">ui.planning_panel</a>
+ &#8226;   <a href="#ui.results_model">ui.results_model</a>
  &#8226;   <a href="#ui.results_panel">ui.results_panel</a>
+ &#8226;   <a href="#ui.tray">ui.tray</a>
 
   </div>
 
@@ -2916,15 +2934,24 @@ imports:
   <div class="import">
 imported by:
     <a href="#main.py">main.py</a>
+ &#8226;   <a href="#ui.batch_actions">ui.batch_actions</a>
+ &#8226;   <a href="#ui.cleanup_screen">ui.cleanup_screen</a>
  &#8226;   <a href="#ui.compare_view">ui.compare_view</a>
+ &#8226;   <a href="#ui.dashboard">ui.dashboard</a>
+ &#8226;   <a href="#ui.execution_screen">ui.execution_screen</a>
+ &#8226;   <a href="#ui.filter_sidebar">ui.filter_sidebar</a>
  &#8226;   <a href="#ui.folder_panel">ui.folder_panel</a>
  &#8226;   <a href="#ui.help_dialog">ui.help_dialog</a>
  &#8226;   <a href="#ui.main_window">ui.main_window</a>
+ &#8226;   <a href="#ui.navigation">ui.navigation</a>
+ &#8226;   <a href="#ui.plan_review">ui.plan_review</a>
+ &#8226;   <a href="#ui.planning_panel">ui.planning_panel</a>
  &#8226;   <a href="#ui.results_panel">ui.results_panel</a>
  &#8226;   <a href="#ui.scan_control">ui.scan_control</a>
  &#8226;   <a href="#ui.scan_progress">ui.scan_progress</a>
  &#8226;   <a href="#ui.settings_dialog">ui.settings_dialog</a>
  &#8226;   <a href="#ui.share_dialog">ui.share_dialog</a>
+ &#8226;   <a href="#ui.tray">ui.tray</a>
 
   </div>
 
@@ -7661,6 +7688,7 @@ imported by:
  &#8226;   <a href="#concurrent.futures._base">concurrent.futures._base</a>
  &#8226;   <a href="#configparser">configparser</a>
  &#8226;   <a href="#contextlib">contextlib</a>
+ &#8226;   <a href="#data.db">data.db</a>
  &#8226;   <a href="#difflib">difflib</a>
  &#8226;   <a href="#dis">dis</a>
  &#8226;   <a href="#doctest">doctest</a>
@@ -8148,9 +8176,34 @@ imported by:
   <a target="code" href="///C:/Users/bekei/My%20Python%20stuff/image-dupe-manager/dejaview/core/__init__.py" type="text/plain"><tt>core</tt></a>
 <span class="moduletype">Package</span>  <div class="import">
 imported by:
-    <a href="#core.hasher">core.hasher</a>
+    <a href="#core.executor">core.executor</a>
+ &#8226;   <a href="#core.hasher">core.hasher</a>
  &#8226;   <a href="#core.perf_monitor">core.perf_monitor</a>
  &#8226;   <a href="#core.scanner">core.scanner</a>
+ &#8226;   <a href="#core.selection">core.selection</a>
+ &#8226;   <a href="#core.trash">core.trash</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="core.executor"></a>
+  <a target="code" href="///C:/Users/bekei/My%20Python%20stuff/image-dupe-manager/dejaview/core/executor.py" type="text/plain"><tt>core.executor</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#PyQt6.QtCore">PyQt6.QtCore</a>
+ &#8226;   <a href="#core">core</a>
+ &#8226;   <a href="#core.trash">core.trash</a>
+ &#8226;   <a href="#data.db">data.db</a>
+ &#8226;   <a href="#datetime">datetime</a>
+ &#8226;   <a href="#logging">logging</a>
+ &#8226;   <a href="#pathlib">pathlib</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#ui.main_window">ui.main_window</a>
 
   </div>
 
@@ -8229,6 +8282,49 @@ imports:
   <div class="import">
 imported by:
     <a href="#ui.main_window">ui.main_window</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="core.selection"></a>
+  <a target="code" href="///C:/Users/bekei/My%20Python%20stuff/image-dupe-manager/dejaview/core/selection.py" type="text/plain"><tt>core.selection</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#core">core</a>
+ &#8226;   <a href="#datetime">datetime</a>
+ &#8226;   <a href="#enum">enum</a>
+ &#8226;   <a href="#typing">typing</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#ui.batch_actions">ui.batch_actions</a>
+ &#8226;   <a href="#ui.cluster_model">ui.cluster_model</a>
+ &#8226;   <a href="#ui.results_model">ui.results_model</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="core.trash"></a>
+  <a target="code" href="///C:/Users/bekei/My%20Python%20stuff/image-dupe-manager/dejaview/core/trash.py" type="text/plain"><tt>core.trash</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#core">core</a>
+ &#8226;   <a href="#datetime">datetime</a>
+ &#8226;   <a href="#logging">logging</a>
+ &#8226;   <a href="#os">os</a>
+ &#8226;   <a href="#pathlib">pathlib</a>
+ &#8226;   <a href="#shutil">shutil</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#core.executor">core.executor</a>
+ &#8226;   <a href="#main.py">main.py</a>
 
   </div>
 
@@ -9858,7 +9954,8 @@ imported by:
   <a target="code" href="///C:/Users/bekei/My%20Python%20stuff/image-dupe-manager/dejaview/data/db.py" type="text/plain"><tt>data.db</tt></a>
 <span class="moduletype">SourceModule</span>  <div class="import">
 imports:
-    <a href="#data">data</a>
+    <a href="#collections">collections</a>
+ &#8226;   <a href="#data">data</a>
  &#8226;   <a href="#pathlib">pathlib</a>
  &#8226;   <a href="#re">re</a>
  &#8226;   <a href="#sqlite3">sqlite3</a>
@@ -9867,13 +9964,21 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#core.scanner">core.scanner</a>
+    <a href="#core.executor">core.executor</a>
+ &#8226;   <a href="#core.scanner">core.scanner</a>
  &#8226;   <a href="#data.export">data.export</a>
  &#8226;   <a href="#data.sync">data.sync</a>
  &#8226;   <a href="#main.py">main.py</a>
+ &#8226;   <a href="#ui.batch_actions">ui.batch_actions</a>
+ &#8226;   <a href="#ui.cleanup_screen">ui.cleanup_screen</a>
+ &#8226;   <a href="#ui.cluster_model">ui.cluster_model</a>
  &#8226;   <a href="#ui.compare_view">ui.compare_view</a>
+ &#8226;   <a href="#ui.dashboard">ui.dashboard</a>
  &#8226;   <a href="#ui.folder_panel">ui.folder_panel</a>
  &#8226;   <a href="#ui.main_window">ui.main_window</a>
+ &#8226;   <a href="#ui.plan_review">ui.plan_review</a>
+ &#8226;   <a href="#ui.planning_panel">ui.planning_panel</a>
+ &#8226;   <a href="#ui.results_model">ui.results_model</a>
  &#8226;   <a href="#ui.results_panel">ui.results_panel</a>
  &#8226;   <a href="#ui.settings_dialog">ui.settings_dialog</a>
  &#8226;   <a href="#ui.share_dialog">ui.share_dialog</a>
@@ -9967,7 +10072,9 @@ imported by:
  &#8226;   <a href="#packaging._tokenizer">packaging._tokenizer</a>
  &#8226;   <a href="#pprint">pprint</a>
  &#8226;   <a href="#setuptools._vendor.packaging._tokenizer">setuptools._vendor.packaging._tokenizer</a>
- &#8226;   <a href="#ui.results_panel">ui.results_panel</a>
+ &#8226;   <a href="#ui.cluster_model">ui.cluster_model</a>
+ &#8226;   <a href="#ui.filter_sidebar">ui.filter_sidebar</a>
+ &#8226;   <a href="#ui.results_model">ui.results_model</a>
  &#8226;   <a href="#urllib3.contrib.emscripten.request">urllib3.contrib.emscripten.request</a>
  &#8226;   <a href="#urllib3.contrib.emscripten.response">urllib3.contrib.emscripten.response</a>
  &#8226;   <a href="#wheel.vendored.packaging._tokenizer">wheel.vendored.packaging._tokenizer</a>
@@ -9995,7 +10102,10 @@ imported by:
  &#8226;   <a href="#PyQt6.QtWidgets">PyQt6.QtWidgets</a>
  &#8226;   <a href="#_strptime">_strptime</a>
  &#8226;   <a href="#calendar">calendar</a>
+ &#8226;   <a href="#core.executor">core.executor</a>
  &#8226;   <a href="#core.scanner">core.scanner</a>
+ &#8226;   <a href="#core.selection">core.selection</a>
+ &#8226;   <a href="#core.trash">core.trash</a>
  &#8226;   <a href="#cryptography.x509.base">cryptography.x509.base</a>
  &#8226;   <a href="#cryptography.x509.extensions">cryptography.x509.extensions</a>
  &#8226;   <a href="#data.export">data.export</a>
@@ -10030,7 +10140,9 @@ imported by:
  &#8226;   <a href="#sqlite3.dbapi2">sqlite3.dbapi2</a>
  &#8226;   <a href="#tomli._re">tomli._re</a>
  &#8226;   <a href="#tomllib._re">tomllib._re</a>
+ &#8226;   <a href="#ui.batch_actions">ui.batch_actions</a>
  &#8226;   <a href="#ui.main_window">ui.main_window</a>
+ &#8226;   <a href="#ui.planning_panel">ui.planning_panel</a>
  &#8226;   <a href="#urllib3.connection">urllib3.connection</a>
  &#8226;   <a href="#xmlrpc.client">xmlrpc.client</a>
  &#8226;   <a href="#xmlrpc.server">xmlrpc.server</a>
@@ -13578,6 +13690,7 @@ imported by:
  &#8226;   <a href="#asyncio.sslproto">asyncio.sslproto</a>
  &#8226;   <a href="#asyncio.timeouts">asyncio.timeouts</a>
  &#8226;   <a href="#calendar">calendar</a>
+ &#8226;   <a href="#core.selection">core.selection</a>
  &#8226;   <a href="#cryptography.hazmat.primitives.serialization.ssh">cryptography.hazmat.primitives.serialization.ssh</a>
  &#8226;   <a href="#cryptography.utils">cryptography.utils</a>
  &#8226;   <a href="#google.api_core._python_version_support">google.api_core._python_version_support</a>
@@ -13597,6 +13710,7 @@ imported by:
  &#8226;   <a href="#signal">signal</a>
  &#8226;   <a href="#socket">socket</a>
  &#8226;   <a href="#ssl">ssl</a>
+ &#8226;   <a href="#ui.workflow">ui.workflow</a>
  &#8226;   <a href="#uritemplate.variable">uritemplate.variable</a>
  &#8226;   <a href="#urllib3._collections">urllib3._collections</a>
  &#8226;   <a href="#urllib3.util.request">urllib3.util.request</a>
@@ -13676,6 +13790,7 @@ imported by:
  &#8226;   <a href="#setuptools.glob">setuptools.glob</a>
  &#8226;   <a href="#shutil">shutil</a>
  &#8226;   <a href="#tracemalloc">tracemalloc</a>
+ &#8226;   <a href="#ui.batch_actions">ui.batch_actions</a>
  &#8226;   <a href="#unittest.loader">unittest.loader</a>
  &#8226;   <a href="#urllib.request">urllib.request</a>
 
@@ -16955,7 +17070,6 @@ imports:
  &#8226;   <a href="#importlib">importlib</a>
  &#8226;   <a href="#importlib._bootstrap">importlib._bootstrap</a>
  &#8226;   <a href="#importlib._bootstrap_external">importlib._bootstrap_external</a>
- &#8226;   <a href="#importlib.machinery">importlib.machinery</a>
  &#8226;   <a href="#sys">sys</a>
  &#8226;   <a href="#warnings">warnings</a>
 
@@ -17111,7 +17225,6 @@ imported by:
     <a href="#cffi._imp_emulation">cffi._imp_emulation</a>
  &#8226;   <a href="#cffi.verifier">cffi.verifier</a>
  &#8226;   <a href="#ctypes.util">ctypes.util</a>
- &#8226;   <a href="#importlib">importlib</a>
  &#8226;   <a href="#importlib.abc">importlib.abc</a>
  &#8226;   <a href="#inspect">inspect</a>
  &#8226;   <a href="#packaging.tags">packaging.tags</a>
@@ -19357,8 +19470,10 @@ imported by:
  &#8226;   <a href="#charset_normalizer.md">charset_normalizer.md</a>
  &#8226;   <a href="#charset_normalizer.utils">charset_normalizer.utils</a>
  &#8226;   <a href="#concurrent.futures._base">concurrent.futures._base</a>
+ &#8226;   <a href="#core.executor">core.executor</a>
  &#8226;   <a href="#core.perf_monitor">core.perf_monitor</a>
  &#8226;   <a href="#core.scanner">core.scanner</a>
+ &#8226;   <a href="#core.trash">core.trash</a>
  &#8226;   <a href="#data.export">data.export</a>
  &#8226;   <a href="#data.sync">data.sync</a>
  &#8226;   <a href="#google.api_core._python_version_support">google.api_core._python_version_support</a>
@@ -19441,14 +19556,22 @@ imported by:
  &#8226;   <a href="#setuptools.config.pyprojecttoml">setuptools.config.pyprojecttoml</a>
  &#8226;   <a href="#setuptools.logging">setuptools.logging</a>
  &#8226;   <a href="#socks">socks</a>
+ &#8226;   <a href="#ui.cleanup_screen">ui.cleanup_screen</a>
  &#8226;   <a href="#ui.compare_view">ui.compare_view</a>
+ &#8226;   <a href="#ui.dashboard">ui.dashboard</a>
+ &#8226;   <a href="#ui.execution_screen">ui.execution_screen</a>
  &#8226;   <a href="#ui.folder_panel">ui.folder_panel</a>
  &#8226;   <a href="#ui.help_dialog">ui.help_dialog</a>
  &#8226;   <a href="#ui.main_window">ui.main_window</a>
+ &#8226;   <a href="#ui.navigation">ui.navigation</a>
+ &#8226;   <a href="#ui.plan_review">ui.plan_review</a>
+ &#8226;   <a href="#ui.planning_panel">ui.planning_panel</a>
+ &#8226;   <a href="#ui.results_model">ui.results_model</a>
  &#8226;   <a href="#ui.results_panel">ui.results_panel</a>
  &#8226;   <a href="#ui.scan_control">ui.scan_control</a>
  &#8226;   <a href="#ui.scan_progress">ui.scan_progress</a>
  &#8226;   <a href="#ui.share_dialog">ui.share_dialog</a>
+ &#8226;   <a href="#ui.tray">ui.tray</a>
  &#8226;   <a href="#unittest._log">unittest._log</a>
  &#8226;   <a href="#urllib3">urllib3</a>
  &#8226;   <a href="#urllib3.connection">urllib3.connection</a>
@@ -22547,6 +22670,7 @@ imported by:
  &#8226;   <a href="#core.hasher">core.hasher</a>
  &#8226;   <a href="#core.perf_monitor">core.perf_monitor</a>
  &#8226;   <a href="#core.scanner">core.scanner</a>
+ &#8226;   <a href="#core.trash">core.trash</a>
  &#8226;   <a href="#cryptography.hazmat.bindings.openssl.binding">cryptography.hazmat.bindings.openssl.binding</a>
  &#8226;   <a href="#cryptography.hazmat.primitives.serialization.ssh">cryptography.hazmat.primitives.serialization.ssh</a>
  &#8226;   <a href="#cryptography.x509.base">cryptography.x509.base</a>
@@ -22718,9 +22842,14 @@ imported by:
  &#8226;   <a href="#tarfile">tarfile</a>
  &#8226;   <a href="#tempfile">tempfile</a>
  &#8226;   <a href="#threading">threading</a>
+ &#8226;   <a href="#ui.batch_actions">ui.batch_actions</a>
+ &#8226;   <a href="#ui.cleanup_screen">ui.cleanup_screen</a>
+ &#8226;   <a href="#ui.cluster_model">ui.cluster_model</a>
  &#8226;   <a href="#ui.compare_view">ui.compare_view</a>
  &#8226;   <a href="#ui.main_window">ui.main_window</a>
- &#8226;   <a href="#ui.results_panel">ui.results_panel</a>
+ &#8226;   <a href="#ui.plan_review">ui.plan_review</a>
+ &#8226;   <a href="#ui.planning_panel">ui.planning_panel</a>
+ &#8226;   <a href="#ui.results_model">ui.results_model</a>
  &#8226;   <a href="#unittest.loader">unittest.loader</a>
  &#8226;   <a href="#unittest.main">unittest.main</a>
  &#8226;   <a href="#urllib.request">urllib.request</a>
@@ -23196,9 +23325,11 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#core.hasher">core.hasher</a>
+    <a href="#core.executor">core.executor</a>
+ &#8226;   <a href="#core.hasher">core.hasher</a>
  &#8226;   <a href="#core.perf_monitor">core.perf_monitor</a>
  &#8226;   <a href="#core.scanner">core.scanner</a>
+ &#8226;   <a href="#core.trash">core.trash</a>
  &#8226;   <a href="#data.db">data.db</a>
  &#8226;   <a href="#data.sync">data.sync</a>
  &#8226;   <a href="#google.auth.compute_engine._mtls">google.auth.compute_engine._mtls</a>
@@ -29875,6 +30006,7 @@ imported by:
  &#8226;   <a href="#PIL.ImageShow">PIL.ImageShow</a>
  &#8226;   <a href="#argparse">argparse</a>
  &#8226;   <a href="#cffi.verifier">cffi.verifier</a>
+ &#8226;   <a href="#core.trash">core.trash</a>
  &#8226;   <a href="#ctypes.util">ctypes.util</a>
  &#8226;   <a href="#http.server">http.server</a>
  &#8226;   <a href="#multiprocessing.util">multiprocessing.util</a>
@@ -31179,6 +31311,7 @@ imported by:
  &#8226;   <a href="#subprocess">subprocess</a>
  &#8226;   <a href="#tarfile">tarfile</a>
  &#8226;   <a href="#threading">threading</a>
+ &#8226;   <a href="#ui.execution_screen">ui.execution_screen</a>
  &#8226;   <a href="#ui.scan_control">ui.scan_control</a>
  &#8226;   <a href="#ui.scan_progress">ui.scan_progress</a>
  &#8226;   <a href="#unittest.case">unittest.case</a>
@@ -31700,6 +31833,7 @@ imported by:
  &#8226;   <a href="#charset_normalizer.md">charset_normalizer.md</a>
  &#8226;   <a href="#charset_normalizer.models">charset_normalizer.models</a>
  &#8226;   <a href="#charset_normalizer.utils">charset_normalizer.utils</a>
+ &#8226;   <a href="#core.selection">core.selection</a>
  &#8226;   <a href="#cryptography.exceptions">cryptography.exceptions</a>
  &#8226;   <a href="#cryptography.hazmat.backends">cryptography.hazmat.backends</a>
  &#8226;   <a href="#cryptography.hazmat.bindings.openssl.binding">cryptography.hazmat.bindings.openssl.binding</a>
@@ -31855,7 +31989,12 @@ imported by:
  &#8226;   <a href="#tomllib._re">tomllib._re</a>
  &#8226;   <a href="#tomllib._types">tomllib._types</a>
  &#8226;   <a href="#typing_extensions">typing_extensions</a>
+ &#8226;   <a href="#ui.batch_actions">ui.batch_actions</a>
+ &#8226;   <a href="#ui.cluster_model">ui.cluster_model</a>
  &#8226;   <a href="#ui.compare_view">ui.compare_view</a>
+ &#8226;   <a href="#ui.filter_sidebar">ui.filter_sidebar</a>
+ &#8226;   <a href="#ui.planning_panel">ui.planning_panel</a>
+ &#8226;   <a href="#ui.results_model">ui.results_model</a>
  &#8226;   <a href="#ui.results_panel">ui.results_panel</a>
  &#8226;   <a href="#ui.share_dialog">ui.share_dialog</a>
  &#8226;   <a href="#uritemplate.api">uritemplate.api</a>
@@ -31978,15 +32117,103 @@ imported by:
   <a target="code" href="///C:/Users/bekei/My%20Python%20stuff/image-dupe-manager/dejaview/ui/__init__.py" type="text/plain"><tt>ui</tt></a>
 <span class="moduletype">Package</span>  <div class="import">
 imported by:
-    <a href="#ui.compare_view">ui.compare_view</a>
+    <a href="#ui.batch_actions">ui.batch_actions</a>
+ &#8226;   <a href="#ui.cleanup_screen">ui.cleanup_screen</a>
+ &#8226;   <a href="#ui.cluster_model">ui.cluster_model</a>
+ &#8226;   <a href="#ui.compare_view">ui.compare_view</a>
+ &#8226;   <a href="#ui.dashboard">ui.dashboard</a>
+ &#8226;   <a href="#ui.execution_screen">ui.execution_screen</a>
+ &#8226;   <a href="#ui.filter_sidebar">ui.filter_sidebar</a>
  &#8226;   <a href="#ui.folder_panel">ui.folder_panel</a>
  &#8226;   <a href="#ui.help_dialog">ui.help_dialog</a>
  &#8226;   <a href="#ui.main_window">ui.main_window</a>
+ &#8226;   <a href="#ui.navigation">ui.navigation</a>
+ &#8226;   <a href="#ui.plan_review">ui.plan_review</a>
+ &#8226;   <a href="#ui.planning_panel">ui.planning_panel</a>
+ &#8226;   <a href="#ui.results_model">ui.results_model</a>
  &#8226;   <a href="#ui.results_panel">ui.results_panel</a>
  &#8226;   <a href="#ui.scan_control">ui.scan_control</a>
  &#8226;   <a href="#ui.scan_progress">ui.scan_progress</a>
  &#8226;   <a href="#ui.settings_dialog">ui.settings_dialog</a>
  &#8226;   <a href="#ui.share_dialog">ui.share_dialog</a>
+ &#8226;   <a href="#ui.tray">ui.tray</a>
+ &#8226;   <a href="#ui.workflow">ui.workflow</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="ui.batch_actions"></a>
+  <a target="code" href="///C:/Users/bekei/My%20Python%20stuff/image-dupe-manager/dejaview/ui/batch_actions.py" type="text/plain"><tt>ui.batch_actions</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#PyQt6.QtCore">PyQt6.QtCore</a>
+ &#8226;   <a href="#PyQt6.QtWidgets">PyQt6.QtWidgets</a>
+ &#8226;   <a href="#core.selection">core.selection</a>
+ &#8226;   <a href="#data.db">data.db</a>
+ &#8226;   <a href="#datetime">datetime</a>
+ &#8226;   <a href="#fnmatch">fnmatch</a>
+ &#8226;   <a href="#os">os</a>
+ &#8226;   <a href="#typing">typing</a>
+ &#8226;   <a href="#ui">ui</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#ui.cleanup_screen">ui.cleanup_screen</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="ui.cleanup_screen"></a>
+  <a target="code" href="///C:/Users/bekei/My%20Python%20stuff/image-dupe-manager/dejaview/ui/cleanup_screen.py" type="text/plain"><tt>ui.cleanup_screen</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#PyQt6.QtCore">PyQt6.QtCore</a>
+ &#8226;   <a href="#PyQt6.QtWidgets">PyQt6.QtWidgets</a>
+ &#8226;   <a href="#data.db">data.db</a>
+ &#8226;   <a href="#logging">logging</a>
+ &#8226;   <a href="#os">os</a>
+ &#8226;   <a href="#ui">ui</a>
+ &#8226;   <a href="#ui.batch_actions">ui.batch_actions</a>
+ &#8226;   <a href="#ui.compare_view">ui.compare_view</a>
+ &#8226;   <a href="#ui.filter_sidebar">ui.filter_sidebar</a>
+ &#8226;   <a href="#ui.folder_panel">ui.folder_panel</a>
+ &#8226;   <a href="#ui.planning_panel">ui.planning_panel</a>
+ &#8226;   <a href="#ui.results_model">ui.results_model</a>
+ &#8226;   <a href="#ui.results_panel">ui.results_panel</a>
+ &#8226;   <a href="#ui.scan_progress">ui.scan_progress</a>
+ &#8226;   <a href="#ui.workflow">ui.workflow</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#ui.main_window">ui.main_window</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="ui.cluster_model"></a>
+  <a target="code" href="///C:/Users/bekei/My%20Python%20stuff/image-dupe-manager/dejaview/ui/cluster_model.py" type="text/plain"><tt>ui.cluster_model</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#PyQt6.QtCore">PyQt6.QtCore</a>
+ &#8226;   <a href="#core.selection">core.selection</a>
+ &#8226;   <a href="#data.db">data.db</a>
+ &#8226;   <a href="#dataclasses">dataclasses</a>
+ &#8226;   <a href="#os">os</a>
+ &#8226;   <a href="#typing">typing</a>
+ &#8226;   <a href="#ui">ui</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#ui.results_panel">ui.results_panel</a>
 
   </div>
 
@@ -32009,7 +32236,69 @@ imports:
   </div>
   <div class="import">
 imported by:
+    <a href="#ui.cleanup_screen">ui.cleanup_screen</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="ui.dashboard"></a>
+  <a target="code" href="///C:/Users/bekei/My%20Python%20stuff/image-dupe-manager/dejaview/ui/dashboard.py" type="text/plain"><tt>ui.dashboard</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#PyQt6.QtCore">PyQt6.QtCore</a>
+ &#8226;   <a href="#PyQt6.QtGui">PyQt6.QtGui</a>
+ &#8226;   <a href="#PyQt6.QtWidgets">PyQt6.QtWidgets</a>
+ &#8226;   <a href="#data.db">data.db</a>
+ &#8226;   <a href="#logging">logging</a>
+ &#8226;   <a href="#ui">ui</a>
+
+  </div>
+  <div class="import">
+imported by:
     <a href="#ui.main_window">ui.main_window</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="ui.execution_screen"></a>
+  <a target="code" href="///C:/Users/bekei/My%20Python%20stuff/image-dupe-manager/dejaview/ui/execution_screen.py" type="text/plain"><tt>ui.execution_screen</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#PyQt6.QtCore">PyQt6.QtCore</a>
+ &#8226;   <a href="#PyQt6.QtGui">PyQt6.QtGui</a>
+ &#8226;   <a href="#PyQt6.QtWidgets">PyQt6.QtWidgets</a>
+ &#8226;   <a href="#logging">logging</a>
+ &#8226;   <a href="#time">time</a>
+ &#8226;   <a href="#ui">ui</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#ui.main_window">ui.main_window</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="ui.filter_sidebar"></a>
+  <a target="code" href="///C:/Users/bekei/My%20Python%20stuff/image-dupe-manager/dejaview/ui/filter_sidebar.py" type="text/plain"><tt>ui.filter_sidebar</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#PyQt6.QtCore">PyQt6.QtCore</a>
+ &#8226;   <a href="#PyQt6.QtWidgets">PyQt6.QtWidgets</a>
+ &#8226;   <a href="#dataclasses">dataclasses</a>
+ &#8226;   <a href="#typing">typing</a>
+ &#8226;   <a href="#ui">ui</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#ui.cleanup_screen">ui.cleanup_screen</a>
 
   </div>
 
@@ -32030,7 +32319,7 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#ui.main_window">ui.main_window</a>
+    <a href="#ui.cleanup_screen">ui.cleanup_screen</a>
 
   </div>
 
@@ -32063,6 +32352,7 @@ imported by:
 imports:
     <a href="#PyQt6.QtCore">PyQt6.QtCore</a>
  &#8226;   <a href="#PyQt6.QtWidgets">PyQt6.QtWidgets</a>
+ &#8226;   <a href="#core.executor">core.executor</a>
  &#8226;   <a href="#core.perf_monitor">core.perf_monitor</a>
  &#8226;   <a href="#core.scanner">core.scanner</a>
  &#8226;   <a href="#data.db">data.db</a>
@@ -32074,19 +32364,117 @@ imports:
  &#8226;   <a href="#os">os</a>
  &#8226;   <a href="#pathlib">pathlib</a>
  &#8226;   <a href="#ui">ui</a>
- &#8226;   <a href="#ui.compare_view">ui.compare_view</a>
- &#8226;   <a href="#ui.folder_panel">ui.folder_panel</a>
+ &#8226;   <a href="#ui.cleanup_screen">ui.cleanup_screen</a>
+ &#8226;   <a href="#ui.dashboard">ui.dashboard</a>
+ &#8226;   <a href="#ui.execution_screen">ui.execution_screen</a>
  &#8226;   <a href="#ui.help_dialog">ui.help_dialog</a>
+ &#8226;   <a href="#ui.navigation">ui.navigation</a>
+ &#8226;   <a href="#ui.plan_review">ui.plan_review</a>
+ &#8226;   <a href="#ui.results_model">ui.results_model</a>
  &#8226;   <a href="#ui.results_panel">ui.results_panel</a>
  &#8226;   <a href="#ui.scan_control">ui.scan_control</a>
- &#8226;   <a href="#ui.scan_progress">ui.scan_progress</a>
  &#8226;   <a href="#ui.settings_dialog">ui.settings_dialog</a>
  &#8226;   <a href="#ui.share_dialog">ui.share_dialog</a>
+ &#8226;   <a href="#ui.tray">ui.tray</a>
+ &#8226;   <a href="#ui.workflow">ui.workflow</a>
 
   </div>
   <div class="import">
 imported by:
     <a href="#main.py">main.py</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="ui.navigation"></a>
+  <a target="code" href="///C:/Users/bekei/My%20Python%20stuff/image-dupe-manager/dejaview/ui/navigation.py" type="text/plain"><tt>ui.navigation</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#PyQt6.QtCore">PyQt6.QtCore</a>
+ &#8226;   <a href="#PyQt6.QtWidgets">PyQt6.QtWidgets</a>
+ &#8226;   <a href="#logging">logging</a>
+ &#8226;   <a href="#ui">ui</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#ui.main_window">ui.main_window</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="ui.plan_review"></a>
+  <a target="code" href="///C:/Users/bekei/My%20Python%20stuff/image-dupe-manager/dejaview/ui/plan_review.py" type="text/plain"><tt>ui.plan_review</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#PyQt6.QtCore">PyQt6.QtCore</a>
+ &#8226;   <a href="#PyQt6.QtGui">PyQt6.QtGui</a>
+ &#8226;   <a href="#PyQt6.QtWidgets">PyQt6.QtWidgets</a>
+ &#8226;   <a href="#data.db">data.db</a>
+ &#8226;   <a href="#logging">logging</a>
+ &#8226;   <a href="#os">os</a>
+ &#8226;   <a href="#ui">ui</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#ui.main_window">ui.main_window</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="ui.planning_panel"></a>
+  <a target="code" href="///C:/Users/bekei/My%20Python%20stuff/image-dupe-manager/dejaview/ui/planning_panel.py" type="text/plain"><tt>ui.planning_panel</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#PyQt6.QtCore">PyQt6.QtCore</a>
+ &#8226;   <a href="#PyQt6.QtGui">PyQt6.QtGui</a>
+ &#8226;   <a href="#PyQt6.QtWidgets">PyQt6.QtWidgets</a>
+ &#8226;   <a href="#data.db">data.db</a>
+ &#8226;   <a href="#datetime">datetime</a>
+ &#8226;   <a href="#logging">logging</a>
+ &#8226;   <a href="#os">os</a>
+ &#8226;   <a href="#typing">typing</a>
+ &#8226;   <a href="#ui">ui</a>
+ &#8226;   <a href="#ui.results_model">ui.results_model</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#ui.cleanup_screen">ui.cleanup_screen</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="ui.results_model"></a>
+  <a target="code" href="///C:/Users/bekei/My%20Python%20stuff/image-dupe-manager/dejaview/ui/results_model.py" type="text/plain"><tt>ui.results_model</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#PyQt6.QtCore">PyQt6.QtCore</a>
+ &#8226;   <a href="#PyQt6.QtGui">PyQt6.QtGui</a>
+ &#8226;   <a href="#core.selection">core.selection</a>
+ &#8226;   <a href="#data.db">data.db</a>
+ &#8226;   <a href="#dataclasses">dataclasses</a>
+ &#8226;   <a href="#logging">logging</a>
+ &#8226;   <a href="#os">os</a>
+ &#8226;   <a href="#typing">typing</a>
+ &#8226;   <a href="#ui">ui</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#ui.cleanup_screen">ui.cleanup_screen</a>
+ &#8226;   <a href="#ui.main_window">ui.main_window</a>
+ &#8226;   <a href="#ui.planning_panel">ui.planning_panel</a>
+ &#8226;   <a href="#ui.results_panel">ui.results_panel</a>
 
   </div>
 
@@ -32101,16 +32489,17 @@ imports:
  &#8226;   <a href="#PyQt6.QtGui">PyQt6.QtGui</a>
  &#8226;   <a href="#PyQt6.QtWidgets">PyQt6.QtWidgets</a>
  &#8226;   <a href="#data.db">data.db</a>
- &#8226;   <a href="#dataclasses">dataclasses</a>
  &#8226;   <a href="#logging">logging</a>
- &#8226;   <a href="#os">os</a>
  &#8226;   <a href="#typing">typing</a>
  &#8226;   <a href="#ui">ui</a>
+ &#8226;   <a href="#ui.cluster_model">ui.cluster_model</a>
+ &#8226;   <a href="#ui.results_model">ui.results_model</a>
 
   </div>
   <div class="import">
 imported by:
-    <a href="#ui.main_window">ui.main_window</a>
+    <a href="#ui.cleanup_screen">ui.cleanup_screen</a>
+ &#8226;   <a href="#ui.main_window">ui.main_window</a>
 
   </div>
 
@@ -32150,7 +32539,7 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#ui.main_window">ui.main_window</a>
+    <a href="#ui.cleanup_screen">ui.cleanup_screen</a>
 
   </div>
 
@@ -32193,6 +32582,43 @@ imports:
   <div class="import">
 imported by:
     <a href="#ui.main_window">ui.main_window</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="ui.tray"></a>
+  <a target="code" href="///C:/Users/bekei/My%20Python%20stuff/image-dupe-manager/dejaview/ui/tray.py" type="text/plain"><tt>ui.tray</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#PyQt6.QtGui">PyQt6.QtGui</a>
+ &#8226;   <a href="#PyQt6.QtWidgets">PyQt6.QtWidgets</a>
+ &#8226;   <a href="#logging">logging</a>
+ &#8226;   <a href="#ui">ui</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#ui.main_window">ui.main_window</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="ui.workflow"></a>
+  <a target="code" href="///C:/Users/bekei/My%20Python%20stuff/image-dupe-manager/dejaview/ui/workflow.py" type="text/plain"><tt>ui.workflow</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#enum">enum</a>
+ &#8226;   <a href="#ui">ui</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#ui.cleanup_screen">ui.cleanup_screen</a>
+ &#8226;   <a href="#ui.main_window">ui.main_window</a>
 
   </div>
 

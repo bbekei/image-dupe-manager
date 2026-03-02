@@ -1,18 +1,19 @@
 """
-ui/main_window.py — DejaView application shell (plan §UI Layout — Main Window).
+ui/main_window.py — DejaView application shell.
 
-Layout:
-  Menu bar  : File | Scan | Share | Help
-  Left pane : FolderPanel (180–300 px wide)
-  Right pane: ResultsPanel (Phase 3) or CompareView (Phase 4)
-  Bottom bar: ScanControl (buttons + progress)
-  Status bar: one-line status messages
+Layout (after UX Redesign Phases 1-3):
+  Menu bar   : File | Scan | Share | Help
+  Central    : QStackedWidget managed by NavigationController
+               - "dashboard":  Dashboard (home view with status cards)
+               - "cleanup":    CleanupScreen (folder panel + results + planning)
+               - "plan_review": PlanReviewScreen (safety gate)
+               - "execution":  ExecutionScreen (progress + log)
+  Bottom bar : ScanControl (visible only on cleanup screen)
+  Status bar : one-line status messages
 
-Sync lifecycle hooks (plan §Workflow 5 — Ongoing sync):
-  - sync_on_start(): download peers silently in background
-  - _on_scan_complete(): upload export after scan finishes
-  - closeEvent(): final export upload before exit
-  - Configure Sync menu → ShareDialog (Phase 6.3)
+The scan lifecycle, export/import, sync, settings and help logic remain
+in MainWindow.  Panel-swap logic (scan progress, compare view, planning)
+is delegated to CleanupScreen.
 """
 
 import json
@@ -21,29 +22,36 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, pyqtSlot
+from PyQt6.QtCore import QThread, pyqtSignal, pyqtSlot
 from PyQt6.QtWidgets import (
     QFileDialog,
     QInputDialog,
     QMainWindow,
     QMessageBox,
-    QSplitter,
+    QStackedWidget,
     QStatusBar,
+    QSystemTrayIcon,
     QVBoxLayout,
     QWidget,
 )
 
+from core.executor import PlanExecutor
 from core.scanner import Scanner
 from data.db import Database
 from data.export import build_export_payload, import_payload, validate_username
 from data.sync import DriveSync
-from ui.compare_view import CompareView, FolderCompareView
-from ui.folder_panel import FolderPanel
+from ui.cleanup_screen import CleanupScreen
+from ui.dashboard import Dashboard
+from ui.execution_screen import ExecutionScreen
 from ui.help_dialog import HelpDialog
-from ui.results_panel import FILTER_DUPLICATES_ONLY, ResultsPanel
+from ui.navigation import NavigationController
+from ui.plan_review import PlanReviewScreen
+from ui.results_model import ResultsTreeModel
+from ui.results_panel import FILTER_DUPLICATES_ONLY
 from ui.scan_control import ScanControl
-from ui.scan_progress import ScanProgressWidget
 from ui.share_dialog import ShareDialog
+from ui.tray import TrayIcon
+from ui.workflow import WorkflowPhase
 
 log = logging.getLogger(__name__)
 
@@ -52,6 +60,10 @@ class MainWindow(QMainWindow):
     """
     Top-level window.  Owns the session lifecycle: create / restore sessions,
     wire FolderPanel to ScanControl via the Scanner QThread.
+
+    Navigation is managed by a NavigationController wrapping a QStackedWidget.
+    The Dashboard is the default home screen; the cleanup workflow is a
+    separate screen reached via the "Local Duplicates" card or "Start Scan".
     """
 
     def __init__(
@@ -65,14 +77,17 @@ class MainWindow(QMainWindow):
         self._db = db
         self._thumb_dir = thumb_dir
         self._drive_sync = drive_sync
-        self._perf_monitor = None  # set via set_perf_monitor() before scan
+        self._perf_monitor = None
         self._scanner: Scanner | None = None
+        self._executor: PlanExecutor | None = None
         self._session_id: int | None = None
-        self._compare_view: CompareView | None = None
-        self._scan_progress: ScanProgressWidget | None = None
         self._sync_worker: _SyncWorker | None = None
         self._auth_worker: "_AuthWorker | None" = None
         self._share_dialog: ShareDialog | None = None
+        self._tree_model = ResultsTreeModel()
+        self._trash_root = Path(
+            os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")
+        ) / "DejaView" / ".dejaview_trash"
 
         self.setWindowTitle(self.tr("DejaView"))
         self.setMinimumSize(900, 600)
@@ -85,7 +100,17 @@ class MainWindow(QMainWindow):
     def set_perf_monitor(self, perf_monitor) -> None:
         """Attach a PerformanceMonitor for scan telemetry (None = disabled)."""
         self._perf_monitor = perf_monitor
-        self._results_panel._perf = perf_monitor
+        self._cleanup_screen.set_perf_monitor(perf_monitor)
+
+    # ── Convenience properties (delegate to CleanupScreen) ────────────
+
+    @property
+    def _folder_panel(self):
+        return self._cleanup_screen.folder_panel
+
+    @property
+    def _results_panel(self):
+        return self._cleanup_screen.results_panel
 
     # ── UI construction ──────────────────────────────────────────────────
 
@@ -105,6 +130,11 @@ class MainWindow(QMainWindow):
         scan_menu.addAction(self.tr("Start Scan"), self._on_start)
         scan_menu.addAction(self.tr("Pause"), self._on_pause)
         scan_menu.addAction(self.tr("Stop"), self._on_stop)
+        scan_menu.addSeparator()
+        self._plan_action = scan_menu.addAction(
+            self.tr("Plan Actions\u2026"), self._on_plan_actions
+        )
+        self._plan_action.setEnabled(False)
 
         # Share (plan §Workflow 6 — manual export/import)
         share_menu = mb.addMenu(self.tr("Share"))
@@ -127,85 +157,166 @@ class MainWindow(QMainWindow):
         help_menu.addAction(self.tr("User Guide\u2026"), self._on_user_guide)
 
     def _build_central(self) -> None:
-        self._splitter = QSplitter(Qt.Orientation.Horizontal, self)
-
-        # Left: folder panel (no session_id yet; set in _restore_session or on start)
-        self._folder_panel = FolderPanel(db=self._db, parent=self)
-        self._folder_panel.setMinimumWidth(180)
-        self._folder_panel.setMaximumWidth(300)
-        self._splitter.addWidget(self._folder_panel)
-
-        # Right: results tree view (plan §Dev Phases Phase 3).
-        self._results_panel = ResultsPanel(db=self._db, parent=self)
-        self._results_panel.setObjectName("results_panel")
-        self._splitter.addWidget(self._results_panel)
-
-        self._splitter.setStretchFactor(0, 0)
-        self._splitter.setStretchFactor(1, 1)
-
-        # Wrap splitter + scan control in a vertical layout
         container = QWidget(self)
         layout = QVBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        layout.addWidget(self._splitter, stretch=1)
 
+        # Stacked widget holds all screens
+        self._stacked = QStackedWidget(container)
+        layout.addWidget(self._stacked, stretch=1)
+
+        # Navigation controller
+        self._nav = NavigationController(self._stacked, parent=self)
+        self._nav.screen_changed.connect(self._on_screen_changed)
+
+        # Dashboard screen
+        self._dashboard = Dashboard(db=self._db, parent=self)
+        self._dashboard.duplicate_card_clicked.connect(self._navigate_to_cleanup)
+        self._dashboard.family_card_clicked.connect(self._on_family_card_clicked)
+        self._dashboard.request_card_clicked.connect(self._on_request_card_clicked)
+        self._dashboard.scan_requested.connect(self._on_dashboard_scan)
+        self._dashboard.sync_requested.connect(self._on_sync_now)
+        self._nav.register_screen("dashboard", self._dashboard)
+
+        # Cleanup screen (absorbs old FolderPanel + ResultsPanel + panel swaps)
+        self._cleanup_screen = CleanupScreen(
+            db=self._db, tree_model=self._tree_model, parent=self
+        )
+        self._cleanup_screen.status_message.connect(self._status_bar_message)
+        self._cleanup_screen.review_requested.connect(self._on_review_requested)
+        self._nav.register_screen("cleanup", self._cleanup_screen)
+
+        # Plan Review screen (Phase 2 — safety gate before file operations)
+        self._plan_review = PlanReviewScreen(db=self._db, parent=self)
+        self._plan_review.back_requested.connect(self._on_review_back)
+        self._plan_review.commit_requested.connect(self._on_commit_requested)
+        self._plan_review.clear_requested.connect(self._on_plan_cleared)
+        self._nav.register_screen("plan_review", self._plan_review)
+
+        # Execution screen (Phase 3 — progress + log during file operations)
+        self._execution_screen = ExecutionScreen(parent=self)
+        self._execution_screen.done_requested.connect(self._on_execution_done)
+        self._execution_screen.minimize_requested.connect(self._on_minimize_to_tray)
+        self._nav.register_screen("execution", self._execution_screen)
+
+        # System tray icon (Phase 3 — minimized execution)
+        self._tray = TrayIcon(parent=self)
+        self._tray.activated.connect(self._on_tray_activated)
+
+        # Scan control (bottom bar) — visible only on cleanup screen
         self._scan_control = ScanControl(parent=self)
         layout.addWidget(self._scan_control, stretch=0)
 
         self.setCentralWidget(container)
 
-        # Wire scan control buttons to slots
+        # Wire scan control buttons
         self._scan_control.start_requested.connect(self._on_start)
         self._scan_control.pause_requested.connect(self._on_pause)
         self._scan_control.stop_requested.connect(self._on_stop)
 
-        # Wire ResultsPanel → CompareView (plan §Phase 4 — comparison).
-        self._results_panel.compare_view_requested.connect(self._on_compare_requested)
-        self._results_panel.compare_folder_requested.connect(self._on_compare_folder_requested)
-
-        # Auto-size left pane to fit folder names.
-        self._folder_panel.folders_changed.connect(self._auto_fit_splitter)
-
     def _build_status_bar(self) -> None:
         self._status_bar = QStatusBar(self)
         self.setStatusBar(self._status_bar)
-        self._status_bar.showMessage(self.tr("Add folders to get started."))
+        self._status_bar.showMessage(self.tr("Welcome to DejaView."))
 
-    # ── Dynamic layout ─────────────────────────────────────────────────
+    # ── Navigation ─────────────────────────────────────────────────────
 
-    @pyqtSlot(list)
-    def _auto_fit_splitter(self, folders: list[str]) -> None:
-        """Adjust left pane width to fit the longest folder name."""
-        if not folders:
-            return
-        fm = self._folder_panel.fontMetrics()
-        max_text_width = max(
-            fm.horizontalAdvance(os.path.basename(f)) for f in folders
+    @pyqtSlot(str)
+    def _on_screen_changed(self, screen_name: str) -> None:
+        """Adapt the UI when the active screen changes."""
+        self._scan_control.setVisible(screen_name == "cleanup")
+
+    @pyqtSlot()
+    def _navigate_to_cleanup(self) -> None:
+        """Navigate from Dashboard to the cleanup screen."""
+        self._nav.navigate_to("cleanup")
+
+    @pyqtSlot()
+    def _on_family_card_clicked(self) -> None:
+        """Placeholder for Phase 4 — Family Discovery screen."""
+        self._status_bar.showMessage(
+            self.tr("Family Discovery — coming soon.")
         )
-        desired = max(180, min(300, max_text_width + 60))
-        self._splitter.setSizes([desired, self.width() - desired])
+
+    @pyqtSlot()
+    def _on_request_card_clicked(self) -> None:
+        """Placeholder for Phase 6 — Request Approval screen."""
+        self._status_bar.showMessage(
+            self.tr("Request Approval — coming soon.")
+        )
+
+    @pyqtSlot()
+    def _on_dashboard_scan(self) -> None:
+        """Dashboard 'Start New Scan' — navigate to cleanup, then start."""
+        self._nav.navigate_to("cleanup")
+        # Small delay is not needed — _on_start checks folders itself.
+        self._on_start()
+
+    @pyqtSlot(str)
+    def _status_bar_message(self, message: str) -> None:
+        """Relay status messages from child screens to the status bar."""
+        self._status_bar.showMessage(message)
 
     # ── Session management ───────────────────────────────────────────────
 
     def _restore_session(self) -> None:
         """
-        On startup, check for a paused or in-progress session.
-        If found, restore its folder list and update button state.
+        On startup, restore the most recent session if it has useful state.
+        Handles in_progress, paused, complete, and stopped sessions.
         """
         session = self._db.get_latest_session()
-        if session and session["status"] in ("in_progress", "paused"):
-            self._session_id = session["id"]
-            self._folder_panel.set_session_id(self._session_id)
-            self._results_panel.set_session_id(self._session_id)
-            for folder in self._db.get_session_folders(self._session_id):
-                # persist=False: folders already exist in the DB from previous run.
-                self._folder_panel.add_folder(folder, persist=False)
-            if session["status"] == "paused":
-                self._scan_control.set_state_paused()
+        if not session:
+            # No previous session — start on dashboard
+            self._nav.navigate_to("dashboard", push_back=False)
+            return
+
+        status = session["status"]
+        if status not in ("in_progress", "paused", "complete", "stopped"):
+            self._nav.navigate_to("dashboard", push_back=False)
+            return
+
+        self._session_id = session["id"]
+        self._cleanup_screen.set_session_id(self._session_id)
+        self._dashboard.set_session_id(self._session_id)
+        self._plan_review.set_session_id(self._session_id)
+        for folder in self._db.get_session_folders(self._session_id):
+            self._folder_panel.add_folder(folder, persist=False)
+
+        # Enable Plan Actions if the session has duplicate groups.
+        dup_groups = self._db.get_duplicate_groups(self._session_id)
+        self._plan_action.setEnabled(len(dup_groups) > 0)
+
+        if status == "paused":
+            # Resume directly on cleanup screen
+            self._nav.navigate_to("cleanup", push_back=False)
+            self._scan_control.set_state_paused()
+            self._status_bar.showMessage(
+                self.tr("Scan paused. Click Resume to continue.")
+            )
+        elif status == "complete":
+            # Start on dashboard — user can navigate to cleanup if they want
+            self._nav.navigate_to("dashboard", push_back=False)
+            self._scan_control.set_state_complete()
+            files = self._db.get_files_for_session(self._session_id)
+            total_files = sum(1 for f in files if f["status"] == "active")
+            if len(dup_groups) > 0:
+                self._results_panel.set_filter(FILTER_DUPLICATES_ONLY)
+                dup_file_count = sum(g["file_count"] for g in dup_groups)
                 self._status_bar.showMessage(
-                    self.tr("Scan paused. Click Resume to continue.")
+                    self.tr(
+                        "Last scan: {0} files, {1} duplicates in {2} groups."
+                    ).format(total_files, dup_file_count, len(dup_groups))
                 )
+            else:
+                self._status_bar.showMessage(
+                    self.tr(
+                        "Last scan: {0} files scanned. No duplicates found."
+                    ).format(total_files)
+                )
+        else:
+            # in_progress or stopped — go to dashboard
+            self._nav.navigate_to("dashboard", push_back=False)
 
     def _get_or_create_session(self) -> int:
         """
@@ -218,8 +329,9 @@ class MainWindow(QMainWindow):
                 name=self.tr("Scan {0}").format(now[:10]),
                 created_at=now,
             )
-            self._folder_panel.set_session_id(self._session_id)
-            self._results_panel.set_session_id(self._session_id)
+            self._cleanup_screen.set_session_id(self._session_id)
+            self._dashboard.set_session_id(self._session_id)
+            self._plan_review.set_session_id(self._session_id)
             for folder in self._folder_panel.folders():
                 self._db.add_session_folder(self._session_id, folder)
         return self._session_id
@@ -232,12 +344,19 @@ class MainWindow(QMainWindow):
             self, self.tr("Select Folder to Scan")
         )
         if folder:
+            # Make sure we're on the cleanup screen
+            if self._nav.current_screen() != "cleanup":
+                self._nav.navigate_to("cleanup")
             self._folder_panel.add_folder(folder)
 
     @pyqtSlot()
     def _on_start(self) -> None:
         if self._scanner and self._scanner.isRunning():
-            return  # Already scanning; ignore spurious clicks.
+            return
+
+        # Ensure we're on the cleanup screen
+        if self._nav.current_screen() != "cleanup":
+            self._nav.navigate_to("cleanup")
 
         if not self._folder_panel.folders():
             self._status_bar.showMessage(self.tr("Add folders to get started."))
@@ -254,8 +373,7 @@ class MainWindow(QMainWindow):
 
         session_id = self._get_or_create_session()
 
-        # Create a fresh PerformanceMonitor per scan if enabled in settings
-        # or via --perf / DEJAVIEW_PERF=1.
+        # Create a fresh PerformanceMonitor per scan if enabled.
         perf = self._perf_monitor
         if perf is None and self._db.get_perf_logging():
             from core.perf_monitor import PerformanceMonitor
@@ -264,7 +382,7 @@ class MainWindow(QMainWindow):
             )) / "DejaView"
             perf = PerformanceMonitor(output_dir=app_dir, enabled=True)
             self._perf_monitor = perf
-            self._results_panel._perf = perf
+            self._cleanup_screen.set_perf_monitor(perf)
             log.info("Performance telemetry enabled via settings")
 
         self._scanner = Scanner(
@@ -277,7 +395,7 @@ class MainWindow(QMainWindow):
         if is_resume:
             self._scanner.set_resuming(True)
         # Show progress view, hide results tree.
-        self._show_scan_progress()
+        self._cleanup_screen.show_scan_progress()
         self._wire_scanner(self._scanner)
         self._scanner.start()
 
@@ -307,16 +425,15 @@ class MainWindow(QMainWindow):
         scanner.scan_paused.connect(self._on_scan_paused)
         scanner.scan_stopped.connect(self._on_scan_stopped)
         # ScanProgressWidget (centered progress display in splitter).
-        if self._scan_progress:
-            scanner.scan_started.connect(self._scan_progress.on_scan_started)
-            scanner.progress_updated.connect(self._scan_progress.on_progress_updated)
-            scanner.status_message.connect(self._scan_progress.on_status_message)
-            scanner.file_discovered.connect(self._scan_progress.on_file_discovered)
-            scanner.scan_complete.connect(self._scan_progress.on_scan_complete)
-            scanner.scan_paused.connect(self._scan_progress.on_scan_paused)
-            scanner.scan_stopped.connect(self._scan_progress.on_scan_stopped)
-        # ResultsPanel is NOT wired to live scanner signals.
-        # The tree is populated once on scan_complete/pause/stop via reload().
+        sp = self._cleanup_screen.scan_progress_widget
+        if sp:
+            scanner.scan_started.connect(sp.on_scan_started)
+            scanner.progress_updated.connect(sp.on_progress_updated)
+            scanner.status_message.connect(sp.on_status_message)
+            scanner.file_discovered.connect(sp.on_file_discovered)
+            scanner.scan_complete.connect(sp.on_scan_complete)
+            scanner.scan_paused.connect(sp.on_scan_paused)
+            scanner.scan_stopped.connect(sp.on_scan_stopped)
         # FolderPanel: throttled count updates during scan.
         scanner.directories_hashed.connect(self._folder_panel.on_directories_hashed)
         scanner.scan_started.connect(self._folder_panel.update_all_counts)
@@ -329,7 +446,7 @@ class MainWindow(QMainWindow):
             return
 
         # Swap back to results tree and populate from DB.
-        self._hide_scan_progress()
+        self._cleanup_screen.hide_scan_progress()
         self._results_panel.reload()
 
         # Compute scan summary.
@@ -338,6 +455,8 @@ class MainWindow(QMainWindow):
         dup_groups = self._db.get_duplicate_groups(self._session_id)
         group_count = len(dup_groups)
         dup_file_count = sum(g["file_count"] for g in dup_groups)
+
+        self._plan_action.setEnabled(group_count > 0)
 
         if group_count > 0:
             self._results_panel.set_filter(FILTER_DUPLICATES_ONLY)
@@ -359,35 +478,14 @@ class MainWindow(QMainWindow):
     @pyqtSlot()
     def _on_scan_paused(self) -> None:
         """Swap back to results tree so user can browse partial results."""
-        self._hide_scan_progress()
+        self._cleanup_screen.hide_scan_progress()
         self._results_panel.reload()
 
     @pyqtSlot()
     def _on_scan_stopped(self) -> None:
         """Swap back to results tree showing partial results."""
-        self._hide_scan_progress()
+        self._cleanup_screen.hide_scan_progress()
         self._results_panel.reload()
-
-    # ── Scan progress panel swap ────────────────────────────────────────
-
-    def _show_scan_progress(self) -> None:
-        """Hide results tree, show centered progress widget in the splitter."""
-        if self._scan_progress is None:
-            self._scan_progress = ScanProgressWidget(parent=self)
-        self._results_panel.hide()
-        self._splitter.addWidget(self._scan_progress)
-        self._splitter.setStretchFactor(
-            self._splitter.indexOf(self._scan_progress), 1
-        )
-        self._scan_progress.show()
-
-    def _hide_scan_progress(self) -> None:
-        """Hide progress widget, restore results tree."""
-        if self._scan_progress is not None:
-            self._scan_progress.hide()
-            self._scan_progress.deleteLater()
-            self._scan_progress = None
-        self._results_panel.show()
 
     @pyqtSlot(str, str)
     def _on_scan_error(self, path: str, message: str) -> None:
@@ -396,63 +494,128 @@ class MainWindow(QMainWindow):
             self.tr("Error: {0}").format(message)
         )
 
-    # ── Compare view lifecycle (plan §Phase 4 — comparison) ────────────
-
-    @pyqtSlot(str)
-    def _on_compare_requested(self, pixel_hash: str) -> None:
-        """Open the CompareView for a duplicate group, replacing the results panel."""
-        if self._session_id is None:
-            return
-        session_folders = self._db.get_session_folders(self._session_id)
-        self._compare_view = CompareView(
-            db=self._db,
-            session_id=self._session_id,
-            pixel_hash=pixel_hash,
-            session_folders=session_folders,
-            parent=self,
-        )
-        self._compare_view.setObjectName("compare_view")
-        self._compare_view.closed.connect(self._close_compare_view)
-        # Swap: hide results panel, show compare view in the splitter.
-        self._results_panel.hide()
-        self._splitter.addWidget(self._compare_view)
-        self._splitter.setStretchFactor(self._splitter.indexOf(self._compare_view), 1)
-        self._status_bar.showMessage(
-            self.tr("Comparing duplicate group (SHA: {0}\u2026)").format(pixel_hash[:8])
-        )
-
-    @pyqtSlot(str)
-    def _on_compare_folder_requested(self, folder_path: str) -> None:
-        """Open the FolderCompareView for a fully-duplicated folder."""
-        if self._session_id is None:
-            return
-        self._compare_view = FolderCompareView(
-            db=self._db,
-            session_id=self._session_id,
-            folder_path=folder_path,
-            parent=self,
-        )
-        self._compare_view.setObjectName("compare_view")
-        self._compare_view.closed.connect(self._close_compare_view)
-        self._results_panel.hide()
-        self._splitter.addWidget(self._compare_view)
-        self._splitter.setStretchFactor(self._splitter.indexOf(self._compare_view), 1)
-        self._status_bar.showMessage(
-            self.tr("Comparing duplicated folder: {0}").format(
-                os.path.basename(folder_path)
-            )
-        )
+    # ── Planning panel lifecycle (Pluggable Views) ─────────────────────
 
     @pyqtSlot()
-    def _close_compare_view(self) -> None:
-        """Close the CompareView and restore the results panel."""
-        if self._compare_view is not None:
-            self._compare_view.hide()
-            self._compare_view.deleteLater()
-            self._compare_view = None
-        self._results_panel.show()
-        self._results_panel.reload()
-        self._status_bar.showMessage(self.tr("Ready."))
+    def _on_plan_actions(self) -> None:
+        """Scan > Plan Actions — open the planning view."""
+        if self._session_id is None:
+            return
+        # Ensure we're on cleanup screen
+        if self._nav.current_screen() != "cleanup":
+            self._nav.navigate_to("cleanup")
+        self._cleanup_screen.show_planning_panel()
+
+    # ── Plan Review navigation (UX Redesign Phase 2) ───────────────────
+
+    @pyqtSlot()
+    def _on_review_requested(self) -> None:
+        """PlanningPanel > Review Plan — navigate to Plan Review screen."""
+        self._nav.navigate_to("plan_review")
+
+    @pyqtSlot()
+    def _on_review_back(self) -> None:
+        """Plan Review > Back — return to cleanup screen (planning panel)."""
+        self._nav.go_back()
+
+    @pyqtSlot()
+    def _on_commit_requested(self) -> None:
+        """Plan Review > Apply Changes — confirm and start execution."""
+        if self._session_id is None:
+            return
+
+        summary = self._db.get_plan_summary(self._session_id)
+        count = summary["delete_count"]
+        if count == 0:
+            return
+
+        reply = QMessageBox.question(
+            self,
+            self.tr("Confirm Deletion"),
+            self.tr(
+                "Move {0} files to .dejaview_trash?\n"
+                "Files are recoverable for 30 days."
+            ).format(count),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        self._start_execution()
+
+    def _start_execution(self) -> None:
+        """Create the executor, wire signals, navigate to execution screen."""
+        self._executor = PlanExecutor(
+            db=self._db,
+            session_id=self._session_id,
+            trash_root=self._trash_root,
+            drive_sync=self._drive_sync,
+            parent=self,
+        )
+
+        # Wire executor → execution screen
+        es = self._execution_screen
+        self._executor.execution_started.connect(es.on_execution_started)
+        self._executor.progress_updated.connect(es.on_progress_updated)
+        self._executor.log_message.connect(es.on_log_message)
+        self._executor.stage_changed.connect(es.on_stage_changed)
+        self._executor.execution_complete.connect(es.on_execution_complete)
+        self._executor.execution_error.connect(es.on_execution_error)
+
+        # Wire executor → main window
+        self._executor.execution_complete.connect(self._on_execution_complete)
+        self._executor.log_message.connect(
+            lambda msg: self._status_bar.showMessage(msg)
+        )
+
+        self._nav.navigate_to("execution")
+        self._executor.start()
+
+    @pyqtSlot(int, int)
+    def _on_execution_complete(self, success: int, errors: int) -> None:
+        """Handle execution completion."""
+        if errors > 0:
+            msg = self.tr(
+                "Execution complete: {0} files deleted, {1} errors."
+            ).format(success, errors)
+        else:
+            msg = self.tr(
+                "Execution complete: {0} files deleted."
+            ).format(success)
+        self._status_bar.showMessage(msg)
+
+        # Tray notification if minimized
+        if not self.isVisible() and self._tray.isVisible():
+            self._tray.notify_complete(msg)
+
+    @pyqtSlot()
+    def _on_execution_done(self) -> None:
+        """Execution screen > Done — return to dashboard."""
+        self._tray.hide()
+        # Clear back-stack and go to dashboard
+        self._nav.navigate_to("dashboard", push_back=False)
+        self._dashboard.refresh()
+
+    @pyqtSlot()
+    def _on_minimize_to_tray(self) -> None:
+        """Execution screen > Minimize to Tray."""
+        self._tray.show_progress(self.tr("Executing plan\u2026"))
+        self.hide()
+
+    @pyqtSlot("QSystemTrayIcon::ActivationReason")
+    def _on_tray_activated(self, reason) -> None:
+        """Restore window when tray icon is clicked."""
+        if reason == QSystemTrayIcon.ActivationReason.Trigger:
+            self.showNormal()
+            self.activateWindow()
+            self._tray.hide()
+
+    @pyqtSlot()
+    def _on_plan_cleared(self) -> None:
+        """Plan Review > Clear Plan — go back to cleanup."""
+        self._nav.go_back()
+        self._status_bar.showMessage(self.tr("Plan cleared."))
 
     # ── Export / Import (plan §Workflow 6 — manual sharing, Phase 5) ────
 
@@ -465,7 +628,6 @@ class MainWindow(QMainWindow):
             )
             return
 
-        # Prompt for display name.
         config = self._db.get_sync_config()
         default_name = config["local_username"] if config else ""
         username, ok = QInputDialog.getText(
@@ -487,10 +649,8 @@ class MainWindow(QMainWindow):
             )
             return
 
-        # Determine privacy level from sync_config (default: 'filename').
         privacy = config["export_privacy"] if config else "filename"
 
-        # Build payload.
         try:
             payload = build_export_payload(
                 self._db, self._session_id, username, privacy
@@ -499,7 +659,6 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, self.tr("Export Error"), str(exc))
             return
 
-        # Choose save path.
         path, _ = QFileDialog.getSaveFileName(
             self,
             self.tr("Save Export File"),
@@ -555,7 +714,6 @@ class MainWindow(QMainWindow):
             )
             return
 
-        # Refresh cross-library view after import.
         self._results_panel.update_cross_library_data()
         self._status_bar.showMessage(
             self.tr("Imported scan results from '{0}'.").format(username)
@@ -585,17 +743,12 @@ class MainWindow(QMainWindow):
 
     @pyqtSlot()
     def _on_sign_in_requested(self) -> None:
-        """Start the OAuth2 sign-in flow in a background thread.
-
-        run_local_server() blocks until the browser callback arrives, so it
-        must not run on the Qt main thread — doing so freezes the event loop
-        and prevents the browser window from receiving focus on Windows.
-        """
+        """Start the OAuth2 sign-in flow in a background thread."""
         if self._drive_sync is None:
             self._status_bar.showMessage(self.tr("Sync not configured."))
             return
         if self._auth_worker is not None and self._auth_worker.isRunning():
-            return  # Already authenticating
+            return
         self._status_bar.showMessage(self.tr("Signing in with Google\u2026"))
         if self._share_dialog is not None:
             self._share_dialog.set_signing_in(True)
@@ -620,7 +773,7 @@ class MainWindow(QMainWindow):
 
     @pyqtSlot()
     def _on_sync_now(self) -> None:
-        """Trigger an immediate sync cycle (plan §Workflow 5 — Sync Now)."""
+        """Trigger an immediate sync cycle."""
         self._run_sync(session_id=self._session_id)
 
     @pyqtSlot(str)
@@ -665,19 +818,11 @@ class MainWindow(QMainWindow):
     # ── Sync execution (plan §Workflow 5 — Ongoing sync) ─────────────────
 
     def sync_on_start(self) -> None:
-        """Download peer exports silently in the background on app start.
-
-        Plan §Workflow 5 — On app start: silently download other users'
-        exports and update the Cross-Library view.
-        Called from main.py after window.show().
-        """
+        """Download peer exports silently in the background on app start."""
         self._run_sync(session_id=None)
 
     def _run_sync(self, session_id: int | None = None) -> None:
-        """Run a sync cycle in a background thread (non-blocking).
-
-        Plan §Workflow 5: status bar shows sync indicator while in progress.
-        """
+        """Run a sync cycle in a background thread (non-blocking)."""
         if self._drive_sync is None:
             return
         config = self._db.get_sync_config()
@@ -686,7 +831,7 @@ class MainWindow(QMainWindow):
         if not self._drive_sync.is_authenticated():
             return
         if self._sync_worker is not None and self._sync_worker.isRunning():
-            return  # Already syncing
+            return
 
         self._status_bar.showMessage(self.tr("\u2195 Syncing\u2026"))
         self._sync_worker = _SyncWorker(self._drive_sync, session_id)
@@ -694,10 +839,7 @@ class MainWindow(QMainWindow):
         self._sync_worker.start()
 
     def _run_sync_blocking(self, session_id: int | None = None) -> None:
-        """Run a sync cycle synchronously (for closeEvent).
-
-        Plan §Workflow 5 — On app close: a final export upload runs.
-        """
+        """Run a sync cycle synchronously (for closeEvent)."""
         if self._drive_sync is None:
             return
         config = self._db.get_sync_config()
@@ -712,10 +854,7 @@ class MainWindow(QMainWindow):
 
     @pyqtSlot(str)
     def _on_sync_finished(self, status: str) -> None:
-        """Update status bar after background sync completes.
-
-        Plan §Workflow 5: status bar indicator.
-        """
+        """Update status bar after background sync completes."""
         if status == "synced":
             self._status_bar.showMessage(self.tr("\u2713 Synced."))
         elif status == "unavailable":
@@ -724,7 +863,6 @@ class MainWindow(QMainWindow):
             )
         else:
             self._status_bar.showMessage(self.tr("\u2713 Sync complete."))
-        # Refresh cross-library data after sync.
         self._results_panel.update_cross_library_data()
 
     # ── Window close ─────────────────────────────────────────────────────
@@ -733,12 +871,14 @@ class MainWindow(QMainWindow):
         if self._scanner and self._scanner.isRunning():
             self._scanner.stop()
             self._scanner.wait(5000)
-        # Wait for any in-progress auth or sync workers to finish.
+        if self._executor and self._executor.isRunning():
+            self._executor.stop()
+            self._executor.wait(5000)
         if self._auth_worker is not None and self._auth_worker.isRunning():
             self._auth_worker.wait(5000)
         if self._sync_worker is not None and self._sync_worker.isRunning():
             self._sync_worker.wait(5000)
-        # Plan §Workflow 5 — on app close: final export upload.
+        self._tray.hide()
         self._run_sync_blocking(session_id=self._session_id)
         event.accept()
 
@@ -746,15 +886,7 @@ class MainWindow(QMainWindow):
 # ── Background auth worker (non-blocking OAuth2 desktop flow) ────────────
 
 class _AuthWorker(QThread):
-    """Runs DriveSync.authenticate() in a background thread.
-
-    flow.run_local_server() is a blocking call that opens a browser and waits
-    for the OAuth2 callback.  Running it off the main thread keeps the Qt
-    event loop alive so the browser receives focus and the UI stays responsive.
-
-    Emits auth_finished(bool, str) — (True, "") on success,
-    (False, reason) on failure.
-    """
+    """Runs DriveSync.authenticate() in a background thread."""
 
     auth_finished = pyqtSignal(bool, str)
 
@@ -774,10 +906,7 @@ class _AuthWorker(QThread):
 # ── Background sync worker (plan §Workflow 5 — non-blocking sync) ────────
 
 class _SyncWorker(QThread):
-    """Runs DriveSync.sync() in a background thread.
-
-    Emits finished_status(str) with the sync result status.
-    """
+    """Runs DriveSync.sync() in a background thread."""
 
     finished_status = pyqtSignal(str)
 
