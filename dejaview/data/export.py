@@ -112,6 +112,11 @@ def build_export_payload(
             "modified_at": row["modified_at"],
         }
 
+        # Include perceptual hash if available (backward-compatible field)
+        phash = row["perceptual_hash"] if "perceptual_hash" in row.keys() else None
+        if phash is not None:
+            entry["perceptual_hash"] = phash
+
         if privacy_level in ("filename", "full_path"):
             # Extract filename from full path
             path = row["path"]

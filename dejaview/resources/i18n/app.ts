@@ -184,10 +184,6 @@ Files are recoverable for 30 days.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Discovering files...</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>PAUSED</source>
         <translation type="unfinished"></translation>
     </message>
@@ -196,31 +192,11 @@ Files are recoverable for 30 days.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>{0} / {1}</source>
+        <source>Similar</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>{0} / {1} — {2}</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>~{0} left</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>{0}s</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>{0}m {1}s</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>{0}h {1}m</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>{0}d {1}h</source>
+        <source>Also detect similar images (slower)</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -477,14 +453,6 @@ Files are recoverable for 30 days.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Pass 1: Discovering files&#x2026;</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Pass 1: Discovering files&#x2026;  ({0} found)</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Scan complete</source>
         <translation type="unfinished"></translation>
     </message>
@@ -497,7 +465,27 @@ Files are recoverable for 30 days.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>{0} / {1} files &#x2014; {2}</source>
+        <source>Discovery</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hashing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Similarity</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Finalize</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>searching&#x2026;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>{0} files found</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -505,15 +493,19 @@ Files are recoverable for 30 days.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Pass 1: Discovery &#x2713;</source>
+        <source>{0} files</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Pass 1: Discovery &#x2713;  ({0} files)</source>
+        <source>complete</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Pass 2: Hashing&#x2026;  ({0} / {1})</source>
+        <source>processing&#x2026;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Completed in {0}</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -601,6 +593,18 @@ Files are recoverable for 30 days.</source>
     </message>
     <message>
         <source>Last synced: {0}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Similar Images</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enable similarity scan to detect</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>{0} similarity groups</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -937,6 +941,14 @@ Use Family Discovery to request photos.</source>
         <source>Reset</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Similarity Threshold</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Lower = stricter matching</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
@@ -1088,6 +1100,147 @@ Files matching this pattern will be marked for deletion.</source>
     </message>
     <message>
         <source>Showing {0} family photos from {1} providers</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     Similar Image Detection: SimilarityScreen (ui/similarity_screen.py)
+     ═══════════════════════════════════════════════════════════════════════ -->
+<context>
+    <name>SimilarityScreen</name>
+    <message>
+        <source>&#x2190; Back</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Similar Images</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Smart Select</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Apply a preset to select files to keep/delete</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>{0} groups &#x00b7; {1} files</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Review Plan &#x00bb;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Recommendation: Keep {0} ({1})</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Marked file {0} to keep</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Marked file {0} for deletion</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep Highest Resolution</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep Largest File</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep Newest</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep Oldest</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep Shortest Path</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose which file to keep in each group:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Smart Select: {0} keep, {1} delete</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     Similar Image Detection: SimilarityComparePanel (ui/similarity_compare.py)
+     ═══════════════════════════════════════════════════════════════════════ -->
+<context>
+    <name>SimilarityComparePanel</name>
+    <message>
+        <source>No preview</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&#x2605; RECOMMENDED</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>distance: {0}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Delete</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Select a similarity group to compare</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     Similar Image Detection: SimilarityModel (ui/similarity_model.py)
+     ═══════════════════════════════════════════════════════════════════════ -->
+<context>
+    <name>SimilarityModel</name>
+    <message>
+        <source>Name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Members</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Resolution</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Size</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Distance</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>max {0}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>{0} similar files &#x00b7; {1} total</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&#x2605; Recommended</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

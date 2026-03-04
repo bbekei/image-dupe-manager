@@ -63,15 +63,6 @@ def test_after_complete_only_start_enabled(ctrl):
     assert not ctrl._stop_btn.isEnabled()
 
 
-def test_progress_bar_updates_on_signal(ctrl):
-    # Req 4.2 — plan §UI Tests: test_progress_bar_updates_on_signal
-    ctrl.on_scan_started()
-    ctrl.on_progress_updated(47, 100)
-    assert ctrl._progress.value() == 47
-    assert "47" in ctrl._status_label.text()
-    assert "100" in ctrl._status_label.text()
-
-
 def test_status_label_shows_paused_badge_when_paused(ctrl):
     # Req 4.2 — plan §UI Tests: test_status_label_shows_paused_badge_when_paused
     ctrl.on_scan_started()
@@ -93,13 +84,6 @@ def test_start_btn_reverts_to_start_after_resumed(ctrl):
     ctrl.on_scan_resumed()
     assert not ctrl._start_btn.isEnabled()
     assert ctrl._pause_btn.isEnabled()
-
-
-def test_progress_bar_zero_on_zero_total(ctrl):
-    # Guard against division by zero when total=0 (plan §Pass 2 edge case).
-    ctrl.on_scan_started()
-    ctrl.on_progress_updated(0, 0)   # must not raise
-    assert ctrl._progress.value() == 0
 
 
 def test_set_state_paused_mirrors_on_scan_paused(ctrl):

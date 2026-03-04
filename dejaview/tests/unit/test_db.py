@@ -1084,3 +1084,300 @@ class TestFamilyTreasures:
         assert len(treasures) == 2
         peers = {t["peer_username"] for t in treasures}
         assert peers == {"alice", "bob"}
+
+
+# ---------------------------------------------------------------------------
+# Similarity schema + migration tests
+# ---------------------------------------------------------------------------
+
+class TestSimilaritySchema:
+    """Plan §S1.5–S1.7 — similarity schema migration."""
+
+    def test_files_has_perceptual_hash_columns(self, db: Database):
+        """Migration must add perceptual_hash, width, height to files."""
+        cols = {
+            r[1]
+            for r in db.conn.execute("PRAGMA table_info(files)").fetchall()
+        }
+        assert "perceptual_hash" in cols
+        assert "width" in cols
+        assert "height" in cols
+
+    def test_sessions_has_similarity_enabled(self, db: Database):
+        """Migration must add similarity_enabled column to sessions."""
+        cols = {
+            r[1]
+            for r in db.conn.execute("PRAGMA table_info(sessions)").fetchall()
+        }
+        assert "similarity_enabled" in cols
+
+    def test_similarity_enabled_defaults_to_zero(self, db: Database):
+        sid = db.create_session("Test", _now())
+        row = db.get_session(sid)
+        assert row["similarity_enabled"] == 0
+
+    def test_similarity_groups_table_exists(self, db: Database):
+        tables = {
+            r[0]
+            for r in db.conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+        assert "similarity_groups" in tables
+        assert "similarity_group_members" in tables
+
+    def test_similarity_indexes_exist(self, db: Database):
+        indexes = {
+            r[0]
+            for r in db.conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='index'"
+            ).fetchall()
+        }
+        assert "idx_files_phash" in indexes
+        assert "idx_simgroups_session" in indexes
+        assert "idx_simgroupmembers_group" in indexes
+        assert "idx_simgroupmembers_file" in indexes
+
+    def test_similarity_group_status_check_constraint(self, db: Database):
+        """Status must be one of pending / reviewed / actioned."""
+        sid = db.create_session("Test", _now())
+        fid = db.insert_file(sid, "/a.jpg", 100, _now(), _now())
+        gid = db.create_similarity_group(sid, _now(), fid, member_count=0)
+        with pytest.raises(sqlite3.IntegrityError):
+            db.conn.execute(
+                "UPDATE similarity_groups SET status = 'invalid' WHERE id = ?",
+                (gid,),
+            )
+
+    def test_similarity_group_members_unique_constraint(self, db: Database):
+        """(group_id, file_id) must be unique."""
+        sid = db.create_session("Test", _now())
+        fid = db.insert_file(sid, "/a.jpg", 100, _now(), _now())
+        gid = db.create_similarity_group(sid, _now(), fid, member_count=1)
+        db.add_similarity_group_members_batch([(gid, fid, 0)])
+        # INSERT OR IGNORE — duplicate silently ignored
+        db.add_similarity_group_members_batch([(gid, fid, 0)])
+        members = db.get_similarity_group_members(gid)
+        assert len(members) == 1
+
+    def test_cascade_delete_session_removes_groups(self, db: Database):
+        """Deleting a session must cascade-delete its similarity groups."""
+        sid = db.create_session("Test", _now())
+        fid = db.insert_file(sid, "/a.jpg", 100, _now(), _now())
+        gid = db.create_similarity_group(sid, _now(), fid, member_count=1)
+        db.add_similarity_group_members_batch([(gid, fid, 0)])
+        db.delete_session(sid)
+        assert db.get_similarity_group_count(sid) == 0
+
+
+# ---------------------------------------------------------------------------
+# Similarity CRUD tests
+# ---------------------------------------------------------------------------
+
+class TestSimilarityCRUD:
+    """Plan §S1.8 — similarity group CRUD methods."""
+
+    # -- Perceptual hash storage -------------------------------------------
+
+    def test_update_perceptual_hashes_batch(self, db: Database, session_factory):
+        sid = session_factory()
+        f1 = db.insert_file(sid, "/a.jpg", 100, _now(), _now())
+        f2 = db.insert_file(sid, "/b.jpg", 200, _now(), _now())
+        db.update_perceptual_hashes_batch([
+            (f1, "abcd1234abcd1234", 1920, 1080),
+            (f2, "1234abcd1234abcd", 800, 600),
+        ])
+        row1 = db.conn.execute(
+            "SELECT perceptual_hash, width, height FROM files WHERE id = ?",
+            (f1,),
+        ).fetchone()
+        assert row1["perceptual_hash"] == "abcd1234abcd1234"
+        assert row1["width"] == 1920
+        assert row1["height"] == 1080
+
+        row2 = db.conn.execute(
+            "SELECT perceptual_hash, width, height FROM files WHERE id = ?",
+            (f2,),
+        ).fetchone()
+        assert row2["perceptual_hash"] == "1234abcd1234abcd"
+        assert row2["width"] == 800
+        assert row2["height"] == 600
+
+    def test_update_dual_hashes_batch(self, db: Database, session_factory):
+        """Dual-hash batch sets pixel_hash + thumbnail + pHash + dimensions."""
+        sid = session_factory()
+        fid = db.insert_file(sid, "/c.jpg", 300, _now(), _now())
+        pixel_h = _make_hash("d")
+        db.update_dual_hashes_batch([
+            (fid, pixel_h, "/t/c.jpg", "ffff0000ffff0000", 4032, 3024),
+        ])
+        row = db.conn.execute(
+            "SELECT pixel_hash, thumbnail_path, perceptual_hash, width, height "
+            "FROM files WHERE id = ?",
+            (fid,),
+        ).fetchone()
+        assert row["pixel_hash"] == pixel_h
+        assert row["thumbnail_path"] == "/t/c.jpg"
+        assert row["perceptual_hash"] == "ffff0000ffff0000"
+        assert row["width"] == 4032
+        assert row["height"] == 3024
+
+    # -- Files needing hashes ----------------------------------------------
+
+    def test_get_files_needing_hashes_returns_unhashed(self, db: Database, session_factory):
+        sid = session_factory()
+        f1 = db.insert_file(sid, "/a.jpg", 100, _now(), _now())
+        f2 = db.insert_file(sid, "/b.jpg", 200, _now(), _now())
+        # f1 gets a pHash, f2 does not
+        db.update_perceptual_hashes_batch([(f1, "aaaa", 100, 100)])
+        needing = db.get_files_needing_hashes(sid)
+        ids = [r["id"] for r in needing]
+        assert f2 in ids
+        assert f1 not in ids
+
+    def test_get_files_needing_hashes_excludes_deleted(self, db: Database, session_factory):
+        """Deleted files should not be returned for hashing."""
+        sid = session_factory()
+        fid = db.insert_file(sid, "/a.jpg", 100, _now(), _now())
+        db.conn.execute(
+            "UPDATE files SET status = 'deleted' WHERE id = ?", (fid,)
+        )
+        db.conn.commit()
+        needing = db.get_files_needing_hashes(sid)
+        assert len(needing) == 0
+
+    def test_get_files_with_phash(self, db: Database, session_factory):
+        sid = session_factory()
+        f1 = db.insert_file(sid, "/a.jpg", 100, _now(), _now())
+        f2 = db.insert_file(sid, "/b.jpg", 200, _now(), _now())
+        f3 = db.insert_file(sid, "/c.jpg", 300, _now(), _now())
+        db.update_perceptual_hashes_batch([
+            (f1, "aaaa", 100, 100),
+            (f3, "bbbb", 200, 200),
+        ])
+        with_phash = db.get_files_with_phash(sid)
+        ids = [r["id"] for r in with_phash]
+        assert f1 in ids
+        assert f3 in ids
+        assert f2 not in ids
+
+    # -- Similarity group lifecycle ----------------------------------------
+
+    def test_create_similarity_group(self, db: Database, session_factory):
+        sid = session_factory()
+        fid = db.insert_file(sid, "/a.jpg", 100, _now(), _now())
+        gid = db.create_similarity_group(sid, _now(), fid, member_count=3)
+        assert isinstance(gid, int)
+        assert gid > 0
+
+    def test_get_similarity_groups(self, db: Database, session_factory):
+        sid = session_factory()
+        f1 = db.insert_file(sid, "/a.jpg", 100, _now(), _now())
+        f2 = db.insert_file(sid, "/b.jpg", 200, _now(), _now())
+        g1 = db.create_similarity_group(sid, _now(), f1, member_count=2)
+        g2 = db.create_similarity_group(sid, _now(), f2, member_count=3)
+        groups = db.get_similarity_groups(sid)
+        assert len(groups) == 2
+        # Ordered by member_count DESC
+        assert groups[0]["id"] == g2
+        assert groups[1]["id"] == g1
+
+    def test_get_similarity_groups_includes_representative_path(self, db: Database, session_factory):
+        sid = session_factory()
+        fid = db.insert_file(sid, "/photos/best.jpg", 100, _now(), _now())
+        db.create_similarity_group(sid, _now(), fid, member_count=1)
+        groups = db.get_similarity_groups(sid)
+        assert groups[0]["representative_path"] == "/photos/best.jpg"
+
+    def test_get_similarity_group_count(self, db: Database, session_factory):
+        sid = session_factory()
+        fid = db.insert_file(sid, "/a.jpg", 100, _now(), _now())
+        assert db.get_similarity_group_count(sid) == 0
+        db.create_similarity_group(sid, _now(), fid, member_count=1)
+        db.create_similarity_group(sid, _now(), fid, member_count=1)
+        assert db.get_similarity_group_count(sid) == 2
+
+    def test_add_and_get_similarity_group_members(self, db: Database, session_factory):
+        sid = session_factory()
+        f1 = db.insert_file(sid, "/a.jpg", 100, _now(), _now())
+        f2 = db.insert_file(sid, "/b.jpg", 200, _now(), _now())
+        f3 = db.insert_file(sid, "/c.jpg", 300, _now(), _now())
+        gid = db.create_similarity_group(sid, _now(), f1, member_count=3)
+        db.add_similarity_group_members_batch([
+            (gid, f1, 0),
+            (gid, f2, 3),
+            (gid, f3, 7),
+        ])
+        members = db.get_similarity_group_members(gid)
+        assert len(members) == 3
+        # Ordered by distance, then id
+        assert members[0]["distance"] == 0
+        assert members[1]["distance"] == 3
+        assert members[2]["distance"] == 7
+        # File metadata is joined
+        assert members[0]["path"] == "/a.jpg"
+        assert members[1]["path"] == "/b.jpg"
+
+    def test_get_similarity_group_file_count(self, db: Database, session_factory):
+        sid = session_factory()
+        f1 = db.insert_file(sid, "/a.jpg", 100, _now(), _now())
+        f2 = db.insert_file(sid, "/b.jpg", 200, _now(), _now())
+        f3 = db.insert_file(sid, "/c.jpg", 300, _now(), _now())
+        g1 = db.create_similarity_group(sid, _now(), f1, member_count=2)
+        g2 = db.create_similarity_group(sid, _now(), f3, member_count=1)
+        db.add_similarity_group_members_batch([
+            (g1, f1, 0),
+            (g1, f2, 4),
+            (g2, f3, 0),
+        ])
+        assert db.get_similarity_group_file_count(sid) == 3
+
+    def test_update_similarity_group_status(self, db: Database, session_factory):
+        sid = session_factory()
+        fid = db.insert_file(sid, "/a.jpg", 100, _now(), _now())
+        gid = db.create_similarity_group(sid, _now(), fid)
+        # Default is pending
+        groups = db.get_similarity_groups(sid)
+        assert groups[0]["status"] == "pending"
+        # Update to reviewed
+        db.update_similarity_group_status(gid, "reviewed")
+        groups = db.get_similarity_groups(sid)
+        assert groups[0]["status"] == "reviewed"
+        # Update to actioned
+        db.update_similarity_group_status(gid, "actioned")
+        groups = db.get_similarity_groups(sid)
+        assert groups[0]["status"] == "actioned"
+
+    def test_clear_similarity_groups(self, db: Database, session_factory):
+        sid = session_factory()
+        f1 = db.insert_file(sid, "/a.jpg", 100, _now(), _now())
+        f2 = db.insert_file(sid, "/b.jpg", 200, _now(), _now())
+        gid = db.create_similarity_group(sid, _now(), f1, member_count=2)
+        db.add_similarity_group_members_batch([(gid, f1, 0), (gid, f2, 5)])
+        db.clear_similarity_groups(sid)
+        assert db.get_similarity_group_count(sid) == 0
+        assert db.get_similarity_group_file_count(sid) == 0
+
+    def test_clear_only_affects_target_session(self, db: Database, session_factory):
+        """Clearing groups for session A must not affect session B."""
+        sid_a = session_factory("Session A")
+        sid_b = session_factory("Session B")
+        fa = db.insert_file(sid_a, "/a.jpg", 100, _now(), _now())
+        fb = db.insert_file(sid_b, "/b.jpg", 200, _now(), _now())
+        db.create_similarity_group(sid_a, _now(), fa, member_count=1)
+        db.create_similarity_group(sid_b, _now(), fb, member_count=1)
+        db.clear_similarity_groups(sid_a)
+        assert db.get_similarity_group_count(sid_a) == 0
+        assert db.get_similarity_group_count(sid_b) == 1
+
+    def test_group_count_scoped_to_session(self, db: Database, session_factory):
+        """Counts must be scoped to the queried session."""
+        sid_a = session_factory("A")
+        sid_b = session_factory("B")
+        fa = db.insert_file(sid_a, "/a.jpg", 100, _now(), _now())
+        fb = db.insert_file(sid_b, "/b.jpg", 200, _now(), _now())
+        db.create_similarity_group(sid_a, _now(), fa, member_count=1)
+        db.create_similarity_group(sid_b, _now(), fb, member_count=1)
+        db.create_similarity_group(sid_b, _now(), fb, member_count=1)
+        assert db.get_similarity_group_count(sid_a) == 1
+        assert db.get_similarity_group_count(sid_b) == 2

@@ -1,8 +1,8 @@
 """
-core/hasher.py — Pixel-hash and thumbnail generator for DejaView.
+core/hasher.py — Pixel-hash, perceptual-hash, and thumbnail generator for DejaView.
 
 Module ownership rules (from plan):
-- Pure function: one file path in, (pixel_hash, thumbnail_path) out.
+- Pure function: one file path in, (pixel_hash, thumbnail_path, ...) out.
 - No DB access.
 - Closes the Pillow Image immediately after use (plan §Resource Usage — memory discipline).
 
@@ -12,6 +12,10 @@ Hash pipeline (plan §Pixel hash normalization spec):
   3. img.convert("RGB")          — unify RGBA / palette / grayscale to one mode
   4. xxhash.xxh128(pixel_bytes).hexdigest()  — 60× faster than SHA-256;
      uses numpy zero-copy view when available to halve peak memory.
+
+Perceptual hash (plan §Similar Image Detection — Phase S1):
+  5. imagehash.phash(img)        — 64-bit DCT-based perceptual hash
+     Only computed when compute_phash=True (opt-in).
 
 Thumbnail: 400×400 JPEG written to thumb_dir/{pixel_hash}.jpg.
 If the thumbnail already exists it is NOT rewritten (idempotent — plan §Thumbnail caching).
@@ -60,16 +64,38 @@ class HashError(Exception):
     """Raised when a file cannot be hashed (corrupt, unreadable, unsupported format)."""
 
 
-def hash_file(path: str | Path, thumb_dir: str | Path) -> tuple[str, str]:
+def compute_perceptual_hash(img: Image.Image) -> str:
+    """Compute pHash of an already-opened, EXIF-transposed RGB image.
+
+    Args:
+        img: Pillow Image, already in RGB mode and EXIF-transposed.
+
+    Returns:
+        Hex string of the 64-bit perceptual hash (16 characters).
+    """
+    import imagehash
+
+    return str(imagehash.phash(img))
+
+
+def hash_file(
+    path: str | Path,
+    thumb_dir: str | Path,
+    compute_phash: bool = False,
+) -> tuple[str, str, str | None, int | None, int | None]:
     """
     Hash a single image file and generate its thumbnail.
 
     Args:
-        path:     Absolute path to the image file.
-        thumb_dir: Directory in which to store the 400×400 thumbnail.
+        path:          Absolute path to the image file.
+        thumb_dir:     Directory in which to store the 400×400 thumbnail.
+        compute_phash: If True, also compute perceptual hash and capture
+                       image dimensions.  Default False for backward
+                       compatibility with Pass 2.
 
     Returns:
-        (pixel_hash, thumbnail_path) — both as strings.
+        (pixel_hash, thumbnail_path, perceptual_hash, width, height).
+        perceptual_hash, width, height are None when compute_phash=False.
 
     Raises:
         HashError: Wraps FileNotFoundError, UnidentifiedImageError, or any
@@ -93,6 +119,9 @@ def hash_file(path: str | Path, thumb_dir: str | Path) -> tuple[str, str]:
         # Step 3: unify to RGB (handles RGBA, palette, grayscale, etc.)
         img = img.convert("RGB")
 
+        # Capture dimensions before hashing (cheap — already decoded).
+        width, height = img.size
+
         # Step 4: xxHash-128 of raw pixel bytes (R3 — 60× faster than SHA-256).
         # numpy zero-copy view avoids a full tobytes() allocation (~69 MB for
         # 24 MP), halving per-worker peak memory.
@@ -103,6 +132,11 @@ def hash_file(path: str | Path, thumb_dir: str | Path) -> tuple[str, str]:
         else:
             pixel_hash: str = xxhash.xxh128_hexdigest(img.tobytes())
 
+        # Step 5: perceptual hash (opt-in, plan §Similar Image Detection).
+        perceptual_hash: str | None = None
+        if compute_phash:
+            perceptual_hash = compute_perceptual_hash(img)
+
         # Thumbnail generation — idempotent
         thumb_path = thumb_dir / f"{pixel_hash}.jpg"
         if not thumb_path.exists():
@@ -111,7 +145,9 @@ def hash_file(path: str | Path, thumb_dir: str | Path) -> tuple[str, str]:
             thumb_dir.mkdir(parents=True, exist_ok=True)
             thumb.save(str(thumb_path), "JPEG", quality=85)
 
-        return pixel_hash, str(thumb_path)
+        if compute_phash:
+            return pixel_hash, str(thumb_path), perceptual_hash, width, height
+        return pixel_hash, str(thumb_path), None, None, None
 
     except (UnidentifiedImageError, OSError, SyntaxError, Exception) as exc:
         if isinstance(exc, HashError):

@@ -123,6 +123,7 @@ class Dashboard(QWidget):
     """
 
     duplicate_card_clicked = pyqtSignal()
+    similarity_card_clicked = pyqtSignal()
     family_card_clicked = pyqtSignal()
     request_card_clicked = pyqtSignal()
     scan_requested = pyqtSignal()
@@ -170,6 +171,14 @@ class Dashboard(QWidget):
         )
         self._dup_card.clicked.connect(self.duplicate_card_clicked)
         cards_row.addWidget(self._dup_card)
+
+        self._similarity_card = _StatusCard(
+            title=self.tr("Similar Images"),
+            color="#f59e0b",
+            parent=self,
+        )
+        self._similarity_card.clicked.connect(self.similarity_card_clicked)
+        cards_row.addWidget(self._similarity_card)
 
         self._family_card = _StatusCard(
             title=self.tr("Family Photos"),
@@ -231,6 +240,8 @@ class Dashboard(QWidget):
         if self._session_id is None:
             self._dup_card.set_value("—")
             self._dup_card.set_subtitle(self.tr("No scan yet"))
+            self._similarity_card.set_value("—")
+            self._similarity_card.set_subtitle(self.tr("No scan yet"))
             self._family_card.set_value("—")
             self._family_card.set_subtitle(self.tr("No scan yet"))
             self._request_card.set_value("—")
@@ -249,6 +260,20 @@ class Dashboard(QWidget):
         else:
             self._dup_card.set_value("0")
             self._dup_card.set_subtitle(self.tr("No duplicates found"))
+
+        # Similar images
+        sim_group_count = self._db.get_similarity_group_count(self._session_id)
+        sim_file_count = self._db.get_similarity_group_file_count(self._session_id)
+        if sim_group_count > 0:
+            self._similarity_card.set_value(str(sim_file_count))
+            self._similarity_card.set_subtitle(
+                self.tr("{0} similarity groups").format(sim_group_count)
+            )
+        else:
+            self._similarity_card.set_value("0")
+            self._similarity_card.set_subtitle(
+                self.tr("Enable similarity scan to detect")
+            )
 
         # Family treasures
         treasure_count = self._db.get_family_treasure_count(self._session_id)

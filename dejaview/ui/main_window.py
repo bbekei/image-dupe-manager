@@ -1,13 +1,14 @@
 """
 ui/main_window.py — DejaView application shell.
 
-Layout (after UX Redesign Phases 1-3):
+Layout (after UX Redesign Phases 1-3 + Similar Image Detection):
   Menu bar   : File | Scan | Share | Help
   Central    : QStackedWidget managed by NavigationController
                - "dashboard":  Dashboard (home view with status cards)
                - "cleanup":    CleanupScreen (folder panel + results + planning)
                - "plan_review": PlanReviewScreen (safety gate)
                - "execution":  ExecutionScreen (progress + log)
+               - "similarity": SimilarityScreen (similar image review)
   Bottom bar : ScanControl (visible only on cleanup screen)
   Status bar : one-line status messages
 
@@ -50,6 +51,7 @@ from ui.plan_review import PlanReviewScreen
 from ui.results_model import ResultsTreeModel
 from ui.results_panel import FILTER_DUPLICATES_ONLY
 from ui.scan_control import ScanControl
+from ui.similarity_screen import SimilarityScreen
 from ui.share_dialog import ShareDialog
 from ui.tray import TrayIcon
 from ui.workflow import WorkflowPhase
@@ -176,6 +178,7 @@ class MainWindow(QMainWindow):
         self._dashboard.duplicate_card_clicked.connect(self._navigate_to_cleanup)
         self._dashboard.family_card_clicked.connect(self._on_family_card_clicked)
         self._dashboard.request_card_clicked.connect(self._on_request_card_clicked)
+        self._dashboard.similarity_card_clicked.connect(self._on_similarity_card_clicked)
         self._dashboard.scan_requested.connect(self._on_dashboard_scan)
         self._dashboard.sync_requested.connect(self._on_sync_now)
         self._nav.register_screen("dashboard", self._dashboard)
@@ -212,6 +215,21 @@ class MainWindow(QMainWindow):
             self._on_requests_changed
         )
         self._nav.register_screen("family_discovery", self._family_discovery)
+
+        # Similarity screen (Similar Image Detection feature)
+        self._similarity_screen = SimilarityScreen(
+            db=self._db, parent=self
+        )
+        self._similarity_screen.back_requested.connect(
+            self._on_similarity_back
+        )
+        self._similarity_screen.review_requested.connect(
+            self._on_review_requested
+        )
+        self._similarity_screen.status_message.connect(
+            self._status_bar_message
+        )
+        self._nav.register_screen("similarity", self._similarity_screen)
 
         # System tray icon (Phase 3 — minimized execution)
         self._tray = TrayIcon(parent=self)
@@ -268,6 +286,16 @@ class MainWindow(QMainWindow):
         )
 
     @pyqtSlot()
+    def _on_similarity_card_clicked(self) -> None:
+        """Navigate to the Similarity review screen."""
+        self._nav.navigate_to("similarity")
+
+    @pyqtSlot()
+    def _on_similarity_back(self) -> None:
+        """Similarity screen > Back — return to dashboard."""
+        self._nav.go_back()
+
+    @pyqtSlot()
     def _on_dashboard_scan(self) -> None:
         """Dashboard 'Start New Scan' — navigate to cleanup, then start."""
         self._nav.navigate_to("cleanup")
@@ -302,6 +330,7 @@ class MainWindow(QMainWindow):
         self._dashboard.set_session_id(self._session_id)
         self._plan_review.set_session_id(self._session_id)
         self._family_discovery.set_session_id(self._session_id)
+        self._similarity_screen.set_session_id(self._session_id)
         for folder in self._db.get_session_folders(self._session_id):
             self._folder_panel.add_folder(folder, persist=False)
 
@@ -355,6 +384,7 @@ class MainWindow(QMainWindow):
             self._dashboard.set_session_id(self._session_id)
             self._plan_review.set_session_id(self._session_id)
             self._family_discovery.set_session_id(self._session_id)
+            self._similarity_screen.set_session_id(self._session_id)
             for folder in self._folder_panel.folders():
                 self._db.add_session_folder(self._session_id, folder)
         return self._session_id
@@ -414,6 +444,7 @@ class MainWindow(QMainWindow):
             thumb_dir=self._thumb_dir,
             parent=self,
             perf_monitor=perf,
+            similarity_enabled=self._scan_control.similarity_enabled(),
         )
         if is_resume:
             self._scanner.set_resuming(True)
@@ -434,29 +465,32 @@ class MainWindow(QMainWindow):
             self._scanner.wait(5000)
 
     def _wire_scanner(self, scanner: Scanner) -> None:
-        # ScanControl (bottom bar): buttons + progress bar + ETA.
+        # ScanControl (bottom bar): button state only (progress in central widget).
         scanner.scan_started.connect(self._scan_control.on_scan_started)
         scanner.scan_paused.connect(self._scan_control.on_scan_paused)
         scanner.scan_resumed.connect(self._scan_control.on_scan_resumed)
         scanner.scan_stopped.connect(self._scan_control.on_scan_stopped)
         scanner.scan_complete.connect(self._scan_control.on_scan_complete)
-        scanner.progress_updated.connect(self._scan_control.on_progress_updated)
         scanner.status_message.connect(self._status_bar.showMessage)
         scanner.scan_error.connect(self._on_scan_error)
         # MainWindow lifecycle hooks.
         scanner.scan_complete.connect(self._on_scan_complete)
         scanner.scan_paused.connect(self._on_scan_paused)
         scanner.scan_stopped.connect(self._on_scan_stopped)
-        # ScanProgressWidget (centered progress display in splitter).
+        # ScanProgressWidget (unified multi-step progress display).
         sp = self._cleanup_screen.scan_progress_widget
         if sp:
+            sp.set_similarity_enabled(self._scan_control.similarity_enabled())
             scanner.scan_started.connect(sp.on_scan_started)
             scanner.progress_updated.connect(sp.on_progress_updated)
-            scanner.status_message.connect(sp.on_status_message)
             scanner.file_discovered.connect(sp.on_file_discovered)
             scanner.scan_complete.connect(sp.on_scan_complete)
             scanner.scan_paused.connect(sp.on_scan_paused)
             scanner.scan_stopped.connect(sp.on_scan_stopped)
+            scanner.similarity_progress.connect(sp.on_similarity_progress)
+            scanner.similarity_grouping_complete.connect(
+                sp.on_similarity_grouping_complete
+            )
         # FolderPanel: throttled count updates during scan.
         scanner.directories_hashed.connect(self._folder_panel.on_directories_hashed)
         scanner.scan_started.connect(self._folder_panel.update_all_counts)

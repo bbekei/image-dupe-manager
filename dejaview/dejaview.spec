@@ -44,6 +44,7 @@ a = Analysis(
         'google.auth.transport.requests',
         'google_auth_oauthlib.flow',
         'googleapiclient.discovery',
+        'imagehash',
     ],
     hookspath=[],
     hooksconfig={},
@@ -51,9 +52,7 @@ a = Analysis(
     excludes=[
         'tkinter',
         'matplotlib',
-        'numpy',
         'pandas',
-        'scipy',
         'IPython',
         'jupyter',
         'pytest',

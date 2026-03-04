@@ -188,7 +188,7 @@ def test_resume_skips_already_hashed_files(
 
     # Pre-hash the first two files.
     for i in range(2):
-        h, tp = _real_hash_file(str(paths[i]), str(thumb_dir))
+        h, tp, *_ = _real_hash_file(str(paths[i]), str(thumb_dir))
         db.update_pixel_hash(ids[i], h, tp)
 
     db.update_session_status(session_id, "paused")
@@ -244,7 +244,7 @@ def test_crash_recovery_rehashes_null_hash_files(
 
     # Simulate partial scan: hash only the first 2.
     for i in range(2):
-        h, tp = _real_hash_file(str(paths[i]), str(thumb_dir))
+        h, tp, *_ = _real_hash_file(str(paths[i]), str(thumb_dir))
         db.update_pixel_hash(ids[i], h, tp)
 
     null_ids = set(ids[2:])

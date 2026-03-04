@@ -2,3 +2,4 @@
 dejaview/tests/fixtures/images/e2e_dataset/
 # text files generated for planning and execution of iterations
 dejaview/project_management/
+dejaview/installer

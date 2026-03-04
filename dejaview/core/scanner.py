@@ -1,12 +1,12 @@
 """
-core/scanner.py — Two-pass image scanner (plan §Two-pass scan and file-size pre-filter).
+core/scanner.py — Multi-pass image scanner (plan §Two-pass scan and file-size pre-filter).
 
 Module ownership rules (plan §Architecture):
 - QThread worker: disk walker + session state via db.py; calls hasher.py per file.
 - Emits Qt signals for progress and badge updates.
 - No direct UI access.
 
-Two-pass scan (plan §Two-pass scan and file-size pre-filter):
+Multi-pass scan:
   Pass 1 — Discovery: walk all folders, insert file rows with pixel_hash = NULL.
   Pass 2 — Hashing: hash only files whose size appears >= 2 times in the session.
              Uses a sliding-window pipeline over a ThreadPoolExecutor for
@@ -29,12 +29,21 @@ Two-pass scan (plan §Two-pass scan and file-size pre-filter):
              Throttling via scan_delay_ms is proportional: 0 ms = full
              workers, 1-5 ms = half workers (min 2), 6-20 ms = quarter
              workers (min 1).
+  Pass 3 — Similarity (opt-in, plan §S2):
+       3a: Dual hashing — ALL files that lack perceptual_hash.
+           Computes pixel_hash + pHash + thumbnail for files the size
+           pre-filter skipped; adds only pHash for already-hashed files.
+       3b: Post-hash duplicate refresh — re-runs exact-duplicate detection
+           on newly pixel-hashed files (may discover additional exact
+           duplicates that the size pre-filter missed).
+       3c: Similarity grouping — Union-Find transitive closure on pHash.
 
 Pause/resume state machine (plan §Pause/resume state machine):
   PASS1         → walks folders, inserts files with pixel_hash=NULL
   PASS2         → hashes size-duplicate candidates only
+  PASS3         → dual-hash + similarity grouping (when similarity_enabled)
   pause()       → sets flag; QThread exits after current file completes
-  set_resuming  → skips Pass 1, skips already-hashed files in Pass 2
+  set_resuming  → skips Pass 1, skips already-hashed files in Pass 2/3
   stop()        → sets flag; marks session 'stopped'
 
 Security (plan §Security):
@@ -175,6 +184,8 @@ class Scanner(QThread):
     status_message   = pyqtSignal(str)        # for the status bar
     directory_hashed = pyqtSignal(str)        # directory path, after all files in it are hashed
     directories_hashed = pyqtSignal(list)     # [dir_path, ...] batch of completed directories
+    similarity_progress = pyqtSignal(int, int)         # current, total (Pass 3a)
+    similarity_grouping_complete = pyqtSignal(int)     # group_count (Pass 3c)
 
     def __init__(
         self,
@@ -184,6 +195,7 @@ class Scanner(QThread):
         parent=None,
         max_workers: int | None = None,
         perf_monitor=None,
+        similarity_enabled: bool = False,
     ):
         super().__init__(parent)
         self._db = db
@@ -193,6 +205,7 @@ class Scanner(QThread):
         self._stop_requested = False
         self._is_resuming = False
         self._perf = perf_monitor  # None = no telemetry overhead
+        self._similarity_enabled = similarity_enabled
         # R3: cap workers by core count, user setting, and available RAM.
         cpu_cap = min(os.cpu_count() or 4, 16)
         user_cap = max_workers or db.get_max_scan_workers() or 0
@@ -270,6 +283,38 @@ class Scanner(QThread):
             if self._perf:
                 self._perf.finalize()
             return
+
+        # ── Pass 3: Similarity (opt-in) ─────────────────────────────────
+        if self._similarity_enabled:
+            if self._perf:
+                self._perf.stage_begin("similarity_hashing")
+            self._run_pass3(scan_delay_ms)
+            if self._perf:
+                self._perf.stage_end("similarity_hashing")
+
+            if self._stop_requested:
+                self._db.update_session_status(self._session_id, "stopped")
+                self.scan_stopped.emit()
+                if self._perf:
+                    self._perf.finalize()
+                return
+
+            if self._pause_requested:
+                self._db.update_session_status(self._session_id, "paused")
+                self.scan_paused.emit()
+                if self._perf:
+                    self._perf.finalize()
+                return
+
+            # Pass 3b: post-hash duplicate refresh
+            self._run_pass3b()
+
+            # Pass 3c: similarity grouping
+            if self._perf:
+                self._perf.stage_begin("similarity_grouping")
+            self._run_pass3c()
+            if self._perf:
+                self._perf.stage_end("similarity_grouping")
 
         self._db.update_session_status(self._session_id, "complete")
         self.scan_complete.emit()
@@ -525,7 +570,7 @@ class Scanner(QThread):
                     path = file_row["path"]
 
                     try:
-                        pixel_hash, thumb_path = future.result()
+                        pixel_hash, thumb_path, *_ = future.result()
                         pending_updates.append((file_id, pixel_hash, thumb_path))
                         pending_signals.append((file_id, pixel_hash, dir_path))
                     except (HashError, Exception) as exc:
@@ -606,3 +651,198 @@ class Scanner(QThread):
 
         # No final duplicate detection needed — duplicates are detected
         # incrementally as each hash completes (O(1) per file).
+
+    # ── Pass 3a: Dual hashing (similarity) ────────────────────────────
+
+    def _run_pass3(self, scan_delay_ms: int) -> None:
+        """Hash ALL files that lack a perceptual_hash (plan §S2.2).
+
+        For files already pixel-hashed in Pass 2: compute only pHash.
+        For files skipped by the size pre-filter: compute pixel_hash +
+        thumbnail + pHash (dual-hash).
+        """
+        candidates = self._db.get_files_needing_hashes(self._session_id)
+        total = len(candidates)
+        current = 0
+
+        self.similarity_progress.emit(0, total)
+        self.status_message.emit(
+            self.tr("Similarity hashing {0} file(s)\u2026").format(total)
+        )
+
+        if total == 0:
+            return
+
+        # Proportional throttling (same as Pass 2).
+        if scan_delay_ms <= 0:
+            workers = self._max_workers
+        elif scan_delay_ms <= 5:
+            workers = max(2, self._max_workers // 2)
+        else:
+            workers = max(1, self._max_workers // 4)
+
+        db_lock = self._perf.tracked_lock() if self._perf else threading.Lock()
+
+        # Pending DB updates, split by type.
+        pending_phash_only: list[tuple[int, str, int, int]] = []  # (fid, phash, w, h)
+        pending_dual: list[tuple[int, str, str, str, int, int]] = []  # (fid, pixhash, thumb, phash, w, h)
+
+        window_size = workers * _PIPELINE_BUFFER_FACTOR
+        candidate_it = iter(candidates)
+        active: dict[concurrent.futures.Future, dict] = {}
+
+        def _submit_next() -> bool:
+            if self._stop_requested or self._pause_requested:
+                return False
+            try:
+                file_row = next(candidate_it)
+            except StopIteration:
+                return False
+            f = executor.submit(
+                hash_file, file_row["path"], self._thumb_dir,
+                compute_phash=True,
+            )
+            active[f] = dict(file_row)
+            return True
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+            for _ in range(window_size):
+                if not _submit_next():
+                    break
+
+            while active:
+                if self._stop_requested or self._pause_requested:
+                    for f in list(active):
+                        f.cancel()
+                    break
+
+                done, _ = concurrent.futures.wait(
+                    list(active),
+                    timeout=0.1,
+                    return_when=concurrent.futures.FIRST_COMPLETED,
+                )
+                if not done:
+                    continue
+
+                for future in done:
+                    file_row = active.pop(future)
+                    file_id = file_row["id"]
+                    path = file_row["path"]
+                    had_pixel_hash = file_row.get("pixel_hash") is not None
+
+                    try:
+                        pixel_hash, thumb_path, phash, w, h = future.result()
+                        if had_pixel_hash:
+                            # Already had pixel_hash from Pass 2 — store pHash only.
+                            pending_phash_only.append((file_id, phash, w, h))
+                        else:
+                            # Size-filter skipped file — store everything.
+                            pending_dual.append(
+                                (file_id, pixel_hash, thumb_path, phash, w, h)
+                            )
+                    except (HashError, Exception) as exc:
+                        log.warning("Scanner Pass 3: cannot hash %s: %s", path, exc)
+                        self.scan_error.emit(path, str(exc))
+
+                    current += 1
+                    _submit_next()
+
+                # Flush batches.
+                batch_ready = (
+                    len(pending_phash_only) + len(pending_dual) >= _DB_BATCH_SIZE
+                    or not active
+                )
+                if batch_ready and (pending_phash_only or pending_dual):
+                    with db_lock:
+                        if pending_phash_only:
+                            self._db.update_perceptual_hashes_batch(pending_phash_only)
+                            pending_phash_only.clear()
+                        if pending_dual:
+                            self._db.update_dual_hashes_batch(pending_dual)
+                            pending_dual.clear()
+
+                    self.similarity_progress.emit(current, total)
+
+                    if scan_delay_ms > 0:
+                        time.sleep(scan_delay_ms / 1000.0)
+
+    # ── Pass 3b: Post-hash duplicate refresh ──────────────────────────
+
+    def _run_pass3b(self) -> None:
+        """Find new exact-duplicate groups from files pixel-hashed in Pass 3.
+
+        Files that were skipped by the size pre-filter in Pass 2 now have
+        pixel_hashes.  Check if any of them form new exact-duplicate groups
+        and emit duplicate_found signals (plan §S2.3).
+        """
+        self.status_message.emit(self.tr("Checking for new exact duplicates\u2026"))
+
+        # Query: find pixel_hashes with >=2 files that were NOT detected
+        # as duplicates before (i.e. they were size-filtered, so they got
+        # pixel_hash only in Pass 3).
+        rows = self._db.conn.execute(
+            """
+            SELECT pixel_hash, GROUP_CONCAT(id) AS file_ids
+            FROM files
+            WHERE session_id = ? AND pixel_hash IS NOT NULL
+                  AND status = 'active'
+            GROUP BY pixel_hash
+            HAVING COUNT(*) >= 2
+            """,
+            (self._session_id,),
+        ).fetchall()
+
+        for row in rows:
+            pixel_hash = row["pixel_hash"]
+            file_ids = [int(x) for x in row["file_ids"].split(",")]
+            self.duplicate_found.emit(pixel_hash, file_ids)
+
+    # ── Pass 3c: Similarity grouping ──────────────────────────────────
+
+    def _run_pass3c(self) -> None:
+        """Build similarity groups from perceptual hashes (plan §S2.5).
+
+        Calls build_similarity_groups() on all files with pHash, persists
+        groups to DB, and emits similarity_grouping_complete.
+        """
+        from core.similarity import build_similarity_groups
+
+        self.status_message.emit(self.tr("Grouping similar images\u2026"))
+
+        # Fetch all files with pHash for this session.
+        file_rows = self._db.get_files_with_phash(self._session_id)
+        files = [dict(r) for r in file_rows]
+
+        # Clear previous groups (idempotent on resume).
+        self._db.clear_similarity_groups(self._session_id)
+
+        groups = build_similarity_groups(files)
+
+        now = datetime.now(timezone.utc).isoformat()
+        for group_files in groups:
+            if not group_files:
+                continue
+            # Representative = first file (largest in group could be chosen
+            # later by the recommendation engine).
+            representative_id = group_files[0]["id"]
+            gid = self._db.create_similarity_group(
+                self._session_id, now, representative_id,
+                member_count=len(group_files),
+            )
+            member_rows: list[tuple[int, int, int]] = []
+            rep_phash = group_files[0].get("perceptual_hash", "")
+            for f in group_files:
+                f_phash = f.get("perceptual_hash", "")
+                if rep_phash and f_phash:
+                    from core.similarity import hamming_distance
+                    dist = hamming_distance(rep_phash, f_phash)
+                else:
+                    dist = 0
+                member_rows.append((gid, f["id"], dist))
+            self._db.add_similarity_group_members_batch(member_rows)
+
+        group_count = len(groups)
+        self.similarity_grouping_complete.emit(group_count)
+        self.status_message.emit(
+            self.tr("Found {0} similarity group(s)").format(group_count)
+        )

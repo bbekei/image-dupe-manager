@@ -38,16 +38,16 @@ class TestHashCorrectness:
     def test_same_rgb_image_gives_same_hash(self, image_factory, thumb_dir):
         """Same file hashed twice gives identical hash."""
         p = image_factory(color=(255, 0, 0), mode="RGB")
-        h1, _ = hash_file(p, thumb_dir)
-        h2, _ = hash_file(p, thumb_dir)
+        h1, *_ = hash_file(p, thumb_dir)
+        h2, *_ = hash_file(p, thumb_dir)
         assert h1 == h2
 
     def test_different_images_produce_different_hashes(self, image_factory, thumb_dir):
         """Visually different images must not collide (plan §test_different_images_produce_different_hashes)."""
         red = image_factory(color=(255, 0, 0), mode="RGB")
         blue = image_factory(color=(0, 0, 255), mode="RGB")
-        h_red, _ = hash_file(red, thumb_dir)
-        h_blue, _ = hash_file(blue, thumb_dir)
+        h_red, *_ = hash_file(red, thumb_dir)
+        h_blue, *_ = hash_file(blue, thumb_dir)
         assert h_red != h_blue
 
     def test_rgba_image_matches_rgb_equivalent(self, image_factory, thumb_dir):
@@ -55,8 +55,8 @@ class TestHashCorrectness:
         color = (100, 200, 50)
         rgb_path = image_factory(color=color, mode="RGB", fmt="JPEG")
         rgba_path = image_factory(color=color, mode="RGBA", fmt="PNG")
-        h_rgb, _ = hash_file(rgb_path, thumb_dir)
-        h_rgba, _ = hash_file(rgba_path, thumb_dir)
+        h_rgb, *_ = hash_file(rgb_path, thumb_dir)
+        h_rgba, *_ = hash_file(rgba_path, thumb_dir)
         assert h_rgb == h_rgba, "RGBA and RGB of same content must hash equally"
 
     def test_grayscale_image_hash(self, image_factory, thumb_dir):
@@ -69,24 +69,24 @@ class TestHashCorrectness:
         gray_path = image_factory(color=(200, 200, 200), mode="L")
         # Same gray value created directly as RGB
         rgb_gray_path = image_factory(color=(200, 200, 200), mode="RGB")
-        h_gray, _ = hash_file(gray_path, thumb_dir)
-        h_rgb, _ = hash_file(rgb_gray_path, thumb_dir)
+        h_gray, *_ = hash_file(gray_path, thumb_dir)
+        h_rgb, *_ = hash_file(rgb_gray_path, thumb_dir)
         # Both should be identical because L(200) → RGB(200,200,200) after convert
         assert h_gray == h_rgb
 
     def test_hash_is_32_char_hex_string(self, image_factory, thumb_dir):
         """pixel_hash must always be a 32-character lowercase hex string (xxh128)."""
         p = image_factory()
-        h, _ = hash_file(p, thumb_dir)
+        h, *_ = hash_file(p, thumb_dir)
         assert len(h) == 32
         assert all(c in "0123456789abcdef" for c in h)
 
     def test_hash_deterministic_across_1000_runs(self, image_factory, thumb_dir):
         """xxhash must produce identical output on every invocation (determinism test)."""
         p = image_factory(color=(42, 170, 99), mode="RGB", fmt="PNG")
-        reference, _ = hash_file(p, thumb_dir)
+        reference, *_ = hash_file(p, thumb_dir)
         for _ in range(999):
-            h, _ = hash_file(p, thumb_dir)
+            h, *_ = hash_file(p, thumb_dir)
             assert h == reference
 
     def test_numpy_and_tobytes_produce_same_hash(self, image_factory, thumb_dir):
@@ -129,8 +129,8 @@ class TestHashCorrectness:
         )
         copy_path = tmp_path / "copy_of_pattern.jpg"
         shutil.copy2(p, copy_path)
-        h1, _ = hash_file(p, thumb_dir)
-        h2, _ = hash_file(copy_path, thumb_dir)
+        h1, *_ = hash_file(p, thumb_dir)
+        h2, *_ = hash_file(copy_path, thumb_dir)
         assert h1 == h2
 
 
@@ -152,8 +152,8 @@ class TestHashCorrectnessCanonical:
         because JPEG YCbCr round-trip is only perfectly lossless for achromatic colors.
         The test verifies the normalization pipeline (RGBA→RGB and JPEG→RGB both work).
         """
-        h_jpg, _ = hash_file(fixture_image("red_rgb.jpg"), thumb_dir)
-        h_png, _ = hash_file(fixture_image("red_rgba.png"), thumb_dir)
+        h_jpg, *_ = hash_file(fixture_image("red_rgb.jpg"), thumb_dir)
+        h_png, *_ = hash_file(fixture_image("red_rgba.png"), thumb_dir)
         assert h_jpg == h_png
 
     @needs_fixtures
@@ -163,8 +163,8 @@ class TestHashCorrectnessCanonical:
         produce the same hash after convert("RGB") normalization.
         Plan §test_grayscale_image_produces_same_hash_as_rgb_equivalent.
         """
-        h_gray, _ = hash_file(fixture_image("red_gray.png"), thumb_dir)
-        h_jpg, _ = hash_file(fixture_image("red_rgb.jpg"), thumb_dir)
+        h_gray, *_ = hash_file(fixture_image("red_gray.png"), thumb_dir)
+        h_jpg, *_ = hash_file(fixture_image("red_rgb.jpg"), thumb_dir)
         assert h_gray == h_jpg
 
     @needs_fixtures
@@ -180,8 +180,8 @@ class TestHashCorrectnessCanonical:
         transformation. See test_exif_normalization_does_real_work below for the
         meaningful non-trivial EXIF test using a non-monochromatic pattern image.
         """
-        h_normal, _ = hash_file(fixture_image("red_rgb.jpg"), thumb_dir)
-        h_rotated, _ = hash_file(fixture_image("red_exif_rot90.jpg"), thumb_dir)
+        h_normal, *_ = hash_file(fixture_image("red_rgb.jpg"), thumb_dir)
+        h_rotated, *_ = hash_file(fixture_image("red_exif_rot90.jpg"), thumb_dir)
         assert h_normal == h_rotated
 
     @needs_fixtures
@@ -218,8 +218,8 @@ class TestHashCorrectnessCanonical:
         )
 
         # Assertion 2: normalized hashes match (exif_transpose correctly undoes rotation)
-        h_normal, _  = hash_file(fixture_image("pattern_rgb.jpg"), thumb_dir)
-        h_rotated, _ = hash_file(fixture_image("pattern_exif_rot90.jpg"), thumb_dir)
+        h_normal, *_  = hash_file(fixture_image("pattern_rgb.jpg"), thumb_dir)
+        h_rotated, *_ = hash_file(fixture_image("pattern_exif_rot90.jpg"), thumb_dir)
         assert h_normal == h_rotated, (
             "After EXIF normalization, pattern_rgb.jpg and pattern_exif_rot90.jpg "
             "must produce identical hashes. This fails if exif_transpose() is "
@@ -240,15 +240,15 @@ class TestHashCorrectnessCanonical:
         copy_path = tmp_path / "pattern_rgb_copy.jpg"
         shutil.copy2(original, copy_path)
 
-        h_orig, _ = hash_file(original, thumb_dir)
-        h_copy, _ = hash_file(copy_path, thumb_dir)
+        h_orig, *_ = hash_file(original, thumb_dir)
+        h_copy, *_ = hash_file(copy_path, thumb_dir)
         assert h_orig == h_copy, "Two copies of the same file must produce identical hashes"
 
     @needs_fixtures
     def test_red_and_blue_produce_different_hashes(self, thumb_dir):
         """Plan §test_different_images_produce_different_hashes."""
-        h_red, _ = hash_file(fixture_image("red_rgb.jpg"), thumb_dir)
-        h_blue, _ = hash_file(fixture_image("blue_rgb.jpg"), thumb_dir)
+        h_red, *_ = hash_file(fixture_image("red_rgb.jpg"), thumb_dir)
+        h_blue, *_ = hash_file(fixture_image("blue_rgb.jpg"), thumb_dir)
         assert h_red != h_blue
 
 
@@ -262,7 +262,7 @@ class TestThumbnailGeneration:
     def test_thumbnail_is_created_at_correct_path(self, image_factory, thumb_dir):
         """Thumbnail must be at thumb_dir/{pixel_hash}.jpg after hash_file()."""
         p = image_factory()
-        pixel_hash, thumb_path = hash_file(p, thumb_dir)
+        pixel_hash, thumb_path, *_ = hash_file(p, thumb_dir)
         expected = thumb_dir / f"{pixel_hash}.jpg"
         assert expected.exists(), f"Thumbnail not found at {expected}"
         assert Path(thumb_path) == expected
@@ -271,7 +271,7 @@ class TestThumbnailGeneration:
         """Thumbnails must not exceed 400×400 (plan §test_thumbnail_dimensions_are_400x400_or_smaller)."""
         # Use a large image to ensure downscaling happens
         p = image_factory(size=(800, 600))
-        pixel_hash, thumb_path = hash_file(p, thumb_dir)
+        pixel_hash, thumb_path, *_ = hash_file(p, thumb_dir)
         from PIL import Image as PilImage
         with PilImage.open(thumb_path) as t:
             w, h = t.size
@@ -284,7 +284,7 @@ class TestThumbnailGeneration:
         (plan §test_thumbnail_not_recreated_if_already_exists).
         """
         p = image_factory()
-        pixel_hash, thumb_path = hash_file(p, thumb_dir)
+        pixel_hash, thumb_path, *_ = hash_file(p, thumb_dir)
         mtime_before = os.path.getmtime(thumb_path)
         # Second call — thumbnail already exists
         hash_file(p, thumb_dir)
@@ -295,7 +295,7 @@ class TestThumbnailGeneration:
         """Thumbnail must be a readable JPEG."""
         from PIL import Image as PilImage
         p = image_factory()
-        _, thumb_path = hash_file(p, thumb_dir)
+        _, thumb_path, *_ = hash_file(p, thumb_dir)
         with PilImage.open(thumb_path) as t:
             assert t.format == "JPEG"
 
@@ -347,3 +347,104 @@ class TestErrorHandling:
             pass
         thumbs = list(thumb_dir.iterdir())
         assert len(thumbs) == 0, f"Partial thumbnail was written: {thumbs}"
+
+
+# ---------------------------------------------------------------------------
+# Perceptual hash (Similar Image Detection — Phase S1)
+# ---------------------------------------------------------------------------
+
+class TestPerceptualHash:
+    """Tests for pHash computation via compute_phash=True."""
+
+    def test_phash_returned_when_enabled(self, image_factory, thumb_dir):
+        """hash_file with compute_phash=True returns a non-None perceptual hash."""
+        p = image_factory(color=(128, 128, 128), mode="RGB")
+        pixel_hash, thumb_path, phash, w, h = hash_file(p, thumb_dir, compute_phash=True)
+        assert phash is not None
+        assert isinstance(phash, str)
+        assert len(phash) == 16  # 64-bit hash = 16 hex chars
+
+    def test_phash_none_when_disabled(self, image_factory, thumb_dir):
+        """hash_file with compute_phash=False returns None for phash, width, height."""
+        p = image_factory(color=(128, 128, 128), mode="RGB")
+        pixel_hash, thumb_path, phash, w, h = hash_file(p, thumb_dir, compute_phash=False)
+        assert phash is None
+        assert w is None
+        assert h is None
+
+    def test_phash_default_is_disabled(self, image_factory, thumb_dir):
+        """Default compute_phash is False — backward compatibility."""
+        p = image_factory(color=(128, 128, 128), mode="RGB")
+        pixel_hash, thumb_path, phash, w, h = hash_file(p, thumb_dir)
+        assert phash is None
+
+    def test_dimensions_captured_when_phash_enabled(self, image_factory, thumb_dir):
+        """width and height must match the image dimensions."""
+        p = image_factory(color=(128, 128, 128), mode="RGB", size=(200, 150))
+        _, _, _, w, h = hash_file(p, thumb_dir, compute_phash=True)
+        assert w == 200
+        assert h == 150
+
+    def test_same_image_produces_same_phash(self, image_factory, thumb_dir):
+        """Same file hashed twice gives identical perceptual hash."""
+        p = image_factory(color=(42, 170, 99), mode="RGB", fmt="PNG")
+        _, _, ph1, _, _ = hash_file(p, thumb_dir, compute_phash=True)
+        _, _, ph2, _, _ = hash_file(p, thumb_dir, compute_phash=True)
+        assert ph1 == ph2
+
+    def test_different_images_produce_different_phash(self, image_factory, thumb_dir):
+        """Structurally distinct images must produce different perceptual hashes.
+
+        Solid-color images lack structure (DCT = zero except DC), so pHash
+        cannot distinguish them by color alone.  Use split_v pattern to give
+        one image visible structure that the other (solid) image lacks.
+        """
+        solid = image_factory(color=(128, 128, 128), mode="RGB", fmt="PNG",
+                              size=(200, 200))
+        split = image_factory(color=(200, 200, 200), color2=(30, 30, 30),
+                              pattern="split_v", size=(200, 200), fmt="PNG")
+        _, _, ph_solid, _, _ = hash_file(solid, thumb_dir, compute_phash=True)
+        _, _, ph_split, _, _ = hash_file(split, thumb_dir, compute_phash=True)
+        assert ph_solid != ph_split
+
+    def test_rescaled_image_has_low_phash_distance(self, image_factory, thumb_dir):
+        """A rescaled copy should have a low Hamming distance from the original."""
+        import imagehash
+        from PIL import Image as PilImage
+
+        # Create a non-trivial pattern image
+        p = image_factory(
+            color=(128, 128, 128), color2=(64, 64, 64),
+            pattern="split_v", size=(200, 200), fmt="PNG",
+        )
+        _, _, ph_original, _, _ = hash_file(p, thumb_dir, compute_phash=True)
+
+        # Create rescaled version
+        img = PilImage.open(p)
+        resized = img.resize((100, 100), PilImage.Resampling.LANCZOS)
+        resized_path = thumb_dir.parent / "resized.png"
+        resized.save(str(resized_path), "PNG")
+        img.close()
+        resized.close()
+
+        _, _, ph_resized, _, _ = hash_file(resized_path, thumb_dir, compute_phash=True)
+
+        # Hamming distance should be low (< 10) for rescaled images
+        dist = imagehash.hex_to_hash(ph_original) - imagehash.hex_to_hash(ph_resized)
+        assert dist <= 10, (
+            f"Rescaled image pHash distance {dist} is too high "
+            f"(original={ph_original}, resized={ph_resized})"
+        )
+
+    def test_pixel_hash_still_correct_with_phash_enabled(self, image_factory, thumb_dir):
+        """Enabling pHash must not affect pixel_hash correctness."""
+        p = image_factory(color=(128, 128, 128), mode="RGB")
+        h_without, *_ = hash_file(p, thumb_dir, compute_phash=False)
+        h_with, _, _, _, _ = hash_file(p, thumb_dir, compute_phash=True)
+        assert h_without == h_with
+
+    def test_phash_is_hex_string(self, image_factory, thumb_dir):
+        """Perceptual hash must be a lowercase hex string."""
+        p = image_factory()
+        _, _, phash, _, _ = hash_file(p, thumb_dir, compute_phash=True)
+        assert all(c in "0123456789abcdef" for c in phash)

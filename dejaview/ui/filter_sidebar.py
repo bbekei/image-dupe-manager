@@ -10,7 +10,7 @@ UX Redesign Phase 5 — Advanced Cleanup.
 from dataclasses import dataclass, field
 from typing import Optional
 
-from PyQt6.QtCore import QDate, pyqtSignal
+from PyQt6.QtCore import QDate, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QSlider,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -41,6 +42,7 @@ class FilterCriteria:
     search_text: str | None = None  # set by the search bar, not the sidebar
     sort_by: str = "waste"  # 'waste' | 'copies' | 'path_length'
     sort_descending: bool = True
+    similarity_threshold: int = 8  # pHash Hamming distance threshold (0–64)
 
 
 # ---------------------------------------------------------------------------
@@ -142,6 +144,27 @@ class FilterSidebar(QWidget):
         sort_layout.addWidget(self._sort_combo)
         layout.addWidget(sort_group)
 
+        # ── Similarity Threshold ─────────────────────────────────────
+        self._sim_group = QGroupBox(self.tr("Similarity Threshold"))
+        sim_layout = QVBoxLayout(self._sim_group)
+        slider_row = QHBoxLayout()
+        self._sim_slider = QSlider(Qt.Orientation.Horizontal)
+        self._sim_slider.setMinimum(0)
+        self._sim_slider.setMaximum(16)
+        self._sim_slider.setValue(8)
+        self._sim_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self._sim_slider.setTickInterval(4)
+        slider_row.addWidget(self._sim_slider)
+        self._sim_value_label = QLabel("8")
+        self._sim_value_label.setMinimumWidth(20)
+        slider_row.addWidget(self._sim_value_label)
+        sim_layout.addLayout(slider_row)
+        self._sim_hint = QLabel(self.tr("Lower = stricter matching"))
+        self._sim_hint.setStyleSheet("color: #6b7280; font-size: 11px;")
+        sim_layout.addWidget(self._sim_hint)
+        self._sim_group.setVisible(False)  # shown only on similarity screen
+        layout.addWidget(self._sim_group)
+
         # ── Buttons ───────────────────────────────────────────────────
         btn_row = QHBoxLayout()
         self._apply_btn = QPushButton(self.tr("Apply"))
@@ -160,6 +183,9 @@ class FilterSidebar(QWidget):
     def _connect_signals(self) -> None:
         self._apply_btn.clicked.connect(self._on_apply)
         self._reset_btn.clicked.connect(self._on_reset)
+        self._sim_slider.valueChanged.connect(
+            lambda v: self._sim_value_label.setText(str(v))
+        )
 
     # ── Slots ─────────────────────────────────────────────────────────
 
@@ -176,6 +202,7 @@ class FilterSidebar(QWidget):
         self._min_copies.setValue(2)
         self._full_dupe_only.setChecked(False)
         self._sort_combo.setCurrentIndex(0)
+        self._sim_slider.setValue(8)
 
         criteria = self.current_criteria()
         self.filters_changed.emit(criteria)
@@ -203,7 +230,12 @@ class FilterSidebar(QWidget):
             full_dupe_folders_only=self._full_dupe_only.isChecked(),
             sort_by=self._sort_combo.currentData() or "waste",
             sort_descending=True,
+            similarity_threshold=self._sim_slider.value(),
         )
+
+    def set_similarity_visible(self, visible: bool) -> None:
+        """Show or hide the similarity threshold slider group."""
+        self._sim_group.setVisible(visible)
 
     @staticmethod
     def _expand_extensions(exts: list[str]) -> list[str]:

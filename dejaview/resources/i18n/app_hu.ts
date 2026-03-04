@@ -349,32 +349,12 @@ A fájlok 30 napig helyreállíthatók.</translation>
         <translation>Kész</translation>
     </message>
     <message>
-        <source>{0} / {1}</source>
-        <translation>{0} / {1}</translation>
+        <source>Similar</source>
+        <translation>Hasonló</translation>
     </message>
     <message>
-        <source>{0} / {1} — {2}</source>
-        <translation>{0} / {1} — {2}</translation>
-    </message>
-    <message>
-        <source>~{0} left</source>
-        <translation>~{0} van hátra</translation>
-    </message>
-    <message>
-        <source>{0}s</source>
-        <translation>{0} mp</translation>
-    </message>
-    <message>
-        <source>{0}m {1}s</source>
-        <translation>{0} p {1} mp</translation>
-    </message>
-    <message>
-        <source>{0}h {1}m</source>
-        <translation>{0} ó {1} p</translation>
-    </message>
-    <message>
-        <source>{0}d {1}h</source>
-        <translation>{0} n {1} ó</translation>
+        <source>Also detect similar images (slower)</source>
+        <translation>Hasonló képek keresése is (lassabb)</translation>
     </message>
 </context>
 
@@ -699,14 +679,6 @@ A fájlok 30 napig helyreállíthatók.</translation>
         <translation>Vizsgálat folyamatban…</translation>
     </message>
     <message>
-        <source>Pass 1: Discovering files…</source>
-        <translation>1. lépés: Fájlok keresése…</translation>
-    </message>
-    <message>
-        <source>Pass 1: Discovering files…  ({0} found)</source>
-        <translation>1. lépés: Fájlok keresése…  ({0} találat)</translation>
-    </message>
-    <message>
         <source>Scan complete</source>
         <translation>Vizsgálat kész</translation>
     </message>
@@ -719,24 +691,48 @@ A fájlok 30 napig helyreállíthatók.</translation>
         <translation>Vizsgálat leállítva</translation>
     </message>
     <message>
-        <source>{0} / {1} files — {2}</source>
-        <translation>{0} / {1} fájl — {2}</translation>
+        <source>Discovery</source>
+        <translation>Keresés</translation>
+    </message>
+    <message>
+        <source>Hashing</source>
+        <translation>Hashelés</translation>
+    </message>
+    <message>
+        <source>Similarity</source>
+        <translation>Hasonlóság</translation>
+    </message>
+    <message>
+        <source>Finalize</source>
+        <translation>Véglegesítés</translation>
+    </message>
+    <message>
+        <source>searching…</source>
+        <translation>keresés…</translation>
+    </message>
+    <message>
+        <source>{0} files found</source>
+        <translation>{0} fájl találva</translation>
     </message>
     <message>
         <source>{0} / {1} files</source>
         <translation>{0} / {1} fájl</translation>
     </message>
     <message>
-        <source>Pass 1: Discovery ✓</source>
-        <translation>1. lépés: Keresés ✓</translation>
+        <source>{0} files</source>
+        <translation>{0} fájl</translation>
     </message>
     <message>
-        <source>Pass 1: Discovery ✓  ({0} files)</source>
-        <translation>1. lépés: Keresés ✓  ({0} fájl)</translation>
+        <source>complete</source>
+        <translation>kész</translation>
     </message>
     <message>
-        <source>Pass 2: Hashing…  ({0} / {1})</source>
-        <translation>2. lépés: Hashelés…  ({0} / {1})</translation>
+        <source>processing…</source>
+        <translation>feldolgozás…</translation>
+    </message>
+    <message>
+        <source>Completed in {0}</source>
+        <translation>{0} alatt kész</translation>
     </message>
     <message>
         <source>~{0} left</source>
@@ -828,6 +824,18 @@ A fájlok 30 napig helyreállíthatók.</translation>
     <message>
         <source>Last synced: {0}</source>
         <translation>Utolsó szinkronizálás: {0}</translation>
+    </message>
+    <message>
+        <source>Similar Images</source>
+        <translation>Hasonló képek</translation>
+    </message>
+    <message>
+        <source>Enable similarity scan to detect</source>
+        <translation>Hasonlóság-keresés engedélyezése</translation>
+    </message>
+    <message>
+        <source>{0} similarity groups</source>
+        <translation>{0} hasonlósági csoport</translation>
     </message>
 </context>
 
@@ -1190,6 +1198,14 @@ Használja a Családi felfedezést fotók kéréséhez.</translation>
         <source>Reset</source>
         <translation>Visszaállítás</translation>
     </message>
+    <message>
+        <source>Similarity Threshold</source>
+        <translation>Hasonlósági küszöb</translation>
+    </message>
+    <message>
+        <source>Lower = stricter matching</source>
+        <translation>Alacsonyabb = szigorúbb egyezés</translation>
+    </message>
 </context>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
@@ -1346,6 +1362,147 @@ A mintának megfelelő fájlok törlésre lesznek jelölve.</translation>
     <message>
         <source>Showing {0} family photos from {1} providers</source>
         <translation>{0} családi fotó megjelenítése {1} szolgáltatótól</translation>
+    </message>
+</context>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     Similar Image Detection: SimilarityScreen (ui/similarity_screen.py)
+     ═══════════════════════════════════════════════════════════════════════ -->
+<context>
+    <name>SimilarityScreen</name>
+    <message>
+        <source>&#x2190; Back</source>
+        <translation>&#x2190; Vissza</translation>
+    </message>
+    <message>
+        <source>Similar Images</source>
+        <translation>Hasonló képek</translation>
+    </message>
+    <message>
+        <source>Smart Select</source>
+        <translation>Okos kijelölés</translation>
+    </message>
+    <message>
+        <source>Apply a preset to select files to keep/delete</source>
+        <translation>Előbeállítás alkalmazása a megtartandó/törlendő fájlok kijelöléséhez</translation>
+    </message>
+    <message>
+        <source>{0} groups &#x00b7; {1} files</source>
+        <translation>{0} csoport &#x00b7; {1} fájl</translation>
+    </message>
+    <message>
+        <source>Review Plan &#x00bb;</source>
+        <translation>Terv áttekintése &#x00bb;</translation>
+    </message>
+    <message>
+        <source>Recommendation: Keep {0} ({1})</source>
+        <translation>Javaslat: {0} megtartása ({1})</translation>
+    </message>
+    <message>
+        <source>Marked file {0} to keep</source>
+        <translation>{0}. fájl megtartásra jelölve</translation>
+    </message>
+    <message>
+        <source>Marked file {0} for deletion</source>
+        <translation>{0}. fájl törlésre jelölve</translation>
+    </message>
+    <message>
+        <source>Keep Highest Resolution</source>
+        <translation>Legnagyobb felbontás megtartása</translation>
+    </message>
+    <message>
+        <source>Keep Largest File</source>
+        <translation>Legnagyobb fájl megtartása</translation>
+    </message>
+    <message>
+        <source>Keep Newest</source>
+        <translation>Legújabb megtartása</translation>
+    </message>
+    <message>
+        <source>Keep Oldest</source>
+        <translation>Legrégebbi megtartása</translation>
+    </message>
+    <message>
+        <source>Keep Shortest Path</source>
+        <translation>Legrövidebb elérési út megtartása</translation>
+    </message>
+    <message>
+        <source>Choose which file to keep in each group:</source>
+        <translation>Válassza ki, melyik fájlt tartsa meg minden csoportban:</translation>
+    </message>
+    <message>
+        <source>Smart Select: {0} keep, {1} delete</source>
+        <translation>Okos kijelölés: {0} megtartás, {1} törlés</translation>
+    </message>
+</context>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     Similar Image Detection: SimilarityComparePanel (ui/similarity_compare.py)
+     ═══════════════════════════════════════════════════════════════════════ -->
+<context>
+    <name>SimilarityComparePanel</name>
+    <message>
+        <source>No preview</source>
+        <translation>Nincs előnézet</translation>
+    </message>
+    <message>
+        <source>&#x2605; RECOMMENDED</source>
+        <translation>&#x2605; AJÁNLOTT</translation>
+    </message>
+    <message>
+        <source>distance: {0}</source>
+        <translation>távolság: {0}</translation>
+    </message>
+    <message>
+        <source>Keep</source>
+        <translation>Megtartás</translation>
+    </message>
+    <message>
+        <source>Delete</source>
+        <translation>Törlés</translation>
+    </message>
+    <message>
+        <source>Select a similarity group to compare</source>
+        <translation>Válasszon hasonlósági csoportot az összehasonlításhoz</translation>
+    </message>
+</context>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     Similar Image Detection: SimilarityModel (ui/similarity_model.py)
+     ═══════════════════════════════════════════════════════════════════════ -->
+<context>
+    <name>SimilarityModel</name>
+    <message>
+        <source>Name</source>
+        <translation>Név</translation>
+    </message>
+    <message>
+        <source>Members</source>
+        <translation>Tagok</translation>
+    </message>
+    <message>
+        <source>Resolution</source>
+        <translation>Felbontás</translation>
+    </message>
+    <message>
+        <source>Size</source>
+        <translation>Méret</translation>
+    </message>
+    <message>
+        <source>Distance</source>
+        <translation>Távolság</translation>
+    </message>
+    <message>
+        <source>max {0}</source>
+        <translation>max {0}</translation>
+    </message>
+    <message>
+        <source>{0} similar files &#x00b7; {1} total</source>
+        <translation>{0} hasonló fájl &#x00b7; összesen {1}</translation>
+    </message>
+    <message>
+        <source>&#x2605; Recommended</source>
+        <translation>&#x2605; Ajánlott</translation>
     </message>
 </context>
 </TS>

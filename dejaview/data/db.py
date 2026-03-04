@@ -311,6 +311,69 @@ class Database:
                 """
             )
 
+        # Similar Image Detection: add perceptual_hash, width, height to files
+        cols = {r[1] for r in c.execute("PRAGMA table_info(files)").fetchall()}
+        if "perceptual_hash" not in cols:
+            c.execute("ALTER TABLE files ADD COLUMN perceptual_hash TEXT")
+            c.execute("ALTER TABLE files ADD COLUMN width INTEGER")
+            c.execute("ALTER TABLE files ADD COLUMN height INTEGER")
+            c.execute(
+                "CREATE INDEX IF NOT EXISTS idx_files_phash "
+                "ON files(perceptual_hash)"
+            )
+            c.commit()
+
+        # Similar Image Detection: add similarity_enabled to sessions
+        session_cols = {
+            r[1] for r in c.execute("PRAGMA table_info(sessions)").fetchall()
+        }
+        if "similarity_enabled" not in session_cols:
+            c.execute(
+                "ALTER TABLE sessions ADD COLUMN similarity_enabled "
+                "INTEGER NOT NULL DEFAULT 0"
+            )
+            c.commit()
+
+        # Similar Image Detection: add similarity_groups + members tables
+        tables = {
+            r[0]
+            for r in c.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+        if "similarity_groups" not in tables:
+            c.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS similarity_groups (
+                    id                     INTEGER PRIMARY KEY,
+                    session_id             INTEGER NOT NULL
+                        REFERENCES sessions(id) ON DELETE CASCADE,
+                    created_at             TEXT NOT NULL,
+                    status                 TEXT NOT NULL DEFAULT 'pending'
+                        CHECK (status IN ('pending', 'reviewed', 'actioned')),
+                    member_count           INTEGER NOT NULL DEFAULT 0,
+                    representative_file_id INTEGER
+                        REFERENCES files(id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_simgroups_session
+                    ON similarity_groups(session_id);
+
+                CREATE TABLE IF NOT EXISTS similarity_group_members (
+                    id        INTEGER PRIMARY KEY,
+                    group_id  INTEGER NOT NULL
+                        REFERENCES similarity_groups(id) ON DELETE CASCADE,
+                    file_id   INTEGER NOT NULL
+                        REFERENCES files(id) ON DELETE CASCADE,
+                    distance  INTEGER NOT NULL DEFAULT 0,
+                    UNIQUE (group_id, file_id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_simgroupmembers_group
+                    ON similarity_group_members(group_id);
+                CREATE INDEX IF NOT EXISTS idx_simgroupmembers_file
+                    ON similarity_group_members(file_id);
+                """
+            )
+
     def close(self) -> None:
         """Commit any pending work and close the connection."""
         if self._conn:
@@ -1341,6 +1404,192 @@ class Database:
             (session_id, pixel_hash, target_peer),
         ).fetchone()
         return row is not None
+
+    # ------------------------------------------------------------------
+    # Perceptual hash + similarity groups (Similar Image Detection)
+    # ------------------------------------------------------------------
+
+    def update_perceptual_hashes_batch(
+        self, updates: list[tuple[int, str, int, int]]
+    ) -> None:
+        """Write perceptual_hash, width, height for multiple files.
+
+        Each element: (file_id, perceptual_hash, width, height).
+        """
+        self.conn.executemany(
+            "UPDATE files SET perceptual_hash = ?, width = ?, height = ? "
+            "WHERE id = ?",
+            [(ph, w, h, fid) for fid, ph, w, h in updates],
+        )
+        self.conn.commit()
+
+    def update_dual_hashes_batch(
+        self, updates: list[tuple[int, str, str, str, int, int]]
+    ) -> None:
+        """Write pixel_hash, thumbnail, perceptual_hash, width, height for files
+        that were skipped by the size pre-filter in Pass 2.
+
+        Each element: (file_id, pixel_hash, thumbnail_path, perceptual_hash,
+                        width, height).
+        """
+        self.conn.executemany(
+            """UPDATE files
+               SET pixel_hash = ?, hash_algorithm = ?,
+                   thumbnail_path = ?,
+                   perceptual_hash = ?, width = ?, height = ?
+               WHERE id = ?""",
+            [
+                (
+                    ph,
+                    "xxh128" if len(ph) == 32 else "sha256",
+                    thumb,
+                    pph,
+                    w,
+                    h,
+                    fid,
+                )
+                for fid, ph, thumb, pph, w, h in updates
+            ],
+        )
+        self.conn.commit()
+
+    def get_files_needing_hashes(
+        self, session_id: int
+    ) -> list[sqlite3.Row]:
+        """Return files where perceptual_hash IS NULL — candidates for Pass 3.
+
+        Includes files skipped by the size pre-filter (pixel_hash IS NULL)
+        AND files already pixel-hashed (pixel_hash IS NOT NULL) that lack pHash.
+        """
+        return self.conn.execute(
+            """
+            SELECT * FROM files
+            WHERE session_id = ? AND perceptual_hash IS NULL
+                  AND status = 'active'
+            ORDER BY path
+            """,
+            (session_id,),
+        ).fetchall()
+
+    def get_files_with_phash(
+        self, session_id: int
+    ) -> list[sqlite3.Row]:
+        """Return all files that have a perceptual_hash set."""
+        return self.conn.execute(
+            """
+            SELECT * FROM files
+            WHERE session_id = ? AND perceptual_hash IS NOT NULL
+                  AND status = 'active'
+            ORDER BY pixel_hash, id
+            """,
+            (session_id,),
+        ).fetchall()
+
+    def create_similarity_group(
+        self,
+        session_id: int,
+        created_at: str,
+        representative_file_id: int,
+        member_count: int = 0,
+    ) -> int:
+        """Insert a new similarity group and return its id."""
+        cur = self.conn.execute(
+            """
+            INSERT INTO similarity_groups
+                (session_id, created_at, representative_file_id, member_count)
+            VALUES (?, ?, ?, ?)
+            """,
+            (session_id, created_at, representative_file_id, member_count),
+        )
+        self.conn.commit()
+        return cur.lastrowid  # type: ignore[return-value]
+
+    def add_similarity_group_members_batch(
+        self, rows: list[tuple[int, int, int]]
+    ) -> None:
+        """Bulk-insert similarity group members.
+
+        Each tuple: (group_id, file_id, distance).
+        """
+        self.conn.executemany(
+            """
+            INSERT OR IGNORE INTO similarity_group_members
+                (group_id, file_id, distance)
+            VALUES (?, ?, ?)
+            """,
+            rows,
+        )
+        self.conn.commit()
+
+    def clear_similarity_groups(self, session_id: int) -> None:
+        """Delete all similarity groups (and their members via CASCADE)."""
+        self.conn.execute(
+            "DELETE FROM similarity_groups WHERE session_id = ?",
+            (session_id,),
+        )
+        self.conn.commit()
+
+    def get_similarity_groups(
+        self, session_id: int
+    ) -> list[sqlite3.Row]:
+        """Return all similarity groups for a session."""
+        return self.conn.execute(
+            """
+            SELECT sg.*, f.path AS representative_path
+            FROM similarity_groups sg
+            LEFT JOIN files f ON f.id = sg.representative_file_id
+            WHERE sg.session_id = ?
+            ORDER BY sg.member_count DESC, sg.id
+            """,
+            (session_id,),
+        ).fetchall()
+
+    def get_similarity_group_count(self, session_id: int) -> int:
+        """Return count of similarity groups for a session."""
+        row = self.conn.execute(
+            "SELECT COUNT(*) AS cnt FROM similarity_groups WHERE session_id = ?",
+            (session_id,),
+        ).fetchone()
+        return row["cnt"] if row else 0
+
+    def get_similarity_group_members(
+        self, group_id: int
+    ) -> list[sqlite3.Row]:
+        """Return all files in a similarity group with full file metadata."""
+        return self.conn.execute(
+            """
+            SELECT sgm.group_id, sgm.distance,
+                   f.*
+            FROM similarity_group_members sgm
+            JOIN files f ON f.id = sgm.file_id
+            WHERE sgm.group_id = ?
+            ORDER BY sgm.distance, f.id
+            """,
+            (group_id,),
+        ).fetchall()
+
+    def get_similarity_group_file_count(self, session_id: int) -> int:
+        """Return total count of files across all similarity groups."""
+        row = self.conn.execute(
+            """
+            SELECT COUNT(*) AS cnt
+            FROM similarity_group_members sgm
+            JOIN similarity_groups sg ON sg.id = sgm.group_id
+            WHERE sg.session_id = ?
+            """,
+            (session_id,),
+        ).fetchone()
+        return row["cnt"] if row else 0
+
+    def update_similarity_group_status(
+        self, group_id: int, status: str
+    ) -> None:
+        """Update the review status of a similarity group."""
+        self.conn.execute(
+            "UPDATE similarity_groups SET status = ? WHERE id = ?",
+            (status, group_id),
+        )
+        self.conn.commit()
 
     # ------------------------------------------------------------------
     # Thumbnail cleanup (plan §Post-Action Cleanup)
