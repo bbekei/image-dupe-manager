@@ -106,13 +106,3 @@ export function useScanProgress(callbacks: {
   })
 }
 
-/**
- * Format a file:// URL for thumbnails from a local path.
- * pywebview can render file:// URLs directly.
- */
-export function thumbnailUrl(thumbPath: string | null): string {
-  if (!thumbPath) return ''
-  // Normalize Windows backslashes and create file:// URL
-  const normalized = thumbPath.replace(/\\/g, '/')
-  return `file:///${normalized}`
-}

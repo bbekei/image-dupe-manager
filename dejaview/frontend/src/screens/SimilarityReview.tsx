@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next'
 import { Images, Star } from 'lucide-react'
 import { ReactCompareSlider, ReactCompareSliderImage } from 'react-compare-slider'
 import { callBackend } from '../hooks/usePyBridge.ts'
-import { thumbnailUrl } from '../hooks/usePyBridge.ts'
 import { useScanStore } from '../stores/useScanStore.ts'
 import type { SimilarityGroup, FileInfo, KeeperRecommendation } from '../types/api.ts'
 
@@ -100,13 +99,13 @@ export function SimilarityReview() {
             <ReactCompareSlider
               itemOne={
                 <ReactCompareSliderImage
-                  src={thumbnailUrl(file1.thumbnail_path)}
+                  src={file1.thumbnail_data ?? ''}
                   alt="Image 1"
                 />
               }
               itemTwo={
                 <ReactCompareSliderImage
-                  src={thumbnailUrl(file2.thumbnail_path)}
+                  src={file2.thumbnail_data ?? ''}
                   alt="Image 2"
                 />
               }
@@ -141,9 +140,9 @@ export function SimilarityReview() {
                 : 'border-dv-border'
             }`}
           >
-            {file.thumbnail_path && (
+            {file.thumbnail_data && (
               <img
-                src={thumbnailUrl(file.thumbnail_path)}
+                src={file.thumbnail_data}
                 alt=""
                 className="w-full h-40 object-cover rounded-lg mb-3"
               />

@@ -50,6 +50,8 @@
       "similarity": "Analyzing similarity..."
     },
     "progress": "{{current}} of {{total}} files",
+    "discovered": "{{count}} files found",
+    "duplicates_found": "{{count}} duplicates found",
     "complete": "Scan Complete",
     "paused": "Scan Paused",
     "stopped": "Scan Stopped"

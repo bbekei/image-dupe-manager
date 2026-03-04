@@ -13,6 +13,7 @@ Event forwarding: Scanner and PlanExecutor emit Qt signals which are forwarded
 to the React frontend as CustomEvent objects via window.evaluate_js().
 """
 
+import base64
 import json
 import logging
 import os
@@ -309,7 +310,21 @@ class DejaViewAPI:
     def get_group_detail(self, session_id: int, pixel_hash: str) -> list[dict]:
         """Return full metadata for all files in a specific duplicate group."""
         files = self._db.get_files_by_pixel_hash(session_id, pixel_hash)
-        return _rows_to_list(files)
+        result = _rows_to_list(files)
+        for f in result:
+            f["thumbnail_data"] = self._read_thumbnail_base64(f.get("thumbnail_path"))
+        return result
+
+    def _read_thumbnail_base64(self, thumb_path: str | None) -> str:
+        """Read a thumbnail file and return a data URI, or empty string."""
+        if not thumb_path:
+            return ""
+        try:
+            data = Path(thumb_path).read_bytes()
+            b64 = base64.b64encode(data).decode("ascii")
+            return f"data:image/jpeg;base64,{b64}"
+        except OSError:
+            return ""
 
     def set_file_action(self, file_id: int, action: str, scope: str) -> None:
         """Mark a file with an action (keep/delete/ignore)."""
@@ -410,11 +425,16 @@ class DejaViewAPI:
         result = []
         for g in db_groups:
             members = self._db.get_similarity_group_members(g["id"])
+            member_list = _rows_to_list(members)
+            for m in member_list:
+                m["thumbnail_data"] = self._read_thumbnail_base64(
+                    m.get("thumbnail_path")
+                )
             result.append({
                 "id": g["id"],
                 "session_id": session_id,
-                "member_count": len(members),
-                "members": _rows_to_list(members),
+                "member_count": len(member_list),
+                "members": member_list,
             })
         return result
 

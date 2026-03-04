@@ -34,6 +34,7 @@ export interface FileInfo {
   pixel_hash: string | null
   perceptual_hash: string | null
   thumbnail_path: string | null
+  thumbnail_data?: string
   status: string
   width: number | null
   height: number | null

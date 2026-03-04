@@ -50,6 +50,8 @@
       "similarity": "Hasonlóság elemzése..."
     },
     "progress": "{{current}} / {{total}} fájl",
+    "discovered": "{{count}} fájl találva",
+    "duplicates_found": "{{count}} duplikátum találva",
     "complete": "Szkennelés kész",
     "paused": "Szkennelés szüneteltetve",
     "stopped": "Szkennelés leállítva"

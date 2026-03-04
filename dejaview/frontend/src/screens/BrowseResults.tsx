@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { ChevronRight, Check, Trash2, EyeOff, Wand2 } from 'lucide-react'
 import { callBackend, useBackendEvent } from '../hooks/usePyBridge.ts'
-import { thumbnailUrl } from '../hooks/usePyBridge.ts'
 import { useReviewStore } from '../stores/useReviewStore.ts'
 import { useScanStore } from '../stores/useScanStore.ts'
 import type { DuplicateGroup, FileInfo, FileAction, SelectionPreset } from '../types/api.ts'
@@ -31,9 +30,9 @@ function FileCard({
 
   return (
     <div className="bg-dv-bg rounded-lg border border-dv-border p-3 flex gap-3">
-      {file.thumbnail_path ? (
+      {file.thumbnail_data ? (
         <img
-          src={thumbnailUrl(file.thumbnail_path)}
+          src={file.thumbnail_data}
           alt={fileName}
           className="w-24 h-24 object-cover rounded-md shrink-0"
           loading="lazy"
