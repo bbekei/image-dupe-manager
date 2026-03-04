@@ -211,6 +211,47 @@ class ExecutionScreen(QWidget):
             self._sync_status.setStyleSheet("color: #666;")
 
     @pyqtSlot(str)
+    def on_sync_substage(self, substage: str) -> None:
+        """Update sync status label based on substage key from executor."""
+        if substage == "compressing":
+            self._sync_status.setText(self.tr("Compressing database\u2026"))
+        elif substage.startswith("compressed:"):
+            parts = substage.split(":")
+            if len(parts) == 3:
+                try:
+                    raw = int(parts[1])
+                    gz = int(parts[2])
+                    if raw > 0:
+                        pct = int((1 - gz / raw) * 100)
+                        self._sync_status.setText(
+                            self.tr("Compressed {0} \u2192 {1} ({2}% reduction)").format(
+                                self._format_size(raw),
+                                self._format_size(gz),
+                                pct,
+                            )
+                        )
+                except (ValueError, ZeroDivisionError):
+                    pass
+        elif substage == "uploading":
+            self._sync_status.setText(
+                self.tr("Uploading compressed data\u2026")
+            )
+        elif substage == "upload_skipped":
+            self._sync_status.setText(
+                self.tr("Upload skipped \u2014 data unchanged")
+            )
+        elif substage.startswith("downloading:"):
+            peer = substage.split(":", 1)[1]
+            self._sync_status.setText(
+                self.tr("Downloading peer data: {0}\u2026").format(peer)
+            )
+        elif substage.startswith("decompressing:"):
+            peer = substage.split(":", 1)[1]
+            self._sync_status.setText(
+                self.tr("Decompressing peer data: {0}\u2026").format(peer)
+            )
+
+    @pyqtSlot(str)
     def on_log_message(self, message: str) -> None:
         self._log_area.append(message)
 
@@ -296,6 +337,15 @@ class ExecutionScreen(QWidget):
             return self.tr("{0}h {1}m").format(h, m)
         d, h = divmod(h, 24)
         return self.tr("{0}d {1}h").format(d, h)
+
+    @staticmethod
+    def _format_size(n: int) -> str:
+        """Format byte count as human-readable size."""
+        if n >= 1_000_000:
+            return f"{n / 1_000_000:.1f} MB"
+        if n >= 1_000:
+            return f"{n / 1_000:.1f} KB"
+        return f"{n} B"
 
     def _toggle_log(self) -> None:
         if self._log_area.isVisible():

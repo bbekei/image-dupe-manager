@@ -270,6 +270,18 @@ Files are recoverable for 30 days.</source>
         <source>{0} duplicate groups found</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Previous</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Next</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Page {0} of {1}</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>SettingsDialog</name>
@@ -607,6 +619,15 @@ Files are recoverable for 30 days.</source>
         <source>{0} similarity groups</source>
         <translation type="unfinished"></translation>
     </message>
+    <!-- Data Compression: sync error recovery (§5.2) -->
+    <message>
+        <source>Sync Failed &#x2014; {0}: {1}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Retry Download</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>CleanupScreen</name>
@@ -864,6 +885,31 @@ Use Family Discovery to request photos.</source>
     </message>
     <message>
         <source>{0}d {1}h</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <!-- Data Compression substage messages (§5.1) -->
+    <message>
+        <source>Compressing database&#x2026;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Compressed {0} &#x2192; {1} ({2}% reduction)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Uploading compressed data&#x2026;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Upload skipped &#x2014; data unchanged</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Downloading peer data: {0}&#x2026;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Decompressing peer data: {0}&#x2026;</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

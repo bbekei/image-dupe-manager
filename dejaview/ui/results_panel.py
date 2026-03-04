@@ -64,7 +64,11 @@ from ui.results_model import (  # noqa: F401
     _DEFAULT_INDENT,
     _MIN_INDENT,
 )
-from ui.cluster_model import ClusterModel
+from ui.cluster_model import (
+    ClusterModel,
+    ROLE_NODE_TYPE as CLUSTER_ROLE_NODE_TYPE,
+    ROLE_PIXEL_HASH as CLUSTER_ROLE_PIXEL_HASH,
+)
 
 log = logging.getLogger(__name__)
 
@@ -319,6 +323,24 @@ class ResultsPanel(QWidget):
 
         layout.addWidget(self._tree)
 
+        # Pagination bar (visible in cluster view only).
+        self._page_bar = QWidget(self)
+        page_layout = QHBoxLayout(self._page_bar)
+        page_layout.setContentsMargins(6, 2, 6, 2)
+        self._prev_btn = QPushButton(self.tr("Previous"), self)
+        self._prev_btn.setEnabled(False)
+        self._page_label = QLabel("", self)
+        self._page_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._next_btn = QPushButton(self.tr("Next"), self)
+        self._next_btn.setEnabled(False)
+        page_layout.addWidget(self._prev_btn)
+        page_layout.addStretch()
+        page_layout.addWidget(self._page_label)
+        page_layout.addStretch()
+        page_layout.addWidget(self._next_btn)
+        self._page_bar.setVisible(False)
+        layout.addWidget(self._page_bar)
+
         # Context menu on tree.
         self._tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._tree.customContextMenuRequested.connect(self._on_context_menu)
@@ -337,6 +359,8 @@ class ResultsPanel(QWidget):
         self._compare_btn.clicked.connect(self._on_compare_clicked)
         self._view_group.idToggled.connect(self._on_view_toggled)
         self._search_input.textChanged.connect(self._on_search_changed)
+        self._prev_btn.clicked.connect(self._on_prev_page)
+        self._next_btn.clicked.connect(self._on_next_page)
 
     def _build_debounce_timer(self) -> None:
         """200ms debounce timer (plan §Resource Usage — UI update rate-limiting)."""
@@ -581,6 +605,11 @@ class ResultsPanel(QWidget):
     @pyqtSlot(QModelIndex)
     def _on_item_double_clicked(self, proxy_index: QModelIndex) -> None:
         """Double-click a duplicate file → emit compare_view_requested(pixel_hash)."""
+        if self._view_mode == "cluster":
+            pixel_hash = self._cluster_model.data(proxy_index, CLUSTER_ROLE_PIXEL_HASH)
+            if pixel_hash:
+                self.compare_view_requested.emit(pixel_hash)
+            return
         source_index = self._proxy.mapToSource(proxy_index)
         item = self._model.itemFromIndex(source_index)
         if item is None:
@@ -598,6 +627,10 @@ class ResultsPanel(QWidget):
         if not current.isValid():
             self._compare_btn.setEnabled(False)
             return
+        if self._view_mode == "cluster":
+            pixel_hash = self._cluster_model.data(current, CLUSTER_ROLE_PIXEL_HASH)
+            self._compare_btn.setEnabled(bool(pixel_hash))
+            return
         source = self._proxy.mapToSource(current)
         item = self._model.itemFromIndex(source)
         if item is None:
@@ -613,6 +646,11 @@ class ResultsPanel(QWidget):
         """Compare button clicked — emit compare signal for the selected item."""
         idx = self._tree.currentIndex()
         if not idx.isValid():
+            return
+        if self._view_mode == "cluster":
+            pixel_hash = self._cluster_model.data(idx, CLUSTER_ROLE_PIXEL_HASH)
+            if pixel_hash:
+                self.compare_view_requested.emit(pixel_hash)
             return
         source = self._proxy.mapToSource(idx)
         item = self._model.itemFromIndex(source)
@@ -635,6 +673,18 @@ class ResultsPanel(QWidget):
         idx = self._tree.indexAt(position)
         if not idx.isValid():
             return
+
+        if self._view_mode == "cluster":
+            pixel_hash = self._cluster_model.data(idx, CLUSTER_ROLE_PIXEL_HASH)
+            if pixel_hash:
+                menu = QMenu(self)
+                action = menu.addAction(self.tr("Compare Duplicates"))
+                action.triggered.connect(
+                    lambda: self.compare_view_requested.emit(pixel_hash)
+                )
+                menu.exec(self._tree.viewport().mapToGlobal(position))
+            return
+
         source = self._proxy.mapToSource(idx)
         item = self._model.itemFromIndex(source)
         if item is None:
@@ -665,11 +715,14 @@ class ResultsPanel(QWidget):
         """Switch the QTreeView back to the folder-based tree model."""
         self._view_mode = "tree"
         self._tree.setModel(self._proxy)
+        # Reconnect selectionModel (Qt replaces it on setModel).
+        self._tree.selectionModel().currentChanged.connect(self._on_selection_changed)
         self._tree.setColumnHidden(2, True)
         # Restore filter bar (relevant for tree view).
         self._radio_all.setVisible(True)
         self._radio_dupes.setVisible(True)
         self._radio_cross.setVisible(True)
+        self._page_bar.setVisible(False)
         self._adjust_indentation()
         self._fit_columns()
         self._update_stats()
@@ -680,14 +733,18 @@ class ResultsPanel(QWidget):
         if self._session_id is not None:
             search = self._search_input.text().strip() or None
             self._cluster_model.load_from_db(
-                self._db, self._session_id, search_text=search,
+                self._db, self._session_id, search_text=search, page=0,
             )
         self._tree.setModel(self._cluster_model)
+        # Reconnect selectionModel (Qt replaces it on setModel).
+        self._tree.selectionModel().currentChanged.connect(self._on_selection_changed)
         self._tree.setColumnHidden(2, False)
         # Hide filter bar radios (cluster view uses filter sidebar instead).
         self._radio_all.setVisible(False)
         self._radio_dupes.setVisible(False)
         self._radio_cross.setVisible(False)
+        self._page_bar.setVisible(True)
+        self._update_pagination()
         self._tree.expandAll()
         self._fit_columns()
         self._update_stats()
@@ -698,9 +755,10 @@ class ResultsPanel(QWidget):
         if self._view_mode == "cluster" and self._session_id is not None:
             search = text.strip() or None
             self._cluster_model.load_from_db(
-                self._db, self._session_id, search_text=search,
+                self._db, self._session_id, search_text=search, page=0,
             )
             self._tree.expandAll()
+            self._update_pagination()
         # For tree view, search is informational only (full filter in sidebar).
         self._update_stats()
 
@@ -724,15 +782,50 @@ class ResultsPanel(QWidget):
                 sort_by=criteria.sort_by,
                 sort_desc=criteria.sort_descending,
                 search_text=criteria.search_text or self._search_input.text().strip() or None,
+                page=0,
             )
             self._tree.expandAll()
+            self._update_pagination()
         # Tree view: the filter sidebar criteria are applied via the proxy in future enhancement.
         self._update_stats()
+
+    # ── Pagination ────────────────────────────────────────────────────
+
+    def _on_prev_page(self) -> None:
+        if self._cluster_model.has_previous_page:
+            self._load_cluster_page(self._cluster_model.page - 1)
+
+    def _on_next_page(self) -> None:
+        if self._cluster_model.has_next_page:
+            self._load_cluster_page(self._cluster_model.page + 1)
+
+    def _load_cluster_page(self, page: int) -> None:
+        """Load a specific page of cluster results."""
+        if self._session_id is None:
+            return
+        search = self._search_input.text().strip() or None
+        self._cluster_model.load_from_db(
+            self._db, self._session_id, search_text=search, page=page,
+        )
+        self._tree.expandAll()
+        self._update_pagination()
+        self._update_stats()
+
+    def _update_pagination(self) -> None:
+        """Update pagination controls to reflect current state."""
+        model = self._cluster_model
+        self._prev_btn.setEnabled(model.has_previous_page)
+        self._next_btn.setEnabled(model.has_next_page)
+        self._page_label.setText(
+            self.tr("Page {0} of {1}").format(
+                model.page + 1, model.total_pages
+            )
+        )
 
     def _update_stats(self) -> None:
         """Refresh the stats header label."""
         if self._view_mode == "cluster":
-            groups = self._cluster_model.cluster_count()
+            groups = self._cluster_model.total_groups
             files = self._cluster_model.total_files()
             waste = self._cluster_model.total_waste_bytes()
             waste_str = self._format_size(waste)

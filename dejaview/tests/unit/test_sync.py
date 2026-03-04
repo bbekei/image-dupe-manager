@@ -163,7 +163,7 @@ class TestCredentialStorage:
 class TestUpload:
     """Plan §Test Framework — sync upload tests."""
 
-    @patch("data.sync.DriveSync._make_media_upload", return_value=MagicMock())
+    @patch("data.sync.DriveSync._make_media_upload_bytes", return_value=MagicMock())
     def test_upload_called_with_correct_file_id_on_update(self, mock_media,
                                                            db, session_factory):
         """Plan test: when gdrive_file_id is set, files().update() is called."""
@@ -186,7 +186,7 @@ class TestUpload:
         # files().create() must NOT have been called
         service.files().create.assert_not_called()
 
-    @patch("data.sync.DriveSync._make_media_upload", return_value=MagicMock())
+    @patch("data.sync.DriveSync._make_media_upload_bytes", return_value=MagicMock())
     def test_upload_called_with_create_on_first_export(self, mock_media,
                                                         db, session_factory):
         """Plan test: when gdrive_file_id is NULL, files().create() is called
@@ -209,7 +209,7 @@ class TestUpload:
         config = db.get_sync_config()
         assert config["gdrive_file_id"] == new_id
 
-    @patch("data.sync.DriveSync._make_media_upload", return_value=MagicMock())
+    @patch("data.sync.DriveSync._make_media_upload_bytes", return_value=MagicMock())
     def test_upload_sets_last_exported_at(self, mock_media, db,
                                           session_factory):
         session_id = session_factory()
@@ -223,7 +223,7 @@ class TestUpload:
         config = db.get_sync_config()
         assert config["last_exported_at"] is not None
 
-    @patch("data.sync.DriveSync._make_media_upload", return_value=MagicMock())
+    @patch("data.sync.DriveSync._make_media_upload_bytes", return_value=MagicMock())
     def test_upload_clears_pending_export_on_success(self, mock_media, db,
                                                       session_factory):
         session_id = session_factory()
@@ -286,7 +286,7 @@ class TestDownload:
         }
 
         sync = DriveSync(db, "/fake/creds.json", service=service)
-        result = sync.download_peers()
+        result, errors = sync.download_peers()
 
         # get_media should NOT be called — file is unchanged
         service.files().get_media.assert_not_called()
@@ -315,7 +315,7 @@ class TestDownload:
         service.files().get_media().execute.return_value = peer_payload
 
         sync = DriveSync(db, "/fake/creds.json", service=service)
-        result = sync.download_peers()
+        result, errors = sync.download_peers()
 
         assert result is True
         service.files().get_media.assert_called()
@@ -337,7 +337,7 @@ class TestDownload:
         }
 
         sync = DriveSync(db, "/fake/creds.json", service=service)
-        result = sync.download_peers()
+        result, errors = sync.download_peers()
 
         service.files().get_media.assert_not_called()
         assert result is False
@@ -356,7 +356,7 @@ class TestDownload:
         }
 
         sync = DriveSync(db, "/fake/creds.json", service=service)
-        result = sync.download_peers()
+        result, errors = sync.download_peers()
         assert result is False
 
     def test_download_new_peer_imported(self, db, session_factory):
@@ -375,7 +375,7 @@ class TestDownload:
         service.files().get_media().execute.return_value = peer_payload
 
         sync = DriveSync(db, "/fake/creds.json", service=service)
-        result = sync.download_peers()
+        result, errors = sync.download_peers()
 
         assert result is True
         peer = db.get_remote_peer("bob")
@@ -422,11 +422,11 @@ class TestSyncCycle:
 
         sync = DriveSync(db, "/fake/creds.json", service=service)
         # Must NOT raise
-        result = sync.sync(session_id)
+        result, peer_errors = sync.sync(session_id)
 
         assert result == "unavailable" or sync.status == "unavailable"
 
-    @patch("data.sync.DriveSync._make_media_upload", return_value=MagicMock())
+    @patch("data.sync.DriveSync._make_media_upload_bytes", return_value=MagicMock())
     def test_pending_export_flag_set_when_offline(self, mock_media, db,
                                                    session_factory):
         """Plan test: when upload fails, pending_export = 1."""
@@ -448,7 +448,7 @@ class TestSyncCycle:
         config = db.get_sync_config()
         assert config["pending_export"] == 1
 
-    @patch("data.sync.DriveSync._make_media_upload", return_value=MagicMock())
+    @patch("data.sync.DriveSync._make_media_upload_bytes", return_value=MagicMock())
     def test_pending_export_sent_on_next_successful_sync(self, mock_media,
                                                           db, session_factory):
         """Plan test: when pending_export=1 and next sync succeeds,
@@ -473,14 +473,14 @@ class TestSyncCycle:
     def test_sync_without_service_returns_unavailable(self, db):
         _setup_sync_config(db)
         sync = DriveSync(db, "/fake/creds.json", service=None)
-        result = sync.sync()
+        result, _ = sync.sync()
         assert result == "unavailable"
 
     def test_sync_without_sync_enabled_returns_idle(self, db):
         _setup_sync_config(db, sync_enabled=0)
         service = _make_mock_service()
         sync = DriveSync(db, "/fake/creds.json", service=service)
-        result = sync.sync()
+        result, _ = sync.sync()
         assert result == "idle"
 
 

@@ -19,7 +19,7 @@ import json
 import logging
 import re
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from data.db import Database
@@ -153,6 +153,70 @@ def build_export_payload(
         payload["requests_outgoing"] = requests_outgoing
 
     return payload
+
+
+# ---------------------------------------------------------------------------
+# Compressed export (R-COMP-03 / §7 — data/export.py touchpoint)
+# ---------------------------------------------------------------------------
+
+def build_compressed_export(
+    db: "Database",
+    session_id: int,
+    username: str,
+    privacy_level: str,
+) -> tuple[bytes, int, int]:
+    """Build a gzip-compressed, optimized export payload.
+
+    Applies all §3 data optimization strategies (field shortening, path
+    tokenization, hash-centric grouping) then streams through gzip.
+
+    Args:
+        db: Open Database instance.
+        session_id: The session to export.
+        username: Display name (becomes filename stem).
+        privacy_level: 'hash_only' | 'filename' | 'full_path'.
+
+    Returns:
+        (compressed_bytes, uncompressed_size, compressed_size)
+        Sizes are in bytes, for compression ratio reporting (§5.1).
+    """
+    from data.compression import build_optimized_compressed
+
+    payload = build_export_payload(db, session_id, username, privacy_level)
+    compressed, uncompressed_size = build_optimized_compressed(payload)
+    return compressed, uncompressed_size, len(compressed)
+
+
+# ---------------------------------------------------------------------------
+# Compressed import (R-COMP-03 — decompression path)
+# ---------------------------------------------------------------------------
+
+def import_compressed_payload(db: "Database", data: bytes) -> str:
+    """Import a gzip-compressed peer export.
+
+    Decompresses in-memory, reverses all optimizations, then delegates
+    to import_payload() for validation and DB insertion.
+
+    Args:
+        db: Open Database instance.
+        data: Raw gzip-compressed bytes.
+
+    Returns:
+        The peer username that was imported.
+
+    Raises:
+        ImportError: On decompression failure or validation error.
+    """
+    from data.compression import decompress_and_expand
+
+    try:
+        payload = decompress_and_expand(data)
+    except ValueError as exc:
+        raise ImportError(f"Failed to decompress peer export: {exc}") from exc
+
+    # Re-serialize to JSON for import_payload (which expects str|bytes)
+    raw = json.dumps(payload, ensure_ascii=False)
+    return import_payload(db, raw)
 
 
 # ---------------------------------------------------------------------------

@@ -893,6 +893,9 @@ class MainWindow(QMainWindow):
         self._status_bar.showMessage(self.tr("\u2195 Syncing\u2026"))
         self._sync_worker = _SyncWorker(self._drive_sync, session_id)
         self._sync_worker.finished_status.connect(self._on_sync_finished)
+        self._sync_worker.peer_errors_received.connect(
+            self._on_sync_peer_errors
+        )
         self._sync_worker.start()
 
     def _run_sync_blocking(self, session_id: int | None = None) -> None:
@@ -921,6 +924,12 @@ class MainWindow(QMainWindow):
         else:
             self._status_bar.showMessage(self.tr("\u2713 Sync complete."))
         self._results_panel.update_cross_library_data()
+
+    @pyqtSlot(dict)
+    def _on_sync_peer_errors(self, errors: dict) -> None:
+        """Forward per-peer sync errors to the dashboard."""
+        if hasattr(self, '_dashboard'):
+            self._dashboard.set_peer_errors(errors)
 
     # ── Window close ─────────────────────────────────────────────────────
 
@@ -966,6 +975,7 @@ class _SyncWorker(QThread):
     """Runs DriveSync.sync() in a background thread."""
 
     finished_status = pyqtSignal(str)
+    peer_errors_received = pyqtSignal(dict)
 
     def __init__(self, drive_sync: DriveSync, session_id: int | None = None, parent=None):
         super().__init__(parent)
@@ -974,7 +984,11 @@ class _SyncWorker(QThread):
 
     def run(self) -> None:
         try:
-            status = self._drive_sync.sync(session_id=self._session_id)
+            status, peer_errors = self._drive_sync.sync(
+                session_id=self._session_id
+            )
+            if peer_errors:
+                self.peer_errors_received.emit(peer_errors)
         except Exception as exc:
             log.warning("Background sync failed: %s", exc)
             status = "unavailable"

@@ -65,7 +65,7 @@ from pathlib import Path
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
-from core.hasher import HashError, hash_file
+from core.hasher import HashError, compute_phash_only, hash_file
 from core.perf_monitor import ENABLED as _PERF_ENABLED
 from data.db import Database
 
@@ -698,11 +698,19 @@ class Scanner(QThread):
                 file_row = next(candidate_it)
             except StopIteration:
                 return False
-            f = executor.submit(
-                hash_file, file_row["path"], self._thumb_dir,
-                compute_phash=True,
-            )
-            active[f] = dict(file_row)
+            row_dict = dict(file_row)
+            has_pixel_hash = row_dict.get("pixel_hash") is not None
+            if has_pixel_hash:
+                # Already pixel-hashed in Pass 2 — compute only pHash.
+                f = executor.submit(compute_phash_only, row_dict["path"])
+            else:
+                # Size-filter skipped — need full pixel_hash + thumbnail + pHash.
+                f = executor.submit(
+                    hash_file, row_dict["path"], self._thumb_dir,
+                    compute_phash=True,
+                )
+            row_dict["_phash_only"] = has_pixel_hash
+            active[f] = row_dict
             return True
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
@@ -728,15 +736,14 @@ class Scanner(QThread):
                     file_row = active.pop(future)
                     file_id = file_row["id"]
                     path = file_row["path"]
-                    had_pixel_hash = file_row.get("pixel_hash") is not None
+                    phash_only = file_row.get("_phash_only", False)
 
                     try:
-                        pixel_hash, thumb_path, phash, w, h = future.result()
-                        if had_pixel_hash:
-                            # Already had pixel_hash from Pass 2 — store pHash only.
+                        if phash_only:
+                            phash, w, h = future.result()
                             pending_phash_only.append((file_id, phash, w, h))
                         else:
-                            # Size-filter skipped file — store everything.
+                            pixel_hash, thumb_path, phash, w, h = future.result()
                             pending_dual.append(
                                 (file_id, pixel_hash, thumb_path, phash, w, h)
                             )

@@ -64,6 +64,26 @@ class HashError(Exception):
     """Raised when a file cannot be hashed (corrupt, unreadable, unsupported format)."""
 
 
+def _open_normalized(path: Path) -> Image.Image:
+    """Open an image file and normalize to EXIF-transposed RGB.
+
+    Args:
+        path: Absolute path to the image file (must exist).
+
+    Returns:
+        Pillow Image in RGB mode with EXIF orientation applied.
+        Caller is responsible for closing the Image.
+
+    Raises:
+        HashError: If the file cannot be opened or decoded.
+    """
+    _strip_zone_identifier(path)
+    img = Image.open(path)
+    img = ImageOps.exif_transpose(img)
+    img = img.convert("RGB")
+    return img
+
+
 def compute_perceptual_hash(img: Image.Image) -> str:
     """Compute pHash of an already-opened, EXIF-transposed RGB image.
 
@@ -76,6 +96,46 @@ def compute_perceptual_hash(img: Image.Image) -> str:
     import imagehash
 
     return str(imagehash.phash(img))
+
+
+def compute_phash_only(
+    path: str | Path,
+) -> tuple[str, int, int]:
+    """Compute only the perceptual hash and dimensions for an image.
+
+    Lightweight alternative to hash_file() for files that already have a
+    pixel_hash and thumbnail from Pass 2.  Skips xxHash and thumbnail
+    generation entirely.
+
+    Args:
+        path: Absolute path to the image file.
+
+    Returns:
+        (perceptual_hash, width, height).
+
+    Raises:
+        HashError: If the file cannot be opened or decoded.
+    """
+    path = Path(path)
+    if not path.exists():
+        raise HashError(f"File not found: {path}") from FileNotFoundError(path)
+
+    img = None
+    try:
+        img = _open_normalized(path)
+        width, height = img.size
+        perceptual_hash = compute_perceptual_hash(img)
+        return perceptual_hash, width, height
+    except (UnidentifiedImageError, OSError, SyntaxError, Exception) as exc:
+        if isinstance(exc, HashError):
+            raise
+        raise HashError(f"Cannot hash {path}: {exc}") from exc
+    finally:
+        if img is not None:
+            try:
+                img.close()
+            except Exception:
+                pass
 
 
 def hash_file(
@@ -110,14 +170,7 @@ def hash_file(
 
     img = None
     try:
-        _strip_zone_identifier(path)
-        img = Image.open(path)
-
-        # Step 2: normalize EXIF orientation (plan §Pixel hash normalization spec)
-        img = ImageOps.exif_transpose(img)
-
-        # Step 3: unify to RGB (handles RGBA, palette, grayscale, etc.)
-        img = img.convert("RGB")
+        img = _open_normalized(path)
 
         # Capture dimensions before hashing (cheap — already decoded).
         width, height = img.size

@@ -787,6 +787,36 @@ class TestFilteredDuplicateGroups:
         assert "oldest_date" in g.keys()
         assert "newest_date" in g.keys()
 
+    def test_limit_returns_subset(self):
+        groups = self.db.get_filtered_duplicate_groups(self.sid, limit=1)
+        assert len(groups) == 1
+
+    def test_limit_zero_returns_all(self):
+        groups = self.db.get_filtered_duplicate_groups(self.sid, limit=0)
+        assert len(groups) == 2
+
+    def test_offset_skips_rows(self):
+        all_groups = self.db.get_filtered_duplicate_groups(self.sid)
+        page2 = self.db.get_filtered_duplicate_groups(self.sid, limit=1, offset=1)
+        assert len(page2) == 1
+        assert page2[0]["pixel_hash"] == all_groups[1]["pixel_hash"]
+
+    def test_offset_beyond_end_returns_empty(self):
+        groups = self.db.get_filtered_duplicate_groups(self.sid, limit=10, offset=100)
+        assert len(groups) == 0
+
+    def test_get_duplicate_group_count(self):
+        count = self.db.get_duplicate_group_count(self.sid)
+        assert count == 2
+
+    def test_get_duplicate_group_count_with_min_copies(self):
+        count = self.db.get_duplicate_group_count(self.sid, min_copies=3)
+        assert count == 1
+
+    def test_get_duplicate_group_count_with_date_filter(self):
+        count = self.db.get_duplicate_group_count(self.sid, date_from="2024-03-01")
+        assert count == 1
+
 
 # ---------------------------------------------------------------------------
 # Cluster files (Phase 5)

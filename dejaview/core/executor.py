@@ -36,6 +36,8 @@ class PlanExecutor(QThread):
         progress_updated:   (current, total) — one per file
         log_message:        human-readable log line
         stage_changed:      "cleanup" or "sync"
+        sync_substage:      substage key for Cloud Sync UI updates
+        sync_peer_errors:   {peer_username: error_message} for corrupt peers
         execution_complete: (success_count, error_count)
         execution_error:    (path, message) — per-file errors
     """
@@ -44,6 +46,8 @@ class PlanExecutor(QThread):
     progress_updated = pyqtSignal(int, int)
     log_message = pyqtSignal(str)
     stage_changed = pyqtSignal(str)
+    sync_substage = pyqtSignal(str)
+    sync_peer_errors = pyqtSignal(dict)
     execution_complete = pyqtSignal(int, int)
     execution_error = pyqtSignal(str, str)
 
@@ -124,11 +128,47 @@ class PlanExecutor(QThread):
         if not self._stop_requested and self._drive_sync is not None:
             self.stage_changed.emit("sync")
             self.log_message.emit("Syncing with Google Drive...")
+
+            def _status_cb(substage: str) -> None:
+                """Forward sync substage to UI via signal."""
+                self.sync_substage.emit(substage)
+                # Map substage keys to log messages
+                if substage == "compressing":
+                    self.log_message.emit("Compressing database...")
+                elif substage.startswith("compressed:"):
+                    parts = substage.split(":")
+                    if len(parts) == 3:
+                        from data.compression import format_compression_ratio
+                        msg = format_compression_ratio(
+                            int(parts[1]), int(parts[2])
+                        )
+                        if msg:
+                            self.log_message.emit(msg)
+                elif substage == "uploading":
+                    self.log_message.emit("Uploading compressed data...")
+                elif substage == "upload_skipped":
+                    self.log_message.emit("Upload skipped — data unchanged.")
+                elif substage.startswith("downloading:"):
+                    peer = substage.split(":", 1)[1]
+                    self.log_message.emit(f"Downloading peer data: {peer}...")
+                elif substage.startswith("decompressing:"):
+                    peer = substage.split(":", 1)[1]
+                    self.log_message.emit(f"Decompressing peer data: {peer}...")
+
             try:
                 config = self._db.get_sync_config()
                 if config and config["sync_enabled"]:
-                    status = self._drive_sync.sync(session_id=self._session_id)
+                    status, peer_errors = self._drive_sync.sync(
+                        session_id=self._session_id,
+                        status_callback=_status_cb,
+                    )
                     self.log_message.emit(f"Sync result: {status}")
+                    if peer_errors:
+                        self.sync_peer_errors.emit(peer_errors)
+                        for peer, err in peer_errors.items():
+                            self.log_message.emit(
+                                f"Sync error for {peer}: {err}"
+                            )
                 else:
                     self.log_message.emit("Sync not enabled — skipped.")
             except Exception as exc:

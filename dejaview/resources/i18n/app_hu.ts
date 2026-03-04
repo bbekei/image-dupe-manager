@@ -431,6 +431,18 @@ A fájlok 30 napig helyreállíthatók.</translation>
         <source>{0} duplicate groups found</source>
         <translation>{0} duplikátum csoport található</translation>
     </message>
+    <message>
+        <source>Previous</source>
+        <translation>Előző</translation>
+    </message>
+    <message>
+        <source>Next</source>
+        <translation>Következő</translation>
+    </message>
+    <message>
+        <source>Page {0} of {1}</source>
+        <translation>{0}. oldal / {1}</translation>
+    </message>
 </context>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
@@ -837,6 +849,15 @@ A fájlok 30 napig helyreállíthatók.</translation>
         <source>{0} similarity groups</source>
         <translation>{0} hasonlósági csoport</translation>
     </message>
+    <!-- Data Compression: sync error recovery (§5.2) -->
+    <message>
+        <source>Sync Failed — {0}: {1}</source>
+        <translation>Szinkronizálás sikertelen — {0}: {1}</translation>
+    </message>
+    <message>
+        <source>Retry Download</source>
+        <translation>Letöltés újrapróbálása</translation>
+    </message>
 </context>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
@@ -1122,6 +1143,31 @@ Használja a Családi felfedezést fotók kéréséhez.</translation>
     <message>
         <source>{0}d {1}h</source>
         <translation>{0}n {1}ó</translation>
+    </message>
+    <!-- Data Compression substage messages (§5.1) -->
+    <message>
+        <source>Compressing database…</source>
+        <translation>Adatbázis tömörítése…</translation>
+    </message>
+    <message>
+        <source>Compressed {0} → {1} ({2}% reduction)</source>
+        <translation>Tömörítve {0} → {1} ({2}% csökkenés)</translation>
+    </message>
+    <message>
+        <source>Uploading compressed data…</source>
+        <translation>Tömörített adatok feltöltése…</translation>
+    </message>
+    <message>
+        <source>Upload skipped — data unchanged</source>
+        <translation>Feltöltés kihagyva — az adatok nem változtak</translation>
+    </message>
+    <message>
+        <source>Downloading peer data: {0}…</source>
+        <translation>Partner adatainak letöltése: {0}…</translation>
+    </message>
+    <message>
+        <source>Decompressing peer data: {0}…</source>
+        <translation>Partner adatainak kicsomagolása: {0}…</translation>
     </message>
 </context>
 

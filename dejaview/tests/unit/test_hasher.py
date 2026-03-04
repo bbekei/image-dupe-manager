@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 from PIL import UnidentifiedImageError
 
-from core.hasher import HashError, hash_file
+from core.hasher import HashError, compute_phash_only, hash_file
 from tests.conftest import fixture_image, FIXTURE_IMAGES_DIR
 
 
@@ -448,3 +448,45 @@ class TestPerceptualHash:
         p = image_factory()
         _, _, phash, _, _ = hash_file(p, thumb_dir, compute_phash=True)
         assert all(c in "0123456789abcdef" for c in phash)
+
+
+class TestComputePhashOnly:
+    """Tests for the lightweight compute_phash_only() function."""
+
+    def test_returns_valid_phash_and_dimensions(self, image_factory):
+        """Must return a 16-char hex pHash and correct dimensions."""
+        p = image_factory(color=(128, 128, 128), mode="RGB", size=(200, 150))
+        phash, w, h = compute_phash_only(p)
+        assert len(phash) == 16
+        assert all(c in "0123456789abcdef" for c in phash)
+        assert w == 200
+        assert h == 150
+
+    def test_matches_hash_file_phash(self, image_factory, thumb_dir):
+        """Must produce the same pHash as hash_file for the same image."""
+        p = image_factory(color=(42, 170, 99), mode="RGB", fmt="PNG")
+        _, _, phash_full, w_full, h_full = hash_file(p, thumb_dir, compute_phash=True)
+        phash_only, w_only, h_only = compute_phash_only(p)
+        assert phash_only == phash_full
+        assert w_only == w_full
+        assert h_only == h_full
+
+    def test_raises_hash_error_for_missing_file(self, tmp_path):
+        """Missing file must raise HashError."""
+        with pytest.raises(HashError, match="File not found"):
+            compute_phash_only(tmp_path / "nonexistent.jpg")
+
+    def test_raises_hash_error_for_corrupt_file(self, tmp_path):
+        """Corrupt file must raise HashError."""
+        corrupt = tmp_path / "corrupt.jpg"
+        corrupt.write_bytes(b"not an image")
+        with pytest.raises(HashError):
+            compute_phash_only(corrupt)
+
+    def test_does_not_create_thumbnail(self, image_factory, tmp_path):
+        """compute_phash_only must not create any files (no thumbnail)."""
+        thumb_dir = tmp_path / "thumbs"
+        thumb_dir.mkdir()
+        p = image_factory(color=(128, 128, 128), mode="RGB")
+        compute_phash_only(p)
+        assert list(thumb_dir.iterdir()) == []

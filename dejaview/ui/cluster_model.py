@@ -114,6 +114,9 @@ class ClusterModel(QAbstractItemModel):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._clusters: list[ClusterData] = []
+        self._page: int = 0
+        self._page_size: int = 50
+        self._total_groups: int = 0
 
     # ── Loading ───────────────────────────────────────────────────────
 
@@ -128,10 +131,22 @@ class ClusterModel(QAbstractItemModel):
         sort_by: str = "waste",
         sort_desc: bool = True,
         search_text: str | None = None,
+        page: int = 0,
+        page_size: int = 50,
     ) -> None:
         """Reload cluster data from the database with optional filters."""
         self.beginResetModel()
         self._clusters.clear()
+
+        self._total_groups = db.get_duplicate_group_count(
+            session_id,
+            date_from=date_from,
+            date_to=date_to,
+            extensions=extensions,
+            min_copies=min_copies,
+        )
+        self._page = page
+        self._page_size = page_size
 
         groups = db.get_filtered_duplicate_groups(
             session_id,
@@ -141,6 +156,8 @@ class ClusterModel(QAbstractItemModel):
             min_copies=min_copies,
             sort_by=sort_by,
             sort_desc=sort_desc,
+            limit=page_size,
+            offset=page * page_size,
         )
 
         for g in groups:
@@ -215,6 +232,34 @@ class ClusterModel(QAbstractItemModel):
                 largest = max(f.size for f in c.files)
                 waste += c.total_size - largest
         return waste
+
+    # ── Pagination ────────────────────────────────────────────────────
+
+    @property
+    def page(self) -> int:
+        return self._page
+
+    @property
+    def page_size(self) -> int:
+        return self._page_size
+
+    @property
+    def total_groups(self) -> int:
+        return self._total_groups
+
+    @property
+    def total_pages(self) -> int:
+        if self._total_groups == 0:
+            return 1
+        return (self._total_groups + self._page_size - 1) // self._page_size
+
+    @property
+    def has_next_page(self) -> bool:
+        return self._page < self.total_pages - 1
+
+    @property
+    def has_previous_page(self) -> bool:
+        return self._page > 0
 
     # ── QAbstractItemModel interface ──────────────────────────────────
 

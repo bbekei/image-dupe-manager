@@ -189,12 +189,16 @@ class DriveSync:
     # Upload (plan §Architecture — sync.py uploads own export)
     # ------------------------------------------------------------------
 
-    def upload(self, session_id: int) -> bool:
-        """Upload the current session's export to Google Drive.
+    def upload(self, session_id: int, status_callback=None) -> bool:
+        """Upload the current session's compressed export to Google Drive.
 
-        Uses files().update() if gdrive_file_id exists (plan test:
-        test_upload_called_with_correct_file_id_on_update), otherwise
-        files().create() (test_upload_called_with_create_on_first_export).
+        R-COMP-03: Uses streaming gzip compression before upload.
+        R-COMP-04: Stores SHA-256 in appProperties for integrity checks.
+        R-COMP-05: Skips upload if SHA-256 matches last_upload_sha256.
+
+        Args:
+            session_id: The session to export.
+            status_callback: Optional callable(str) for substage messages.
 
         Returns True on success.
         """
@@ -215,21 +219,47 @@ class DriveSync:
         username = config["local_username"]
         privacy = config["export_privacy"]
 
-        # Build payload via export.py
-        from data.export import build_export_payload
+        # Build compressed payload via export.py (R-COMP-03)
+        if status_callback:
+            status_callback("compressing")
+        from data.export import build_compressed_export
         try:
-            payload = build_export_payload(
-                self._db, session_id, username, privacy
+            compressed, uncompressed_size, compressed_size = (
+                build_compressed_export(self._db, session_id, username, privacy)
             )
         except ValueError as exc:
-            log.error("Failed to build export payload: %s", exc)
+            log.error("Failed to build compressed export: %s", exc)
             return False
 
-        payload_json = json.dumps(payload, ensure_ascii=False)
-        media_body = self._make_media_upload(payload_json)
+        # Compute SHA-256 of compressed blob (R-COMP-04)
+        from data.compression import compute_sha256, format_compression_ratio
+        blob_sha256 = compute_sha256(compressed)
+
+        # Log compression ratio
+        ratio_msg = format_compression_ratio(uncompressed_size, compressed_size)
+        if ratio_msg:
+            log.info("Upload: %s", ratio_msg)
+        if status_callback:
+            status_callback(f"compressed:{uncompressed_size}:{compressed_size}")
+
+        # R-COMP-05: Skip-upload if unchanged
+        last_sha = config["last_upload_sha256"]
+        if last_sha and last_sha == blob_sha256:
+            log.info("Upload skipped — data unchanged (SHA-256 match)")
+            if status_callback:
+                status_callback("upload_skipped")
+            return True
+
+        # Build media upload from compressed bytes
+        if status_callback:
+            status_callback("uploading")
+        media_body = self._make_media_upload_bytes(
+            compressed, mimetype='application/gzip'
+        )
         file_metadata = {
-            'name': f'{username}.json',
-            'mimeType': 'application/json',
+            'name': f'{username}.json.gz',
+            'mimeType': 'application/gzip',
+            'appProperties': {'sha256': blob_sha256},
         }
 
         try:
@@ -238,6 +268,7 @@ class DriveSync:
                 # Update existing file
                 self._service.files().update(
                     fileId=gdrive_file_id,
+                    body={'appProperties': {'sha256': blob_sha256}},
                     media_body=media_body,
                 ).execute()
                 log.info("Updated Drive file %s", gdrive_file_id)
@@ -253,11 +284,12 @@ class DriveSync:
                 self._db.upsert_sync_config(gdrive_file_id=new_file_id)
                 log.info("Created Drive file %s", new_file_id)
 
-            # Update timestamps and clear pending flag
+            # Update timestamps, SHA-256, and clear pending flag
             now = datetime.now(timezone.utc).isoformat()
             self._db.upsert_sync_config(
                 last_exported_at=now,
                 pending_export=0,
+                last_upload_sha256=blob_sha256,
             )
             return True
 
@@ -267,8 +299,14 @@ class DriveSync:
             self._status = "unavailable"
             return False
 
+    def _make_media_upload_bytes(self, data: bytes, mimetype: str = 'application/gzip'):
+        """Create a MediaIoBaseUpload from raw bytes."""
+        from googleapiclient.http import MediaIoBaseUpload
+        stream = io.BytesIO(data)
+        return MediaIoBaseUpload(stream, mimetype=mimetype, resumable=False)
+
     def _make_media_upload(self, content: str):
-        """Create a MediaIoBaseUpload from a JSON string."""
+        """Create a MediaIoBaseUpload from a JSON string (legacy, kept for compat)."""
         from googleapiclient.http import MediaIoBaseUpload
         stream = io.BytesIO(content.encode('utf-8'))
         return MediaIoBaseUpload(
@@ -279,52 +317,66 @@ class DriveSync:
     # Download peers (plan §Architecture — sync.py downloads peer exports)
     # ------------------------------------------------------------------
 
-    def download_peers(self) -> bool:
+    def download_peers(self, status_callback=None) -> tuple[bool, dict[str, str]]:
         """Download and import all peer exports from the shared Drive folder.
 
-        Skips unchanged files (plan test: test_download_skips_unchanged_peer_file)
-        by comparing file_mtime with the Drive file's modifiedTime.
+        Supports both .json (legacy) and .json.gz (compressed) peer files.
+        R-COMP-04: Verifies SHA-256 checksum from appProperties before import.
 
-        Returns True if at least one peer was successfully imported.
+        Args:
+            status_callback: Optional callable(str) for substage messages.
+
+        Returns:
+            (any_imported, peer_errors) where peer_errors maps
+            peer_username -> error message for corrupt/failed downloads.
         """
+        peer_errors: dict[str, str] = {}
+
         if not self._service:
             log.warning("Download called without authenticated service")
-            return False
+            return False, peer_errors
 
         config = self._db.get_sync_config()
         if not config:
-            return False
+            return False, peer_errors
 
         folder_id = config["gdrive_folder_id"]
         if not folder_id or not validate_folder_id(folder_id):
-            return False
+            return False, peer_errors
 
         local_username = config["local_username"]
 
         try:
-            # List JSON files in the shared folder
+            # List all files in the shared folder (JSON and gzip)
             results = self._service.files().list(
-                q=f"'{folder_id}' in parents and mimeType='application/json' and trashed=false",
-                fields='files(id, name, modifiedTime)',
+                q=f"'{folder_id}' in parents and trashed=false",
+                fields='files(id, name, modifiedTime, appProperties)',
                 spaces='drive',
             ).execute()
             files = results.get('files', [])
         except Exception as exc:
             log.error("Drive list failed: %s", exc)
             self._status = "unavailable"
-            return False
+            return False, peer_errors
 
         any_imported = False
         for f in files:
             name = f.get('name', '')
-            # Skip our own export
-            if name == f'{local_username}.json':
+            is_compressed = name.endswith('.json.gz')
+            is_json = name.endswith('.json') and not is_compressed
+
+            if not is_compressed and not is_json:
                 continue
 
             # Extract peer username from filename
-            if not name.endswith('.json'):
+            if is_compressed:
+                peer_username = name[:-8]  # strip .json.gz
+            else:
+                peer_username = name[:-5]  # strip .json
+
+            # Skip our own export
+            if peer_username == local_username:
                 continue
-            peer_username = name[:-5]  # strip .json
 
             from data.export import validate_username
             if not validate_username(peer_username):
@@ -339,18 +391,39 @@ class DriveSync:
                 continue
 
             # Download the file content
+            if status_callback:
+                status_callback(f"downloading:{peer_username}")
             try:
                 response = self._service.files().get_media(
                     fileId=f['id']
                 ).execute()
             except Exception as exc:
                 log.error("Failed to download %s: %s", name, exc)
+                peer_errors[peer_username] = f"Download failed: {exc}"
                 continue
 
+            # R-COMP-04: Verify SHA-256 checksum for compressed files
+            if is_compressed:
+                app_props = f.get('appProperties', {}) or {}
+                expected_sha = app_props.get('sha256')
+                if expected_sha:
+                    from data.compression import verify_checksum
+                    if not verify_checksum(response, expected_sha):
+                        msg = "Corrupt data — SHA-256 checksum mismatch"
+                        log.warning("Peer %s: %s", peer_username, msg)
+                        peer_errors[peer_username] = msg
+                        continue
+
             # Import the payload
+            if status_callback:
+                status_callback(f"decompressing:{peer_username}")
             try:
-                from data.export import import_payload
-                import_payload(self._db, response)
+                if is_compressed:
+                    from data.export import import_compressed_payload
+                    import_compressed_payload(self._db, response)
+                else:
+                    from data.export import import_payload
+                    import_payload(self._db, response)
 
                 # Update file_mtime for skip-unchanged logic
                 now = datetime.now(timezone.utc).isoformat()
@@ -362,46 +435,57 @@ class DriveSync:
                 any_imported = True
                 log.info("Imported peer export: %s", name)
             except ImportError as exc:
+                msg = f"Import failed: {exc}"
                 log.warning("Failed to import %s: %s", name, exc)
+                peer_errors[peer_username] = msg
                 continue
 
         if any_imported:
             now = datetime.now(timezone.utc).isoformat()
             self._db.upsert_sync_config(last_imported_at=now)
 
-        return any_imported
+        return any_imported, peer_errors
 
     # ------------------------------------------------------------------
     # Full sync cycle
     # ------------------------------------------------------------------
 
-    def sync(self, session_id: Optional[int] = None) -> str:
+    def sync(
+        self,
+        session_id: Optional[int] = None,
+        status_callback=None,
+    ) -> tuple[str, dict[str, str]]:
         """Run a full sync cycle: download peers, then upload if needed.
 
-        Plan tests:
-        - test_offline_fallback_does_not_raise
-        - test_pending_export_flag_set_when_offline
-        - test_pending_export_sent_on_next_successful_sync
+        Args:
+            session_id: Session to export (None = no upload unless pending).
+            status_callback: Optional callable(str) for substage messages.
 
-        Returns status string: 'synced', 'partial', or 'unavailable'.
+        Returns:
+            (status_string, peer_errors) where status is
+            'synced', 'partial', or 'unavailable', and peer_errors maps
+            peer_username -> error message for failed downloads.
         """
         self._status = "syncing"
+        peer_errors: dict[str, str] = {}
 
         if not self._service:
             self._status = "unavailable"
-            return self._status
+            return self._status, peer_errors
 
         config = self._db.get_sync_config()
         if not config or not config["sync_enabled"]:
             self._status = "idle"
-            return self._status
+            return self._status, peer_errors
 
         download_ok = False
         upload_ok = False
 
         # Download peers first
         try:
-            download_ok = self.download_peers()
+            download_ok, peer_errors = self.download_peers(
+                status_callback=status_callback
+            )
         except Exception as exc:
             log.error("Sync download phase failed: %s", exc)
             self._status = "unavailable"
@@ -421,7 +505,10 @@ class DriveSync:
 
             if effective_session_id is not None:
                 try:
-                    upload_ok = self.upload(effective_session_id)
+                    upload_ok = self.upload(
+                        effective_session_id,
+                        status_callback=status_callback,
+                    )
                 except Exception as exc:
                     log.error("Sync upload phase failed: %s", exc)
                     self._db.upsert_sync_config(pending_export=1)
@@ -432,7 +519,7 @@ class DriveSync:
         elif self._status != "unavailable":
             self._status = "synced"  # Nothing to do is still success
 
-        return self._status
+        return self._status, peer_errors
 
     # ------------------------------------------------------------------
     # Peer management

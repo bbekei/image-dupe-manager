@@ -128,11 +128,13 @@ class Dashboard(QWidget):
     request_card_clicked = pyqtSignal()
     scan_requested = pyqtSignal()
     sync_requested = pyqtSignal()
+    retry_peer_requested = pyqtSignal(str)  # peer_username
 
     def __init__(self, db: Database, parent=None):
         super().__init__(parent)
         self._db = db
         self._session_id: int | None = None
+        self._peer_errors: dict[str, str] = {}
 
         self._build_ui()
 
@@ -211,6 +213,14 @@ class Dashboard(QWidget):
         sync_row.addWidget(self._sync_btn)
 
         root.addLayout(sync_row)
+
+        # Sync error area (hidden by default — shown when peer sync fails)
+        self._sync_error_container = QWidget()
+        self._sync_error_layout = QVBoxLayout(self._sync_error_container)
+        self._sync_error_layout.setContentsMargins(0, 0, 0, 0)
+        self._sync_error_layout.setSpacing(4)
+        self._sync_error_container.hide()
+        root.addWidget(self._sync_error_container)
 
         # Separator
         sep = QFrame()
@@ -309,6 +319,53 @@ class Dashboard(QWidget):
             )
         else:
             self._sync_label.setText(self.tr("Last synced: never"))
+
+    # ── Sync error display (§5.2 — Dashboard Error Recovery) ────────
+
+    def set_peer_errors(self, errors: dict[str, str]) -> None:
+        """Display per-peer sync error indicators with retry buttons.
+
+        Args:
+            errors: {peer_username: error_message} from sync.
+        """
+        self._peer_errors = errors
+
+        # Clear existing error widgets
+        while self._sync_error_layout.count():
+            child = self._sync_error_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
+        if not errors:
+            self._sync_error_container.hide()
+            return
+
+        for peer, msg in errors.items():
+            row = QHBoxLayout()
+
+            label = QLabel(
+                self.tr("Sync Failed \u2014 {0}: {1}").format(peer, msg)
+            )
+            label.setStyleSheet("color: #e53935; font-size: 12px;")
+            label.setWordWrap(True)
+            row.addWidget(label, 1)
+
+            retry_btn = QPushButton(self.tr("Retry Download"))
+            retry_btn.setStyleSheet(
+                "QPushButton { color: #0078d4; border: 1px solid #0078d4;"
+                " border-radius: 3px; padding: 2px 8px; font-size: 11px; }"
+                " QPushButton:hover { background: #e3f2fd; }"
+            )
+            retry_btn.clicked.connect(
+                lambda checked, p=peer: self.retry_peer_requested.emit(p)
+            )
+            row.addWidget(retry_btn)
+
+            container = QWidget()
+            container.setLayout(row)
+            self._sync_error_layout.addWidget(container)
+
+        self._sync_error_container.show()
 
     def showEvent(self, event):
         """Auto-refresh card data whenever the dashboard becomes visible."""

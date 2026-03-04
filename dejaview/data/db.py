@@ -69,18 +69,19 @@ CREATE TABLE IF NOT EXISTS files (
 );
 
 CREATE TABLE IF NOT EXISTS sync_config (
-    id               INTEGER PRIMARY KEY CHECK (id = 1),
-    local_username   TEXT NOT NULL,
-    gdrive_folder_id TEXT,
-    gdrive_file_id   TEXT,
-    sync_enabled     INTEGER NOT NULL DEFAULT 0,
-    export_privacy   TEXT    NOT NULL DEFAULT 'filename'
+    id                  INTEGER PRIMARY KEY CHECK (id = 1),
+    local_username      TEXT NOT NULL,
+    gdrive_folder_id    TEXT,
+    gdrive_file_id      TEXT,
+    sync_enabled        INTEGER NOT NULL DEFAULT 0,
+    export_privacy      TEXT    NOT NULL DEFAULT 'filename'
         CHECK (export_privacy IN ('hash_only', 'filename', 'full_path')),
-    pending_export   INTEGER NOT NULL DEFAULT 0,
-    last_exported_at TEXT,
-    last_imported_at TEXT,
-    scan_delay_ms    INTEGER NOT NULL DEFAULT 0
-        CHECK (scan_delay_ms >= 0 AND scan_delay_ms <= 20)
+    pending_export      INTEGER NOT NULL DEFAULT 0,
+    last_exported_at    TEXT,
+    last_imported_at    TEXT,
+    scan_delay_ms       INTEGER NOT NULL DEFAULT 0
+        CHECK (scan_delay_ms >= 0 AND scan_delay_ms <= 20),
+    last_upload_sha256  TEXT
 );
 
 CREATE TABLE IF NOT EXISTS remote_peers (
@@ -374,6 +375,16 @@ class Database:
                 """
             )
 
+        # Data Compression: add last_upload_sha256 to sync_config
+        sync_cols = {
+            r[1] for r in c.execute("PRAGMA table_info(sync_config)").fetchall()
+        }
+        if "last_upload_sha256" not in sync_cols:
+            c.execute(
+                "ALTER TABLE sync_config ADD COLUMN last_upload_sha256 TEXT"
+            )
+            c.commit()
+
     def close(self) -> None:
         """Commit any pending work and close the connection."""
         if self._conn:
@@ -618,29 +629,19 @@ class Database:
     # Filtered duplicate queries (UX Redesign Phase 5 — Advanced Cleanup)
     # ------------------------------------------------------------------
 
-    def get_filtered_duplicate_groups(
+    def _build_dup_group_clauses(
         self,
         session_id: int,
         date_from: Optional[str] = None,
         date_to: Optional[str] = None,
         extensions: Optional[list[str]] = None,
         min_copies: int = 2,
-        sort_by: str = "waste",
-        sort_desc: bool = True,
-    ) -> list[sqlite3.Row]:
-        """Return duplicate groups with optional filtering and sorting.
-
-        Args:
-            session_id: Active session.
-            date_from: ISO8601 lower bound on files.modified_at (inclusive).
-            date_to: ISO8601 upper bound on files.modified_at (inclusive).
-            extensions: List of lowercase extensions including dot (e.g. ['.jpg']).
-            min_copies: Minimum file count per group (default 2).
-            sort_by: 'waste' | 'copies' | 'path_length'.
-            sort_desc: Descending sort (default True).
+    ) -> tuple[str, list]:
+        """Build WHERE clause and params for duplicate group queries.
 
         Returns:
-            Rows with: pixel_hash, file_count, total_size, oldest_date, newest_date.
+            (where_sql, params) — params includes the HAVING threshold as
+            the last element.
         """
         clauses = [
             "session_id = ?",
@@ -665,6 +666,63 @@ class Database:
 
         where = " AND ".join(clauses)
         params.append(max(min_copies, 2))
+        return where, params
+
+    def get_duplicate_group_count(
+        self,
+        session_id: int,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
+        extensions: Optional[list[str]] = None,
+        min_copies: int = 2,
+    ) -> int:
+        """Return the total number of duplicate groups matching the filters."""
+        where, params = self._build_dup_group_clauses(
+            session_id, date_from, date_to, extensions, min_copies,
+        )
+        sql = f"""
+            SELECT COUNT(*) FROM (
+                SELECT pixel_hash
+                FROM files
+                WHERE {where}
+                GROUP BY pixel_hash
+                HAVING COUNT(*) >= ?
+            )
+        """
+        row = self.conn.execute(sql, params).fetchone()
+        return row[0] if row else 0
+
+    def get_filtered_duplicate_groups(
+        self,
+        session_id: int,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
+        extensions: Optional[list[str]] = None,
+        min_copies: int = 2,
+        sort_by: str = "waste",
+        sort_desc: bool = True,
+        limit: int = 0,
+        offset: int = 0,
+    ) -> list[sqlite3.Row]:
+        """Return duplicate groups with optional filtering, sorting, and pagination.
+
+        Args:
+            session_id: Active session.
+            date_from: ISO8601 lower bound on files.modified_at (inclusive).
+            date_to: ISO8601 upper bound on files.modified_at (inclusive).
+            extensions: List of lowercase extensions including dot (e.g. ['.jpg']).
+            min_copies: Minimum file count per group (default 2).
+            sort_by: 'waste' | 'copies' | 'path_length'.
+            sort_desc: Descending sort (default True).
+            limit: Maximum groups to return (0 = no limit).
+            offset: Number of groups to skip (used with limit).
+
+        Returns:
+            Rows with: pixel_hash, file_count, total_size, oldest_date, newest_date.
+        """
+        where, params = self._build_dup_group_clauses(
+            session_id, date_from, date_to, extensions, min_copies,
+        )
 
         order_map = {
             "waste": "total_size",
@@ -687,6 +745,9 @@ class Database:
             HAVING COUNT(*) >= ?
             ORDER BY {order_col} {direction}
         """
+        if limit > 0:
+            sql += " LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
         return self.conn.execute(sql, params).fetchall()
 
     def get_cluster_files(
@@ -800,6 +861,7 @@ class Database:
             "local_username", "gdrive_folder_id", "gdrive_file_id",
             "sync_enabled", "export_privacy", "pending_export",
             "last_exported_at", "last_imported_at", "scan_delay_ms",
+            "last_upload_sha256",
         }
         safe = {k: v for k, v in fields.items() if k in allowed}
         if not safe:
