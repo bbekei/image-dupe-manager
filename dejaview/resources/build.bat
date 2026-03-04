@@ -5,10 +5,12 @@ REM Usage:  cd dejaview
 REM         resources\build.bat
 REM
 REM Prerequisites:
+REM   - Node.js 20+        (for React frontend build)
 REM   - PyInstaller        (pip install pyinstaller)
 REM   - Inno Setup 6       (https://jrsoftware.org/isinfo.php)
 REM
 REM Output:
+REM   frontend\dist\          (React frontend bundle)
 REM   dist\DejaView\DejaView.exe
 REM   dist\DejaViewVerify\DejaViewVerify.exe
 REM   installer\DejaView_Setup.exe
@@ -28,9 +30,52 @@ echo. >> "%BUILD_LOG%"
 
 set "STEP_LOG=build\_step.tmp"
 
+REM Resolve absolute paths so they survive pushd/popd.
+for %%F in ("%STEP_LOG%") do set "ABS_STEP_LOG=%%~fF"
+for %%F in ("%BUILD_LOG%") do set "ABS_BUILD_LOG=%%~fF"
+
 echo ============================================================
-echo  Step 1/3: Building DejaView EXE with PyInstaller
+echo  Step 0/4: Building React frontend
 echo ============================================================
+pushd frontend
+call npm install > "%ABS_STEP_LOG%" 2>&1
+if errorlevel 1 (
+    echo STEP 0 FAILED: npm install >> "%ABS_BUILD_LOG%"
+    findstr /I "ERR!" "%ABS_STEP_LOG%" >> "%ABS_BUILD_LOG%"
+    echo.
+    echo ERROR: npm install failed. See %BUILD_LOG%
+    popd & popd
+    exit /b 1
+)
+call npm run build > "%ABS_STEP_LOG%" 2>&1
+if errorlevel 1 (
+    echo STEP 0 FAILED: npm run build >> "%ABS_BUILD_LOG%"
+    findstr /I "ERROR error TS" "%ABS_STEP_LOG%" >> "%ABS_BUILD_LOG%"
+    echo.
+    echo ERROR: Frontend build failed. See %BUILD_LOG%
+    popd & popd
+    exit /b 1
+)
+popd
+echo [Step 0] Frontend warnings: >> "%BUILD_LOG%"
+findstr /I "WARNING WARN" "%STEP_LOG%" >> "%BUILD_LOG%"
+echo. >> "%BUILD_LOG%"
+
+REM Verify frontend build output exists.
+if not exist "frontend\dist\index.html" (
+    echo VERIFY FAILED: frontend\dist\index.html not found >> "%BUILD_LOG%"
+    echo.
+    echo ERROR: Frontend build did not produce output.
+    popd
+    exit /b 1
+)
+echo   OK: frontend\dist\index.html
+
+echo.
+echo ============================================================
+echo  Step 1/4: Building DejaView EXE with PyInstaller
+echo ============================================================
+set "QT_API=PyQt6"
 pyinstaller dejaview.spec --noconfirm > "%STEP_LOG%" 2>&1
 if errorlevel 1 (
     echo STEP 1 FAILED: PyInstaller - DejaView >> "%BUILD_LOG%"
@@ -56,7 +101,7 @@ echo   OK: dist\DejaView\DejaView.exe
 
 echo.
 echo ============================================================
-echo  Step 2/3: Building DejaViewVerify EXE with PyInstaller
+echo  Step 2/4: Building DejaViewVerify EXE with PyInstaller
 echo ============================================================
 pyinstaller verify.spec --noconfirm > "%STEP_LOG%" 2>&1
 if errorlevel 1 (
@@ -83,7 +128,7 @@ echo   OK: dist\DejaViewVerify\DejaViewVerify.exe
 
 echo.
 echo ============================================================
-echo  Step 3/3: Building installer with Inno Setup
+echo  Step 3/4: Building installer with Inno Setup
 echo ============================================================
 
 REM Locate ISCC.exe — assign to a variable first to avoid
@@ -137,6 +182,7 @@ del /q "%STEP_LOG%" 2>nul
 echo.
 echo ============================================================
 echo  Build complete!
+echo  Frontend:  frontend\dist\
 echo  EXE:       dist\DejaView\DejaView.exe
 echo  Verifier:  dist\DejaViewVerify\DejaViewVerify.exe
 echo  Installer: installer\DejaView_Setup.exe

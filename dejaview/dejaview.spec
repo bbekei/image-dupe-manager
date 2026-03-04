@@ -1,10 +1,10 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-dejaview.spec — PyInstaller build specification (plan §Phase 7).
+dejaview.spec — PyInstaller build specification (pywebview + React).
 
-Build command:
-    cd dejaview
-    pyinstaller dejaview.spec
+Build commands:
+    cd dejaview/frontend && npm run build   # build React frontend
+    cd dejaview && pyinstaller dejaview.spec
 
 Output:  dist/DejaView/  (one-folder bundle)
 """
@@ -28,19 +28,21 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[
-        # App Hungarian translation (compiled .qm)
+        # React frontend build output
+        ('frontend/dist', 'frontend/dist'),
+        # App Hungarian translation (compiled .qm, retained for reference)
         ('resources/i18n/app_hu.qm', 'resources/i18n'),
         # Qt base Hungarian translation (standard button labels, dialogs)
         (str(_qt_hu_qm), 'resources/i18n'),
-        # User guide files (Feature Request 1 — Help Menu)
+        # User guide files
         ('resources/help/USER_GUIDE.md', 'resources/help'),
         ('resources/help/USER_GUIDE_HU.md', 'resources/help'),
         # Google OAuth2 client secrets (bundled per plan §Security)
-        # Uncomment when client_secrets.json is created:
         ('resources/client_secrets.json', 'resources'),
     ],
     hiddenimports=[
         'PyQt6.sip',
+        'webview',
         'google.auth.transport.requests',
         'google_auth_oauthlib.flow',
         'googleapiclient.discovery',
@@ -50,6 +52,7 @@ a = Analysis(
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
+        'PyQt5',
         'tkinter',
         'matplotlib',
         'pandas',

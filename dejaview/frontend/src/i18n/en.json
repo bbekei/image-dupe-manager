@@ -1,0 +1,185 @@
+{
+  "app": {
+    "name": "DejaView",
+    "tagline": "Duplicate Photo Manager"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "browse": "Browse Results",
+    "plan": "Plan Review",
+    "execute": "Execute",
+    "similarity": "Similar Images",
+    "bin": "Duplicates Bin",
+    "family": "Family Library",
+    "requests": "Requests",
+    "settings": "Settings"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "welcome": "Welcome to DejaView",
+    "no_sessions": "No scan sessions yet. Start by scanning your photo library.",
+    "start_scan": "Start New Scan",
+    "recent_sessions": "Recent Sessions",
+    "stats": {
+      "local_duplicates": "Local Duplicates",
+      "similar_images": "Similar Images",
+      "family_photos": "Family Photos",
+      "pending_requests": "Pending Requests",
+      "recoverable_space": "Recoverable Space"
+    },
+    "session": {
+      "status": "Status",
+      "files": "Files",
+      "duplicates": "Duplicates",
+      "resume": "Resume",
+      "view_results": "View Results"
+    }
+  },
+  "scan": {
+    "title": "Scan Progress",
+    "select_folders": "Select Folders",
+    "session_name": "Session Name",
+    "enable_similarity": "Enable similarity detection",
+    "start": "Start Scan",
+    "pause": "Pause",
+    "resume": "Resume",
+    "stop": "Stop",
+    "phase": {
+      "discovery": "Discovering files...",
+      "hashing": "Computing hashes...",
+      "similarity": "Analyzing similarity..."
+    },
+    "progress": "{{current}} of {{total}} files",
+    "complete": "Scan Complete",
+    "paused": "Scan Paused",
+    "stopped": "Scan Stopped"
+  },
+  "browse": {
+    "title": "Browse Results",
+    "groups": "{{count}} duplicate groups",
+    "files": "{{count}} files",
+    "filter": {
+      "title": "Filters",
+      "folder": "Folder",
+      "date_range": "Date Range",
+      "size": "File Size",
+      "copies": "Min Copies"
+    },
+    "actions": {
+      "keep": "Keep",
+      "delete": "Delete",
+      "ignore": "Ignore",
+      "select_preset": "Apply Preset",
+      "clear_all": "Clear All"
+    },
+    "presets": {
+      "KEEP_LARGEST_FILE": "Keep Largest",
+      "KEEP_NEWEST": "Keep Newest",
+      "KEEP_OLDEST": "Keep Oldest",
+      "KEEP_SHORTEST_PATH": "Keep Shortest Path",
+      "KEEP_HIGHEST_RESOLUTION": "Keep Highest Resolution"
+    },
+    "master_copy": "Master Copy",
+    "no_duplicates": "No duplicates found in this session."
+  },
+  "plan": {
+    "title": "Plan Review",
+    "summary": "Review your planned actions before executing.",
+    "keep_count": "{{count}} files to keep",
+    "delete_count": "{{count}} files to delete",
+    "ignore_count": "{{count}} files ignored",
+    "total_space": "Total space: {{size}}",
+    "execute": "Execute Plan",
+    "cancel": "Cancel Action",
+    "confirm_title": "Confirm Execution",
+    "confirm_message": "This will move {{count}} files to the Duplicates Bin. Files can be recovered within 30 days.",
+    "confirm_execute": "Execute",
+    "confirm_cancel": "Cancel",
+    "no_actions": "No actions planned yet. Go to Browse Results to review duplicates."
+  },
+  "execution": {
+    "title": "Executing Plan",
+    "stage_cleanup": "Local Cleanup",
+    "stage_sync": "Cloud Sync",
+    "progress": "{{current}} of {{total}}",
+    "complete": "Execution Complete",
+    "success_count": "{{count}} files processed successfully",
+    "error_count": "{{count}} errors",
+    "minimize": "Minimize to Tray",
+    "view_bin": "View Duplicates Bin"
+  },
+  "similarity": {
+    "title": "Similar Images",
+    "groups": "{{count}} similarity groups",
+    "threshold": "Similarity Threshold",
+    "recommended_keeper": "Recommended: Keep this file",
+    "reason": "Reason: {{reason}}",
+    "no_groups": "No similar images found. Enable similarity detection during scan."
+  },
+  "bin": {
+    "title": "Duplicates Bin",
+    "items": "{{count}} items",
+    "expires_in": "Expires in {{days}} days",
+    "expired": "Expired",
+    "restore": "Restore",
+    "permanent_delete": "Permanently Delete",
+    "purge_expired": "Purge Expired",
+    "confirm_purge": "Permanently delete all expired items? This cannot be undone.",
+    "confirm_delete": "Permanently delete {{count}} items? This cannot be undone.",
+    "empty": "Duplicates Bin is empty."
+  },
+  "family": {
+    "title": "Family Library",
+    "peers": "Family Members",
+    "no_peers": "No family members connected yet.",
+    "sync": "Sync Now",
+    "export": "Export Hashes",
+    "import": "Import Hashes",
+    "last_sync": "Last synced: {{time}}",
+    "cross_matches": "Cross-Library Matches",
+    "request_photo": "Request Photo"
+  },
+  "requests": {
+    "title": "Requests",
+    "incoming": "Incoming",
+    "outgoing": "Outgoing",
+    "approve": "Approve",
+    "decline": "Decline",
+    "cancel": "Cancel",
+    "no_requests": "No requests yet.",
+    "status": {
+      "pending": "Pending",
+      "approved": "Approved",
+      "declined": "Declined",
+      "cancelled": "Cancelled"
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "language": "Language",
+    "theme": "Theme",
+    "max_workers": "Max Scan Workers",
+    "scan_delay": "Scan Throttle (ms)",
+    "perf_logging": "Performance Logging",
+    "google_drive": "Google Drive Sync",
+    "save": "Save",
+    "saved": "Settings saved."
+  },
+  "common": {
+    "loading": "Loading...",
+    "error": "An error occurred",
+    "retry": "Retry",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "close": "Close",
+    "back": "Back",
+    "next": "Next",
+    "save": "Save",
+    "delete": "Delete",
+    "size": "Size",
+    "date": "Date",
+    "path": "Path",
+    "resolution": "Resolution",
+    "unknown": "Unknown"
+  }
+}

@@ -1,0 +1,185 @@
+{
+  "app": {
+    "name": "DejaView",
+    "tagline": "Duplikátum Fotókezelő"
+  },
+  "nav": {
+    "dashboard": "Vezérlőpult",
+    "browse": "Eredmények böngészése",
+    "plan": "Terv áttekintése",
+    "execute": "Végrehajtás",
+    "similarity": "Hasonló képek",
+    "bin": "Duplikátum Lomtár",
+    "family": "Családi Könyvtár",
+    "requests": "Kérések",
+    "settings": "Beállítások"
+  },
+  "dashboard": {
+    "title": "Vezérlőpult",
+    "welcome": "Üdvözöljük a DejaView-ban",
+    "no_sessions": "Még nincs szkennelési munkamenet. Kezdje el a fotókönyvtár szkenneléssel.",
+    "start_scan": "Új szkennelés indítása",
+    "recent_sessions": "Legutóbbi munkamenetek",
+    "stats": {
+      "local_duplicates": "Helyi duplikátumok",
+      "similar_images": "Hasonló képek",
+      "family_photos": "Családi fotók",
+      "pending_requests": "Függő kérések",
+      "recoverable_space": "Visszanyerhető tárhely"
+    },
+    "session": {
+      "status": "Állapot",
+      "files": "Fájlok",
+      "duplicates": "Duplikátumok",
+      "resume": "Folytatás",
+      "view_results": "Eredmények megtekintése"
+    }
+  },
+  "scan": {
+    "title": "Szkennelés folyamata",
+    "select_folders": "Mappák kiválasztása",
+    "session_name": "Munkamenet neve",
+    "enable_similarity": "Hasonlóság-felismerés engedélyezése",
+    "start": "Szkennelés indítása",
+    "pause": "Szünet",
+    "resume": "Folytatás",
+    "stop": "Leállítás",
+    "phase": {
+      "discovery": "Fájlok felderítése...",
+      "hashing": "Hash-ek kiszámítása...",
+      "similarity": "Hasonlóság elemzése..."
+    },
+    "progress": "{{current}} / {{total}} fájl",
+    "complete": "Szkennelés kész",
+    "paused": "Szkennelés szüneteltetve",
+    "stopped": "Szkennelés leállítva"
+  },
+  "browse": {
+    "title": "Eredmények böngészése",
+    "groups": "{{count}} duplikátum csoport",
+    "files": "{{count}} fájl",
+    "filter": {
+      "title": "Szűrők",
+      "folder": "Mappa",
+      "date_range": "Dátumtartomány",
+      "size": "Fájlméret",
+      "copies": "Min. másolatok"
+    },
+    "actions": {
+      "keep": "Megtartás",
+      "delete": "Törlés",
+      "ignore": "Mellőzés",
+      "select_preset": "Előbeállítás alkalmazása",
+      "clear_all": "Összes törlése"
+    },
+    "presets": {
+      "KEEP_LARGEST_FILE": "Legnagyobb megtartása",
+      "KEEP_NEWEST": "Legújabb megtartása",
+      "KEEP_OLDEST": "Legrégebbi megtartása",
+      "KEEP_SHORTEST_PATH": "Legrövidebb útvonal megtartása",
+      "KEEP_HIGHEST_RESOLUTION": "Legnagyobb felbontás megtartása"
+    },
+    "master_copy": "Mesterpéldány",
+    "no_duplicates": "Nem találtunk duplikátumokat ebben a munkamenetben."
+  },
+  "plan": {
+    "title": "Terv áttekintése",
+    "summary": "Tekintse át a tervezett műveleteket a végrehajtás előtt.",
+    "keep_count": "{{count}} fájl megtartása",
+    "delete_count": "{{count}} fájl törlése",
+    "ignore_count": "{{count}} fájl mellőzve",
+    "total_space": "Összes méret: {{size}}",
+    "execute": "Terv végrehajtása",
+    "cancel": "Művelet törlése",
+    "confirm_title": "Végrehajtás megerősítése",
+    "confirm_message": "Ez {{count}} fájlt a Duplikátum Lomtárba helyez. A fájlok 30 napon belül visszaállíthatók.",
+    "confirm_execute": "Végrehajtás",
+    "confirm_cancel": "Mégse",
+    "no_actions": "Még nincsenek tervezett műveletek. Az Eredmények böngészésénél tekintheti át a duplikátumokat."
+  },
+  "execution": {
+    "title": "Terv végrehajtása",
+    "stage_cleanup": "Helyi tisztítás",
+    "stage_sync": "Felhő szinkronizálás",
+    "progress": "{{current}} / {{total}}",
+    "complete": "Végrehajtás kész",
+    "success_count": "{{count}} fájl sikeresen feldolgozva",
+    "error_count": "{{count}} hiba",
+    "minimize": "Tálcára kicsinyítés",
+    "view_bin": "Duplikátum Lomtár megtekintése"
+  },
+  "similarity": {
+    "title": "Hasonló képek",
+    "groups": "{{count}} hasonlósági csoport",
+    "threshold": "Hasonlósági küszöb",
+    "recommended_keeper": "Ajánlott: Tartsa meg ezt a fájlt",
+    "reason": "Ok: {{reason}}",
+    "no_groups": "Nem találtunk hasonló képeket. Engedélyezze a hasonlóság-felismerést a szkennelés során."
+  },
+  "bin": {
+    "title": "Duplikátum Lomtár",
+    "items": "{{count}} elem",
+    "expires_in": "Lejár {{days}} nap múlva",
+    "expired": "Lejárt",
+    "restore": "Visszaállítás",
+    "permanent_delete": "Végleges törlés",
+    "purge_expired": "Lejártak törlése",
+    "confirm_purge": "Véglegesen törli az összes lejárt elemet? Ez nem vonható vissza.",
+    "confirm_delete": "Véglegesen töröl {{count}} elemet? Ez nem vonható vissza.",
+    "empty": "A Duplikátum Lomtár üres."
+  },
+  "family": {
+    "title": "Családi Könyvtár",
+    "peers": "Családtagok",
+    "no_peers": "Még nincsenek csatlakozott családtagok.",
+    "sync": "Szinkronizálás most",
+    "export": "Hash-ek exportálása",
+    "import": "Hash-ek importálása",
+    "last_sync": "Utolsó szinkronizálás: {{time}}",
+    "cross_matches": "Könyvtárak közötti egyezések",
+    "request_photo": "Fotó kérése"
+  },
+  "requests": {
+    "title": "Kérések",
+    "incoming": "Bejövő",
+    "outgoing": "Kimenő",
+    "approve": "Jóváhagyás",
+    "decline": "Elutasítás",
+    "cancel": "Mégse",
+    "no_requests": "Még nincsenek kérések.",
+    "status": {
+      "pending": "Függő",
+      "approved": "Jóváhagyott",
+      "declined": "Elutasított",
+      "cancelled": "Visszavont"
+    }
+  },
+  "settings": {
+    "title": "Beállítások",
+    "language": "Nyelv",
+    "theme": "Téma",
+    "max_workers": "Max szkennelési szálak",
+    "scan_delay": "Szkennelés késleltetés (ms)",
+    "perf_logging": "Teljesítménynaplózás",
+    "google_drive": "Google Drive szinkronizálás",
+    "save": "Mentés",
+    "saved": "Beállítások mentve."
+  },
+  "common": {
+    "loading": "Betöltés...",
+    "error": "Hiba történt",
+    "retry": "Újrapróbálás",
+    "cancel": "Mégse",
+    "confirm": "Megerősítés",
+    "close": "Bezárás",
+    "back": "Vissza",
+    "next": "Következő",
+    "save": "Mentés",
+    "delete": "Törlés",
+    "size": "Méret",
+    "date": "Dátum",
+    "path": "Útvonal",
+    "resolution": "Felbontás",
+    "unknown": "Ismeretlen"
+  }
+}

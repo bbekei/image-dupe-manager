@@ -1,6 +1,8 @@
-# Runtime dependencies (plan §Dependencies)
+# Runtime dependencies
 Pillow
 PyQt6
+pywebview
+pystray
 xxhash
 numpy
 imagehash
