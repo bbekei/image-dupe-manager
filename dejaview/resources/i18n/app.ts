@@ -596,6 +596,10 @@ Files are recoverable for 30 days.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>{0} pending photo requests</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Last synced: {0}</source>
         <translation type="unfinished"></translation>
     </message>
@@ -764,6 +768,19 @@ after Family Discovery is enabled.</source>
     </message>
     <message>
         <source>Remove from plan</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Peer / Hash</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Files to Request ({0})</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No photo requests yet.
+Use Family Discovery to request photos.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -1024,6 +1041,53 @@ Files matching this pattern will be marked for deletion.</source>
     </message>
     <message>
         <source>No duplicate files matched the pattern &quot;{0}&quot;.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     Phase 4: FamilyDiscoveryScreen (ui/family_discovery.py)
+     ═══════════════════════════════════════════════════════════════════════ -->
+<context>
+    <name>FamilyDiscoveryScreen</name>
+    <message>
+        <source>&#x2190; Dashboard</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Family Photos</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Request Selected (0)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Request Selected ({0})</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Filter:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>All Providers</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>All</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not Requested</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Requested</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Showing {0} family photos from {1} providers</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

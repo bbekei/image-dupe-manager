@@ -822,6 +822,10 @@ A fájlok 30 napig helyreállíthatók.</translation>
         <translation>Nincsenek függő kérések</translation>
     </message>
     <message>
+        <source>{0} pending photo requests</source>
+        <translation>{0} függő fotókérés</translation>
+    </message>
+    <message>
         <source>Last synced: {0}</source>
         <translation>Utolsó szinkronizálás: {0}</translation>
     </message>
@@ -1013,6 +1017,20 @@ engedélyezése után lesz elérhető.</translation>
     <message>
         <source>Remove from plan</source>
         <translation>Eltávolítás a tervből</translation>
+    </message>
+    <message>
+        <source>Peer / Hash</source>
+        <translation>Partner / Hash</translation>
+    </message>
+    <message>
+        <source>Files to Request ({0})</source>
+        <translation>Kérendő fájlok ({0})</translation>
+    </message>
+    <message>
+        <source>No photo requests yet.
+Use Family Discovery to request photos.</source>
+        <translation>Még nincsenek fotókérések.
+Használja a Családi felfedezést fotók kéréséhez.</translation>
     </message>
 </context>
 
@@ -1281,6 +1299,53 @@ A mintának megfelelő fájlok törlésre lesznek jelölve.</translation>
     <message>
         <source>No duplicate files matched the pattern "{0}".</source>
         <translation>Egyetlen duplikált fájl sem felelt meg a(z) „{0}" mintának.</translation>
+    </message>
+</context>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     Phase 4: FamilyDiscoveryScreen (ui/family_discovery.py)
+     ═══════════════════════════════════════════════════════════════════════ -->
+<context>
+    <name>FamilyDiscoveryScreen</name>
+    <message>
+        <source>← Dashboard</source>
+        <translation>← Kezdőlap</translation>
+    </message>
+    <message>
+        <source>Family Photos</source>
+        <translation>Családi fotók</translation>
+    </message>
+    <message>
+        <source>Request Selected (0)</source>
+        <translation>Kijelöltek kérése (0)</translation>
+    </message>
+    <message>
+        <source>Request Selected ({0})</source>
+        <translation>Kijelöltek kérése ({0})</translation>
+    </message>
+    <message>
+        <source>Filter:</source>
+        <translation>Szűrő:</translation>
+    </message>
+    <message>
+        <source>All Providers</source>
+        <translation>Összes szolgáltató</translation>
+    </message>
+    <message>
+        <source>All</source>
+        <translation>Összes</translation>
+    </message>
+    <message>
+        <source>Not Requested</source>
+        <translation>Nem kért</translation>
+    </message>
+    <message>
+        <source>Requested</source>
+        <translation>Kért</translation>
+    </message>
+    <message>
+        <source>Showing {0} family photos from {1} providers</source>
+        <translation>{0} családi fotó megjelenítése {1} szolgáltatótól</translation>
     </message>
 </context>
 </TS>

@@ -49,6 +49,76 @@ _REMOVE_BTN_SIZE = 28
 _REMOVE_CIRCLE_RADIUS = 10
 
 
+_CANCEL_BTN_SIZE = 28
+_CANCEL_CIRCLE_RADIUS = 10
+
+
+class _CancelRequestDelegate(QStyledItemDelegate):
+    """Paints a green "✖" circle in the last column for cancellable requests.
+
+    Same pattern as _RemoveDelegate — O(0) widget allocations.
+    """
+
+    cancel_clicked = pyqtSignal(int)  # request_id
+
+    def paint(self, painter: QPainter, option: QStyleOptionViewItem, index) -> None:
+        data = index.data(Qt.ItemDataRole.UserRole)
+        if index.column() != 2 or data is None:
+            super().paint(painter, option, index)
+            return
+
+        style = option.widget.style() if option.widget else None
+        if style:
+            from PyQt6.QtWidgets import QStyle
+            style.drawPrimitive(QStyle.PrimitiveElement.PE_PanelItemViewItem, option, painter)
+
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        rect = self._button_rect(option.rect)
+
+        painter.setPen(QPen(QColor("#2e7d32"), 1))
+        painter.setBrush(QColor("#e8f5e9"))
+        painter.drawEllipse(rect)
+
+        painter.setPen(QColor("#2e7d32"))
+        font = painter.font()
+        font.setPointSize(9)
+        font.setBold(True)
+        painter.setFont(font)
+        painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, "\u2716")
+
+        painter.restore()
+
+    def sizeHint(self, option: QStyleOptionViewItem, index) -> QSize:
+        if index.column() == 2:
+            return QSize(_CANCEL_BTN_SIZE, _CANCEL_BTN_SIZE)
+        return super().sizeHint(option, index)
+
+    def editorEvent(self, event, model, option, index) -> bool:
+        if index.column() != 2:
+            return False
+        if event.type() != QEvent.Type.MouseButtonRelease:
+            return False
+
+        data = index.data(Qt.ItemDataRole.UserRole)
+        if data is None:
+            return False
+
+        pos = event.position().toPoint()
+        rect = self._button_rect(option.rect)
+        if rect.contains(pos):
+            self.cancel_clicked.emit(data)
+            return True
+        return False
+
+    @staticmethod
+    def _button_rect(cell_rect: QRect) -> QRect:
+        x = cell_rect.x() + (cell_rect.width() - _CANCEL_CIRCLE_RADIUS * 2) // 2
+        y = cell_rect.y() + (cell_rect.height() - _CANCEL_CIRCLE_RADIUS * 2) // 2
+        return QRect(x, y, _CANCEL_CIRCLE_RADIUS * 2, _CANCEL_CIRCLE_RADIUS * 2)
+
+
 class _RemoveDelegate(QStyledItemDelegate):
     """Paints a red "✖" circle in column 2 for removable items.
 
@@ -234,15 +304,37 @@ class PlanReviewScreen(QWidget):
         self._request_header.setStyleSheet("color: #2e7d32;")
         right_col.addWidget(self._request_header)
 
-        self._request_placeholder = QLabel(
-            self.tr("Request queue will be available\nafter Family Discovery is enabled.")
+        self._request_tree = QTreeWidget(self)
+        self._request_tree.setObjectName("request_tree")
+        self._request_tree.setHeaderLabels(
+            [self.tr("Peer / Hash"), self.tr("Status"), ""]
         )
-        self._request_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._request_placeholder.setStyleSheet("color: #9ca3af; font-size: 12px;")
-        self._request_placeholder.setSizePolicy(
+        self._request_tree.setRootIsDecorated(False)
+        self._request_tree.setAlternatingRowColors(True)
+        req_header = self._request_tree.header()
+        req_header.setStretchLastSection(False)
+        req_header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        req_header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        req_header.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
+        self._request_tree.setColumnWidth(2, _CANCEL_BTN_SIZE + 8)
+
+        # Painted delegate for cancel buttons (no real widgets per row)
+        self._cancel_delegate = _CancelRequestDelegate(self)
+        self._request_tree.setItemDelegateForColumn(2, self._cancel_delegate)
+        self._cancel_delegate.cancel_clicked.connect(self._on_cancel_request)
+
+        # Empty-state placeholder (shown when no requests)
+        self._request_empty = QLabel(
+            self.tr("No photo requests yet.\nUse Family Discovery to request photos.")
+        )
+        self._request_empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._request_empty.setStyleSheet("color: #9ca3af; font-size: 12px;")
+        self._request_empty.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
-        right_col.addWidget(self._request_placeholder)
+
+        right_col.addWidget(self._request_tree)
+        right_col.addWidget(self._request_empty)
 
         columns.addLayout(right_col, stretch=1)
 
@@ -299,12 +391,16 @@ class PlanReviewScreen(QWidget):
     def refresh(self) -> None:
         """Reload the plan data from the database."""
         self._delete_tree.clear()
+        self._request_tree.clear()
 
         if self._session_id is None:
             self._delete_header.setText(self.tr("Files to Delete (0)"))
+            self._request_header.setText(self.tr("Files to Request (0)"))
             self._delete_total_label.setText(self.tr("Storage saved: 0 B"))
             self._keep_total_label.setText(self.tr("Files kept: 0"))
             self._apply_btn.setEnabled(False)
+            self._request_tree.setVisible(False)
+            self._request_empty.setVisible(True)
             return
 
         # Get plan summary
@@ -326,6 +422,12 @@ class PlanReviewScreen(QWidget):
         # Populate deletion tree
         delete_rows = self._db.get_delete_actions_with_paths(self._session_id)
         self._populate_delete_tree(delete_rows)
+
+        # Populate request tree (Phase 4)
+        request_rows = self._db.get_pending_requests_for_review(
+            self._session_id
+        )
+        self._populate_request_tree(request_rows)
 
         self._apply_btn.setEnabled(delete_count > 0)
 
@@ -410,6 +512,41 @@ class PlanReviewScreen(QWidget):
         ]
         for fid in file_ids_to_clear:
             self._db.clear_file_action(self._session_id, fid)
+        self.refresh()
+
+    # ── Request list (Phase 4) ───────────────────────────────────────
+
+    def _populate_request_tree(self, rows: list) -> None:
+        """Build the request tree with peer + hash info and cancel delegate."""
+        has_requests = len(rows) > 0
+        self._request_tree.setVisible(has_requests)
+        self._request_empty.setVisible(not has_requests)
+
+        self._request_header.setText(
+            self.tr("Files to Request ({0})").format(len(rows))
+        )
+
+        if not has_requests:
+            return
+
+        self._request_tree.blockSignals(True)
+        try:
+            for row in rows:
+                item = QTreeWidgetItem(self._request_tree)
+                # Column 0: peer name + hash snippet
+                hash_snippet = row["pixel_hash"][:10] + "\u2026"
+                item.setText(0, f"{row['target_peer']}  ({hash_snippet})")
+                # Column 1: status
+                item.setText(1, row["status"])
+                # Column 2: cancel button data (request_id) for the delegate
+                item.setData(2, Qt.ItemDataRole.UserRole, row["request_id"])
+        finally:
+            self._request_tree.blockSignals(False)
+
+    @pyqtSlot(int)
+    def _on_cancel_request(self, request_id: int) -> None:
+        """Cancel a request via the delegate click."""
+        self._db.cancel_request(request_id)
         self.refresh()
 
     @pyqtSlot()

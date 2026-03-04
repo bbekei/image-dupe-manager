@@ -495,3 +495,65 @@ class TestRoundTrip:
         matches = db.get_cross_library_matches(sid)
         usernames = {m["username"] for m in matches}
         assert "alice" not in usernames
+
+
+# ---------------------------------------------------------------------------
+# Export with requests_outgoing (Phase 4)
+# ---------------------------------------------------------------------------
+
+class TestExportWithRequests:
+    """Phase 4 — requests_outgoing in export payload."""
+
+    def test_export_includes_requests_outgoing(self, db, session_factory):
+        sid = session_factory()
+        _insert_test_files(db, sid)
+
+        # Create a pending request
+        ts = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        db.create_request(sid, VALID_HASH, "alice", ts)
+
+        payload = build_export_payload(db, sid, "bob", "hash_only")
+
+        assert "requests_outgoing" in payload
+        assert len(payload["requests_outgoing"]) == 1
+        req = payload["requests_outgoing"][0]
+        assert req["pixel_hash"] == VALID_HASH
+        assert req["target_peer"] == "alice"
+        assert req["status"] == "pending"
+
+    def test_export_excludes_cancelled_requests(self, db, session_factory):
+        sid = session_factory()
+        _insert_test_files(db, sid)
+
+        ts = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        rid = db.create_request(sid, VALID_HASH, "alice", ts)
+        db.cancel_request(rid)
+
+        payload = build_export_payload(db, sid, "bob", "hash_only")
+
+        # No requests_outgoing key when all cancelled
+        assert "requests_outgoing" not in payload
+
+    def test_export_without_requests_omits_key(self, db, session_factory):
+        sid = session_factory()
+        _insert_test_files(db, sid)
+
+        payload = build_export_payload(db, sid, "bob", "hash_only")
+
+        # No requests at all — key should not be present
+        assert "requests_outgoing" not in payload
+
+    def test_import_with_requests_outgoing_does_not_fail(self, db):
+        """Importing a payload with requests_outgoing should succeed."""
+        payload = _make_peer_payload()
+        payload["requests_outgoing"] = [
+            {
+                "pixel_hash": VALID_HASH,
+                "target_peer": "me",
+                "status": "pending",
+                "requested_at": "2024-01-01T00:00:00Z",
+            }
+        ]
+        raw = json.dumps(payload)
+        username = import_payload(db, raw)
+        assert username == "alice"

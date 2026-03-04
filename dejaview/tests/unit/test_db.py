@@ -900,3 +900,187 @@ class TestFullDupeFolderPaths:
 
         paths = db.get_full_dupe_folder_paths(sid)
         assert paths == set()
+
+
+# ---------------------------------------------------------------------------
+# Requests (Phase 4 — Family Discovery)
+# ---------------------------------------------------------------------------
+
+class TestRequests:
+    """Phase 4 — requests table CRUD."""
+
+    @pytest.fixture(autouse=True)
+    def _setup(self, db: Database, session_factory):
+        self.db = db
+        self.sid = session_factory()
+
+    def test_requests_table_exists(self):
+        tables = {
+            r["name"]
+            for r in self.db.conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+        assert "requests" in tables
+
+    def test_requests_indexes_exist(self):
+        indexes = {
+            r["name"]
+            for r in self.db.conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='index'"
+            ).fetchall()
+        }
+        assert "idx_requests_session" in indexes
+        assert "idx_requests_status" in indexes
+
+    def test_create_request_returns_id(self):
+        rid = self.db.create_request(
+            self.sid, _make_hash("a"), "alice", _now()
+        )
+        assert isinstance(rid, int)
+        assert rid > 0
+
+    def test_create_request_is_idempotent(self):
+        h = _make_hash("a")
+        rid1 = self.db.create_request(self.sid, h, "alice", _now())
+        rid2 = self.db.create_request(self.sid, h, "alice", _now())
+        assert rid1 == rid2
+
+    def test_create_request_different_peer(self):
+        h = _make_hash("a")
+        rid1 = self.db.create_request(self.sid, h, "alice", _now())
+        rid2 = self.db.create_request(self.sid, h, "bob", _now())
+        assert rid1 != rid2
+
+    def test_get_requests_for_session(self):
+        self.db.create_request(self.sid, _make_hash("a"), "alice", _now())
+        self.db.create_request(self.sid, _make_hash("b"), "bob", _now())
+        rows = self.db.get_requests_for_session(self.sid)
+        assert len(rows) == 2
+
+    def test_get_pending_requests_count(self):
+        self.db.create_request(self.sid, _make_hash("a"), "alice", _now())
+        self.db.create_request(self.sid, _make_hash("b"), "bob", _now())
+        assert self.db.get_pending_requests_count(self.sid) == 2
+
+    def test_update_request_status(self):
+        rid = self.db.create_request(self.sid, _make_hash("a"), "alice", _now())
+        self.db.update_request_status(rid, "approved", responded_at=_now())
+        rows = self.db.get_requests_for_session(self.sid)
+        assert rows[0]["status"] == "approved"
+        assert rows[0]["responded_at"] is not None
+
+    def test_cancel_request(self):
+        rid = self.db.create_request(self.sid, _make_hash("a"), "alice", _now())
+        self.db.cancel_request(rid)
+        assert self.db.get_pending_requests_count(self.sid) == 0
+        rows = self.db.get_requests_for_session(self.sid)
+        assert rows[0]["status"] == "cancelled"
+
+    def test_delete_request(self):
+        h = _make_hash("a")
+        self.db.create_request(self.sid, h, "alice", _now())
+        self.db.delete_request(self.sid, h, "alice")
+        assert self.db.get_requests_for_session(self.sid) == []
+
+    def test_is_requested_true(self):
+        h = _make_hash("a")
+        self.db.create_request(self.sid, h, "alice", _now())
+        assert self.db.is_requested(self.sid, h, "alice") is True
+
+    def test_is_requested_false_when_not_exists(self):
+        assert self.db.is_requested(self.sid, _make_hash("z"), "alice") is False
+
+    def test_is_requested_false_when_cancelled(self):
+        h = _make_hash("a")
+        rid = self.db.create_request(self.sid, h, "alice", _now())
+        self.db.cancel_request(rid)
+        assert self.db.is_requested(self.sid, h, "alice") is False
+
+    def test_create_requests_batch(self):
+        now = _now()
+        batch = [
+            (self.sid, _make_hash("a"), "alice", now),
+            (self.sid, _make_hash("b"), "bob", now),
+            (self.sid, _make_hash("c"), "alice", now),
+        ]
+        self.db.create_requests_batch(batch)
+        assert self.db.get_pending_requests_count(self.sid) == 3
+
+    def test_get_pending_requests_for_review(self):
+        self.db.create_request(self.sid, _make_hash("a"), "alice", _now())
+        rid2 = self.db.create_request(self.sid, _make_hash("b"), "bob", _now())
+        self.db.cancel_request(rid2)
+        rows = self.db.get_pending_requests_for_review(self.sid)
+        assert len(rows) == 1
+        assert rows[0]["target_peer"] == "alice"
+
+    def test_cascade_on_session_delete(self):
+        self.db.create_request(self.sid, _make_hash("a"), "alice", _now())
+        self.db.delete_session(self.sid)
+        rows = self.db.conn.execute(
+            "SELECT * FROM requests WHERE session_id = ?", (self.sid,)
+        ).fetchall()
+        assert len(rows) == 0
+
+    def test_invalid_status_rejected(self):
+        rid = self.db.create_request(self.sid, _make_hash("a"), "alice", _now())
+        with pytest.raises(sqlite3.IntegrityError):
+            self.db.update_request_status(rid, "invalid_status")
+
+
+class TestFamilyTreasures:
+    """Phase 4 — get_family_treasures()."""
+
+    def test_returns_remote_only_files(self, db: Database, session_factory):
+        sid = session_factory()
+        # Local file with hash_a
+        h_local = _make_hash("a")
+        fid = db.insert_file(sid, "/local/photo.jpg", 1000, _now(), _now())
+        db.update_pixel_hash(fid, h_local, "/t/a.jpg")
+
+        # Remote peer has hash_a (shared) + hash_b (treasure)
+        h_treasure = _make_hash("b")
+        peer_id = db.upsert_remote_peer("alice", _now())
+        db.insert_remote_files(peer_id, [
+            {"pixel_hash": h_local, "filename": "shared.jpg", "size": 1000},
+            {"pixel_hash": h_treasure, "filename": "treasure.jpg", "size": 2000},
+        ])
+
+        treasures = db.get_family_treasures(sid)
+        assert len(treasures) == 1
+        assert treasures[0]["pixel_hash"] == h_treasure
+        assert treasures[0]["peer_username"] == "alice"
+
+    def test_empty_when_all_shared(self, db: Database, session_factory):
+        sid = session_factory()
+        h = _make_hash("a")
+        fid = db.insert_file(sid, "/local/photo.jpg", 1000, _now(), _now())
+        db.update_pixel_hash(fid, h, "/t/a.jpg")
+
+        peer_id = db.upsert_remote_peer("alice", _now())
+        db.insert_remote_files(peer_id, [
+            {"pixel_hash": h, "filename": "same.jpg", "size": 1000},
+        ])
+
+        treasures = db.get_family_treasures(sid)
+        assert len(treasures) == 0
+
+    def test_multiple_peers_treasures(self, db: Database, session_factory):
+        sid = session_factory()
+        h1 = _make_hash("x")
+        h2 = _make_hash("y")
+
+        peer1 = db.upsert_remote_peer("alice", _now())
+        db.insert_remote_files(peer1, [
+            {"pixel_hash": h1, "filename": "a.jpg", "size": 1000},
+        ])
+        peer2 = db.upsert_remote_peer("bob", _now())
+        db.insert_remote_files(peer2, [
+            {"pixel_hash": h2, "filename": "b.jpg", "size": 2000},
+        ])
+
+        treasures = db.get_family_treasures(sid)
+        assert len(treasures) == 2
+        peers = {t["peer_username"] for t in treasures}
+        assert peers == {"alice", "bob"}

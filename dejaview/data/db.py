@@ -154,6 +154,22 @@ CREATE TABLE IF NOT EXISTS soft_deletes (
 );
 
 CREATE INDEX IF NOT EXISTS idx_soft_deletes_session ON soft_deletes(session_id);
+
+CREATE TABLE IF NOT EXISTS requests (
+    id           INTEGER PRIMARY KEY,
+    session_id   INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    pixel_hash   TEXT NOT NULL,
+    target_peer  TEXT NOT NULL,
+    status       TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending','approved','denied','fulfilled','cancelled')),
+    requested_at TEXT NOT NULL,
+    responded_at TEXT,
+    fulfilled_at TEXT,
+    UNIQUE (session_id, pixel_hash, target_peer)
+);
+
+CREATE INDEX IF NOT EXISTS idx_requests_session ON requests(session_id);
+CREATE INDEX IF NOT EXISTS idx_requests_status  ON requests(status);
 """
 
 
@@ -266,6 +282,32 @@ class Database:
                 );
                 CREATE INDEX IF NOT EXISTS idx_soft_deletes_session
                     ON soft_deletes(session_id);
+                """
+            )
+
+        # UX Redesign Phase 4: add requests table
+        if "requests" not in tables:
+            c.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS requests (
+                    id           INTEGER PRIMARY KEY,
+                    session_id   INTEGER NOT NULL REFERENCES sessions(id)
+                                     ON DELETE CASCADE,
+                    pixel_hash   TEXT NOT NULL,
+                    target_peer  TEXT NOT NULL,
+                    status       TEXT NOT NULL DEFAULT 'pending'
+                        CHECK (status IN (
+                            'pending','approved','denied','fulfilled','cancelled'
+                        )),
+                    requested_at TEXT NOT NULL,
+                    responded_at TEXT,
+                    fulfilled_at TEXT,
+                    UNIQUE (session_id, pixel_hash, target_peer)
+                );
+                CREATE INDEX IF NOT EXISTS idx_requests_session
+                    ON requests(session_id);
+                CREATE INDEX IF NOT EXISTS idx_requests_status
+                    ON requests(status);
                 """
             )
 
@@ -1120,6 +1162,185 @@ class Database:
             (executed_at, session_id, file_id),
         )
         self.conn.commit()
+
+    # ------------------------------------------------------------------
+    # Requests (UX Redesign Phase 4 — Family Discovery)
+    # ------------------------------------------------------------------
+
+    def create_request(
+        self,
+        session_id: int,
+        pixel_hash: str,
+        target_peer: str,
+        requested_at: str,
+    ) -> int:
+        """Insert a photo request and return its id."""
+        cur = self.conn.execute(
+            """
+            INSERT OR IGNORE INTO requests
+                (session_id, pixel_hash, target_peer, requested_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (session_id, pixel_hash, target_peer, requested_at),
+        )
+        self.conn.commit()
+        if cur.lastrowid:
+            return cur.lastrowid
+        row = self.conn.execute(
+            """
+            SELECT id FROM requests
+            WHERE session_id = ? AND pixel_hash = ? AND target_peer = ?
+            """,
+            (session_id, pixel_hash, target_peer),
+        ).fetchone()
+        return row["id"]
+
+    def create_requests_batch(
+        self,
+        rows: list[tuple],
+    ) -> None:
+        """Bulk-insert photo requests.
+
+        Each element: (session_id, pixel_hash, target_peer, requested_at)
+        """
+        self.conn.executemany(
+            """
+            INSERT OR IGNORE INTO requests
+                (session_id, pixel_hash, target_peer, requested_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            rows,
+        )
+        self.conn.commit()
+
+    def get_requests_for_session(
+        self, session_id: int
+    ) -> list[sqlite3.Row]:
+        """Return all requests for a session, ordered by requested_at."""
+        return self.conn.execute(
+            """
+            SELECT * FROM requests
+            WHERE session_id = ?
+            ORDER BY requested_at DESC
+            """,
+            (session_id,),
+        ).fetchall()
+
+    def get_pending_requests_count(self, session_id: int) -> int:
+        """Return count of pending requests for a session."""
+        row = self.conn.execute(
+            """
+            SELECT COUNT(*) AS cnt FROM requests
+            WHERE session_id = ? AND status = 'pending'
+            """,
+            (session_id,),
+        ).fetchone()
+        return row["cnt"] if row else 0
+
+    def update_request_status(
+        self,
+        request_id: int,
+        status: str,
+        responded_at: str | None = None,
+        fulfilled_at: str | None = None,
+    ) -> None:
+        """Update the status of a request."""
+        self.conn.execute(
+            """
+            UPDATE requests
+            SET status = ?, responded_at = COALESCE(?, responded_at),
+                fulfilled_at = COALESCE(?, fulfilled_at)
+            WHERE id = ?
+            """,
+            (status, responded_at, fulfilled_at, request_id),
+        )
+        self.conn.commit()
+
+    def cancel_request(self, request_id: int) -> None:
+        """Cancel a pending request."""
+        self.conn.execute(
+            "UPDATE requests SET status = 'cancelled' WHERE id = ?",
+            (request_id,),
+        )
+        self.conn.commit()
+
+    def get_incoming_requests(self, local_username: str) -> list[sqlite3.Row]:
+        """Return requests targeting the local user (from peer exports)."""
+        return self.conn.execute(
+            """
+            SELECT * FROM requests
+            WHERE target_peer = ? AND status = 'pending'
+            ORDER BY requested_at DESC
+            """,
+            (local_username,),
+        ).fetchall()
+
+    def get_family_treasures(
+        self, session_id: int
+    ) -> list[sqlite3.Row]:
+        """Return remote files that do NOT exist locally, with peer info.
+
+        Used by the Family Discovery screen to show 'family treasures'.
+        Each row includes: remote file details + peer username.
+        """
+        return self.conn.execute(
+            """
+            SELECT rf.id AS remote_file_id, rf.pixel_hash, rf.filename,
+                   rf.path AS remote_path, rf.size, rf.modified_at,
+                   rp.username AS peer_username
+            FROM remote_files rf
+            JOIN remote_peers rp ON rp.id = rf.peer_id
+            WHERE rf.pixel_hash NOT IN (
+                SELECT pixel_hash FROM files
+                WHERE session_id = ? AND status = 'active'
+                      AND pixel_hash IS NOT NULL
+            )
+            ORDER BY rp.username, rf.filename
+            """,
+            (session_id,),
+        ).fetchall()
+
+    def get_pending_requests_for_review(
+        self, session_id: int
+    ) -> list[sqlite3.Row]:
+        """Return pending requests with peer info for plan review display."""
+        return self.conn.execute(
+            """
+            SELECT r.id AS request_id, r.pixel_hash, r.target_peer,
+                   r.requested_at, r.status
+            FROM requests r
+            WHERE r.session_id = ? AND r.status = 'pending'
+            ORDER BY r.requested_at
+            """,
+            (session_id,),
+        ).fetchall()
+
+    def delete_request(
+        self, session_id: int, pixel_hash: str, target_peer: str
+    ) -> None:
+        """Delete a request (used when toggling off in Family Discovery)."""
+        self.conn.execute(
+            """
+            DELETE FROM requests
+            WHERE session_id = ? AND pixel_hash = ? AND target_peer = ?
+            """,
+            (session_id, pixel_hash, target_peer),
+        )
+        self.conn.commit()
+
+    def is_requested(
+        self, session_id: int, pixel_hash: str, target_peer: str
+    ) -> bool:
+        """Check if a request already exists for this hash+peer combo."""
+        row = self.conn.execute(
+            """
+            SELECT 1 FROM requests
+            WHERE session_id = ? AND pixel_hash = ? AND target_peer = ?
+                  AND status IN ('pending', 'approved')
+            """,
+            (session_id, pixel_hash, target_peer),
+        ).fetchone()
+        return row is not None
 
     # ------------------------------------------------------------------
     # Thumbnail cleanup (plan §Post-Action Cleanup)

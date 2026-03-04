@@ -262,11 +262,17 @@ class Dashboard(QWidget):
                 self.tr("Import or sync to discover family photos")
             )
 
-        # Requests (placeholder — requests table doesn't exist yet)
-        self._request_card.set_value("0")
-        self._request_card.set_subtitle(
-            self.tr("No pending requests")
-        )
+        # Requests (Phase 4 — wired to requests table)
+        pending_count = self._db.get_pending_requests_count(self._session_id)
+        self._request_card.set_value(str(pending_count))
+        if pending_count > 0:
+            self._request_card.set_subtitle(
+                self.tr("{0} pending photo requests").format(pending_count)
+            )
+        else:
+            self._request_card.set_subtitle(
+                self.tr("No pending requests")
+            )
 
         # Sync status
         config = self._db.get_sync_config()

@@ -122,12 +122,32 @@ def build_export_payload(
 
         files.append(entry)
 
-    return {
+    # Build outgoing requests list (Phase 4)
+    requests_outgoing = []
+    try:
+        pending = db.get_requests_for_session(session_id)
+        for req in pending:
+            if req["status"] in ("pending", "approved"):
+                requests_outgoing.append({
+                    "pixel_hash": req["pixel_hash"],
+                    "target_peer": req["target_peer"],
+                    "status": req["status"],
+                    "requested_at": req["requested_at"],
+                })
+    except Exception:
+        # requests table may not exist on older DBs — skip gracefully
+        pass
+
+    payload = {
         "username": username,
         "exported_at": datetime.now(timezone.utc).isoformat(),
         "privacy_level": privacy_level,
         "files": files,
     }
+    if requests_outgoing:
+        payload["requests_outgoing"] = requests_outgoing
+
+    return payload
 
 
 # ---------------------------------------------------------------------------
@@ -234,6 +254,18 @@ def import_payload(db: "Database", raw: str | bytes) -> str:
     # it may not exist yet if user hasn't configured sync settings)
     if db.get_sync_config() is not None:
         db.upsert_sync_config(last_imported_at=now)
+
+    # Phase 4: parse incoming requests from peer exports
+    incoming_requests = payload.get("requests_outgoing", [])
+    if isinstance(incoming_requests, list):
+        for req in incoming_requests:
+            if not isinstance(req, dict):
+                continue
+            req_hash = req.get("pixel_hash")
+            if req_hash and validate_pixel_hash(str(req_hash)):
+                # Store as metadata on the peer — the sync layer will
+                # use this to show incoming requests (Phase 6).
+                pass  # Stored in peer's export; acted on by sync.py
 
     log.info(
         "Imported %d files from peer '%s' (%d skipped)",

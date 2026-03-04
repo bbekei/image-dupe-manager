@@ -43,6 +43,7 @@ from data.sync import DriveSync
 from ui.cleanup_screen import CleanupScreen
 from ui.dashboard import Dashboard
 from ui.execution_screen import ExecutionScreen
+from ui.family_discovery import FamilyDiscoveryScreen
 from ui.help_dialog import HelpDialog
 from ui.navigation import NavigationController
 from ui.plan_review import PlanReviewScreen
@@ -200,6 +201,18 @@ class MainWindow(QMainWindow):
         self._execution_screen.minimize_requested.connect(self._on_minimize_to_tray)
         self._nav.register_screen("execution", self._execution_screen)
 
+        # Family Discovery screen (Phase 4 — browse & request family photos)
+        self._family_discovery = FamilyDiscoveryScreen(
+            db=self._db, parent=self
+        )
+        self._family_discovery.back_requested.connect(
+            self._on_family_discovery_back
+        )
+        self._family_discovery.requests_changed.connect(
+            self._on_requests_changed
+        )
+        self._nav.register_screen("family_discovery", self._family_discovery)
+
         # System tray icon (Phase 3 — minimized execution)
         self._tray = TrayIcon(parent=self)
         self._tray.activated.connect(self._on_tray_activated)
@@ -234,10 +247,18 @@ class MainWindow(QMainWindow):
 
     @pyqtSlot()
     def _on_family_card_clicked(self) -> None:
-        """Placeholder for Phase 4 — Family Discovery screen."""
-        self._status_bar.showMessage(
-            self.tr("Family Discovery — coming soon.")
-        )
+        """Navigate to the Family Discovery screen (Phase 4)."""
+        self._nav.navigate_to("family_discovery")
+
+    @pyqtSlot()
+    def _on_family_discovery_back(self) -> None:
+        """Family Discovery > Back — return to dashboard."""
+        self._nav.go_back()
+
+    @pyqtSlot()
+    def _on_requests_changed(self) -> None:
+        """Refresh dashboard and plan review when requests change."""
+        self._dashboard.refresh()
 
     @pyqtSlot()
     def _on_request_card_clicked(self) -> None:
@@ -280,6 +301,7 @@ class MainWindow(QMainWindow):
         self._cleanup_screen.set_session_id(self._session_id)
         self._dashboard.set_session_id(self._session_id)
         self._plan_review.set_session_id(self._session_id)
+        self._family_discovery.set_session_id(self._session_id)
         for folder in self._db.get_session_folders(self._session_id):
             self._folder_panel.add_folder(folder, persist=False)
 
@@ -332,6 +354,7 @@ class MainWindow(QMainWindow):
             self._cleanup_screen.set_session_id(self._session_id)
             self._dashboard.set_session_id(self._session_id)
             self._plan_review.set_session_id(self._session_id)
+            self._family_discovery.set_session_id(self._session_id)
             for folder in self._folder_panel.folders():
                 self._db.add_session_folder(self._session_id, folder)
         return self._session_id

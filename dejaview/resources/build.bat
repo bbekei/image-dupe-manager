@@ -15,19 +15,31 @@ set "PROJECT_DIR=%~dp0.."
 pushd "%PROJECT_DIR%"
 
 echo ============================================================
-echo  Step 1/2: Building EXE with PyInstaller
+echo  Step 1/3: Building DejaView EXE with PyInstaller
 echo ============================================================
 pyinstaller dejaview.spec --noconfirm
 if errorlevel 1 (
     echo.
-    echo ERROR: PyInstaller build failed.
+    echo ERROR: PyInstaller build failed (DejaView).
     popd
     exit /b 1
 )
 
 echo.
 echo ============================================================
-echo  Step 2/2: Building installer with Inno Setup
+echo  Step 2/3: Building DejaViewVerify EXE with PyInstaller
+echo ============================================================
+pyinstaller verify.spec --noconfirm
+if errorlevel 1 (
+    echo.
+    echo ERROR: PyInstaller build failed (DejaViewVerify).
+    popd
+    exit /b 1
+)
+
+echo.
+echo ============================================================
+echo  Step 3/3: Building installer with Inno Setup
 echo ============================================================
 
 set "ISCC="
@@ -57,6 +69,7 @@ echo.
 echo ============================================================
 echo  Build complete!
 echo  EXE:       dist\DejaView\DejaView.exe
+echo  Verifier:  dist\DejaViewVerify\DejaViewVerify.exe
 echo  Installer: installer\DejaView_Setup.exe
 echo ============================================================
 

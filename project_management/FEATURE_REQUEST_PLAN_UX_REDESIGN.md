@@ -318,6 +318,7 @@ Showing 156 family photos from 3 providers
 - Heart button toggles request (INSERT/DELETE in `requests`)
 - Bulk select via Ctrl+Click + "Request Selected" button
 - Placeholder thumbnails (remote files have no local thumbnails)
+- **Styling (post-Phase 5 fix):** Follow the panel border conventions established in the smoke test fixes: `border-bottom` separators between toolbar/filter row and grid content, consistent with `cleanup_screen.py` panel styling.
 
 Data query: `get_family_treasures(session_id)` — remote_files NOT IN local files, joined with peer info.
 
@@ -327,7 +328,13 @@ Add `requests_outgoing` section to export JSON. Update `import_payload` to parse
 
 #### 4.4 Plan Review Enhancement (`ui/plan_review.py` — MODIFY)
 
-Populate right column with pending requests from `requests` table. Each row: peer name + hash + "X" to cancel.
+Populate right column with pending requests from `requests` table.
+
+**Implementation constraints (post-Phase 5 smoke test fix):**
+- The right column currently contains a placeholder `QLabel` (`_request_placeholder`) inside a `right_col` QVBoxLayout. Replace the placeholder with a `QTreeWidget` for the request list.
+- **Must use a painted delegate for "cancel" buttons** — same pattern as the existing `_RemoveDelegate` in the left column. The smoke test fix (Task 1) eliminated all per-row `QPushButton`/`setItemWidget()` usage from plan_review.py for performance (10k+ items caused minutes-long loads). The request column must follow this pattern: create a `_CancelRequestDelegate(QStyledItemDelegate)` that paints an "✖" and handles click via `editorEvent()`, not a `QPushButton` per row.
+- Wrap population in `blockSignals(True)` / `blockSignals(False)` for consistency.
+- Each row: peer name + thumbnail placeholder + hash snippet. Cancel delegate in last column.
 
 #### 4.5 Dashboard Enhancement (`ui/dashboard.py` — MODIFY)
 
@@ -482,11 +489,15 @@ The target folder is resolved via `pathlib.Path.home() / "Pictures" / "DejaView"
 
 #### 6.4 Trash Recovery (`ui/trash_recovery.py` — NEW)
 
-List of soft-deleted files with "Recover" button. Accessible from File menu or Settings.
+List of soft-deleted files with "Recover" action. Accessible from File menu or Settings.
+
+**Implementation constraint (post-Phase 5 smoke test fix):** Use a painted `QStyledItemDelegate` for the "Recover" action (same pattern as `_RemoveDelegate` in `plan_review.py`), not per-row `QPushButton` widgets. While trash lists are typically smaller than plan review, this maintains consistency with the delegate pattern established across the app and avoids performance regression if many files are in trash.
 
 #### 6.5 Path Exclusion
 
 Right-click context menu on folders: "Always Keep This Folder" → inserts into `protected_paths`. Smart selection engine (Phase 5) checks this table before marking files.
+
+**Implementation note (post-Phase 5 smoke test fix):** The current `results_panel.py` context menu (`_on_context_menu()`) only fires on **file** nodes with `ROLE_IS_DUPLICATE == True`. It must be extended to also fire on **folder** nodes (tree view mode) and **cluster parent** nodes (cluster view mode). The cleanup screen layout was restructured: FolderPanel is now a compact horizontal bar at the top, the splitter below holds only FilterSidebar + `_right_container` (BatchActions + ResultsPanel). Context menu additions go into ResultsPanel which lives inside `_right_container` — no impact on the layout itself, but the available node types and roles differ between tree view and cluster view modes.
 
 #### 6.6 Sync Enhancement (`data/sync.py` — MODIFY)
 
@@ -612,9 +623,9 @@ Each execution log tracks: task status (with `⬜`/`✅ Done` icons), what was a
 | # | Task | Status | Details |
 |---|------|--------|---------|
 | 4.1 | Add `requests` table + migration + CRUD | ⬜ | |
-| 4.2 | Create `ui/family_discovery.py` — Grid view | ⬜ | QListView IconMode + custom model |
+| 4.2 | Create `ui/family_discovery.py` — Grid view | ⬜ | QListView IconMode + custom model; follow panel border conventions from smoke test |
 | 4.3 | Enhance `data/export.py` — `requests_outgoing` | ⬜ | |
-| 4.4 | Enhance `ui/plan_review.py` — Right column with requests | ⬜ | |
+| 4.4 | Enhance `ui/plan_review.py` — Right column with requests | ⬜ | Replace placeholder QLabel with QTreeWidget; use painted delegate for cancel buttons (no QPushButton per row) |
 | 4.5 | Enhance `ui/dashboard.py` — Wire family + request cards | ⬜ | |
 | 4.6 | Add i18n strings (EN + HU) | ⬜ | |
 | 4.7 | Write tests — family discovery + requests + export | ⬜ | |
@@ -641,8 +652,8 @@ Each execution log tracks: task status (with `⬜`/`✅ Done` icons), what was a
 | 6.1 | Add `activity_log` + `protected_paths` tables | ⬜ | |
 | 6.2 | Create `ui/activity_feed.py` — Dashboard feed widget | ⬜ | |
 | 6.3 | Create `ui/request_list.py` — Approve/deny incoming | ⬜ | |
-| 6.4 | Create `ui/trash_recovery.py` — Recovery screen | ⬜ | |
-| 6.5 | Add path exclusion (right-click "Always Keep") | ⬜ | |
+| 6.4 | Create `ui/trash_recovery.py` — Recovery screen | ⬜ | Use painted delegate for Recover action (no QPushButton per row) |
+| 6.5 | Add path exclusion (right-click "Always Keep") | ⬜ | Extend context menu to folder nodes (currently file-only); handle both tree and cluster view modes |
 | 6.6 | Enhance `data/sync.py` — Request fulfillment + activity logging | ⬜ | Fulfilled files downloaded to `%USERPROFILE%\Pictures\DejaView\From_[Peer]\` |
 | 6.7 | Add i18n strings (EN + HU) | ⬜ | |
 | 6.8 | Write tests — activity, fulfillment, recovery | ⬜ | |
