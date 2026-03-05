@@ -207,6 +207,7 @@ export interface PyWebViewAPI {
   get_duplicate_groups(session_id: number, offset: number, limit: number, filters?: FilterCriteria): Promise<DuplicateGroup[]>
   get_group_detail(session_id: number, pixel_hash: string): Promise<FileInfo[]>
   set_file_action(file_id: number, action: FileAction, scope: ActionScope): Promise<{ actions: Record<string, FileAction> }>
+  apply_folder_action(session_id: number, folder_path: string, action: FileAction): Promise<{ affected: number }>
   apply_selection_preset(session_id: number, preset: SelectionPreset, group_ids?: string[]): Promise<{ keep_count: number; delete_count: number }>
   get_plan_summary(session_id: number): Promise<PlanSummary>
   execute_plan(session_id: number): Promise<void>

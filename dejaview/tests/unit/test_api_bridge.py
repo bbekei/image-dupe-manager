@@ -63,6 +63,7 @@ EXPECTED_METHODS = [
     "get_duplicate_groups",
     "get_group_detail",
     "set_file_action",
+    "apply_folder_action",
     "apply_selection_preset",
     "get_plan_summary",
     "execute_plan",

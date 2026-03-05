@@ -72,7 +72,9 @@
       "delete": "Delete",
       "ignore": "Ignore",
       "select_preset": "Apply Preset",
-      "clear_all": "Clear All"
+      "clear_all": "Clear All",
+      "folder_scope": "Apply to all files in the same folder",
+      "folder_confirm": "Are you sure you want to apply the same action to all images in this folder?"
     },
     "presets": {
       "KEEP_LARGEST_FILE": "Keep Largest",
@@ -116,7 +118,8 @@
     "threshold": "Similarity Threshold",
     "recommended_keeper": "Recommended: Keep this file",
     "reason": "Reason: {{reason}}",
-    "no_groups": "No similar images found. Enable similarity detection during scan."
+    "no_groups": "No similar images found. Enable similarity detection during scan.",
+    "compare_hint": "Click any image below to select it for comparison"
   },
   "bin": {
     "title": "Duplicates Bin",

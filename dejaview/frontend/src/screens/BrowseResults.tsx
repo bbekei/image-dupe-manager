@@ -1,7 +1,7 @@
 import { useEffect, useCallback, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { ChevronRight, Check, Trash2, EyeOff, Wand2 } from 'lucide-react'
+import { ChevronRight, Check, Trash2, EyeOff, Wand2, FolderCheck } from 'lucide-react'
 import { callBackend, useBackendEvent } from '../hooks/usePyBridge.ts'
 import { useReviewStore } from '../stores/useReviewStore.ts'
 import { useScanStore } from '../stores/useScanStore.ts'
@@ -22,14 +22,47 @@ function FileCard({
   currentAction,
 }: {
   file: FileInfo
-  onAction: (fileId: number, action: FileAction) => void
+  onAction: (fileId: number, action: FileAction, scope: 'file' | 'folder') => void
   currentAction?: FileAction
 }) {
   const { t } = useTranslation()
+  const [folderScope, setFolderScope] = useState(false)
+  const [pendingFolderAction, setPendingFolderAction] = useState<FileAction | null>(null)
   const fileName = file.path.split(/[/\\]/).pop() ?? file.path
 
+  const handleFolderToggle = () => {
+    if (!folderScope && currentAction) {
+      // Turning ON folder scope while an action is already set → confirm first
+      setPendingFolderAction(currentAction)
+    } else {
+      setFolderScope(!folderScope)
+    }
+  }
+
+  const handleAction = (action: FileAction) => {
+    if (folderScope) {
+      // Folder scope is ON → confirm before applying to whole folder
+      setPendingFolderAction(action)
+    } else {
+      onAction(file.id, action, 'file')
+    }
+  }
+
+  const confirmFolderAction = () => {
+    if (pendingFolderAction) {
+      setFolderScope(true)
+      onAction(file.id, pendingFolderAction, 'folder')
+      setPendingFolderAction(null)
+    }
+  }
+
+  const cancelFolderAction = () => {
+    setFolderScope(false)
+    setPendingFolderAction(null)
+  }
+
   return (
-    <div className="bg-dv-bg rounded-lg border border-dv-border p-3 flex gap-3">
+    <div className="bg-dv-bg rounded-lg border border-dv-border p-3 flex gap-3 relative">
       {file.thumbnail_data ? (
         <img
           src={file.thumbnail_data}
@@ -56,41 +89,79 @@ function FileCard({
         </div>
       </div>
 
-      <div className="flex flex-col gap-1.5 shrink-0">
+      <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-col gap-1.5">
+          <button
+            onClick={() => handleAction('keep')}
+            className={`p-1.5 rounded text-xs ${
+              currentAction === 'keep'
+                ? 'bg-dv-success text-white'
+                : 'bg-dv-surface hover:bg-dv-surface-hover text-dv-text-muted'
+            }`}
+            title={t('browse.actions.keep')}
+          >
+            <Check size={14} />
+          </button>
+          <button
+            onClick={() => handleAction('delete')}
+            className={`p-1.5 rounded text-xs ${
+              currentAction === 'delete'
+                ? 'bg-dv-danger text-white'
+                : 'bg-dv-surface hover:bg-dv-surface-hover text-dv-text-muted'
+            }`}
+            title={t('browse.actions.delete')}
+          >
+            <Trash2 size={14} />
+          </button>
+          <button
+            onClick={() => handleAction('ignore')}
+            className={`p-1.5 rounded text-xs ${
+              currentAction === 'ignore'
+                ? 'bg-dv-warning text-white'
+                : 'bg-dv-surface hover:bg-dv-surface-hover text-dv-text-muted'
+            }`}
+            title={t('browse.actions.ignore')}
+          >
+            <EyeOff size={14} />
+          </button>
+        </div>
         <button
-          onClick={() => onAction(file.id, 'keep')}
-          className={`p-1.5 rounded text-xs ${
-            currentAction === 'keep'
-              ? 'bg-dv-success text-white'
+          onClick={handleFolderToggle}
+          className={`p-2 rounded text-xs ${
+            folderScope
+              ? 'bg-dv-primary text-white'
               : 'bg-dv-surface hover:bg-dv-surface-hover text-dv-text-muted'
           }`}
-          title={t('browse.actions.keep')}
+          title={t('browse.actions.folder_scope')}
         >
-          <Check size={14} />
-        </button>
-        <button
-          onClick={() => onAction(file.id, 'delete')}
-          className={`p-1.5 rounded text-xs ${
-            currentAction === 'delete'
-              ? 'bg-dv-danger text-white'
-              : 'bg-dv-surface hover:bg-dv-surface-hover text-dv-text-muted'
-          }`}
-          title={t('browse.actions.delete')}
-        >
-          <Trash2 size={14} />
-        </button>
-        <button
-          onClick={() => onAction(file.id, 'ignore')}
-          className={`p-1.5 rounded text-xs ${
-            currentAction === 'ignore'
-              ? 'bg-dv-warning text-white'
-              : 'bg-dv-surface hover:bg-dv-surface-hover text-dv-text-muted'
-          }`}
-          title={t('browse.actions.ignore')}
-        >
-          <EyeOff size={14} />
+          <FolderCheck size={18} />
         </button>
       </div>
+
+      {/* Folder-scope confirmation overlay */}
+      {pendingFolderAction && (
+        <div className="absolute inset-0 bg-dv-bg/95 rounded-lg flex items-center justify-center z-10 border border-dv-border">
+          <div className="text-center px-4">
+            <p className="text-sm text-dv-text mb-3">
+              {t('browse.actions.folder_confirm')}
+            </p>
+            <div className="flex gap-2 justify-center">
+              <button
+                onClick={confirmFolderAction}
+                className="px-3 py-1.5 text-xs bg-dv-primary text-white rounded hover:bg-dv-primary/90"
+              >
+                {t('common.confirm')}
+              </button>
+              <button
+                onClick={cancelFolderAction}
+                className="px-3 py-1.5 text-xs bg-dv-surface text-dv-text-muted rounded hover:bg-dv-surface-hover border border-dv-border"
+              >
+                {t('common.cancel')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -191,22 +262,30 @@ export function BrowseResults() {
     }
   }, [sessionId, setSelectedGroup])
 
-  const handleFileAction = useCallback(async (fileId: number, action: FileAction) => {
+  const handleFileAction = useCallback(async (fileId: number, action: FileAction, scope: 'file' | 'folder' = 'file') => {
     try {
-      const result = await callBackend<{ actions: Record<string, FileAction> }>(
-        'set_file_action', fileId, action, 'file',
-      )
-      // Backend returns the full group actions map (includes auto-keep, toggle)
-      // Keys are stringified file IDs from JSON serialisation
-      const updated: Record<number, FileAction> = {}
-      for (const [id, act] of Object.entries(result.actions)) {
-        updated[Number(id)] = act
+      if (scope === 'folder') {
+        // Apply action to ALL scanned files in the same folder (across all groups)
+        const targetFile = selectedFiles.find((f) => f.id === fileId)
+        if (!targetFile || !sessionId) return
+        const folderPath = targetFile.path.replace(/[/\\][^/\\]+$/, '')
+        await callBackend('apply_folder_action', sessionId, folderPath, action)
+        // Reload the group to reflect updated actions
+        if (selectedGroupHash) await loadGroupDetail(selectedGroupHash)
+      } else {
+        const result = await callBackend<{ actions: Record<string, FileAction> }>(
+          'set_file_action', fileId, action, 'file',
+        )
+        const updated: Record<number, FileAction> = {}
+        for (const [id, act] of Object.entries(result.actions)) {
+          updated[Number(id)] = act
+        }
+        setFileActions(updated)
       }
-      setFileActions(updated)
     } catch {
       // handle error
     }
-  }, [])
+  }, [selectedFiles, sessionId, selectedGroupHash, loadGroupDetail])
 
   const handlePreset = useCallback(async (preset: SelectionPreset) => {
     if (!sessionId) return

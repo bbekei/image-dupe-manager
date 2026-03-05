@@ -453,6 +453,57 @@ class DejaViewAPI:
             group_actions = self._get_group_actions(session_id, file_ids)
         return {"actions": group_actions}
 
+    def apply_folder_action(
+        self, session_id: int, folder_path: str, action: str
+    ) -> dict:
+        """Apply an action to ALL scanned files in a folder across all groups.
+
+        Unlike ``set_file_action`` (single-file toggle), this is a batch
+        operation: it sets the action on every file whose parent directory
+        matches *folder_path*, skipping files that already carry the same
+        action.  Auto-keep logic is triggered per-group when deleting.
+
+        Returns ``{"affected": <int>}`` — the number of files changed.
+        """
+        now = datetime.now(timezone.utc).isoformat()
+
+        # Normalise separators so we can match both / and \
+        norm = folder_path.replace("\\", "/")
+        rows = self._db.conn.execute(
+            """
+            SELECT f.id, f.pixel_hash FROM files f
+            WHERE f.session_id = ?
+              AND REPLACE(f.path, '\\', '/') LIKE ? || '/%'
+              AND f.pixel_hash IS NOT NULL
+              AND f.pixel_hash IN (
+                  SELECT pixel_hash FROM files
+                  WHERE session_id = ? AND pixel_hash IS NOT NULL
+                  GROUP BY pixel_hash HAVING COUNT(*) > 1
+              )
+            """,
+            (session_id, norm, session_id),
+        ).fetchall()
+
+        affected = 0
+        seen_hashes: set[str] = set()
+        for r in rows:
+            fid = r["id"]
+            ph = r["pixel_hash"]
+            current = self._get_file_action(session_id, fid)
+            if current == action:
+                continue
+            self._db.set_file_action(session_id, fid, action, "folder", now)
+            affected += 1
+            if ph:
+                seen_hashes.add(ph)
+
+        # Auto-keep last undecided file per affected group
+        if action == "delete":
+            for ph in seen_hashes:
+                self._auto_keep_last_undecided(session_id, ph)
+
+        return {"affected": affected}
+
     def apply_selection_preset(
         self, session_id: int, preset: str, group_ids: list[str] | None = None
     ) -> dict:
@@ -606,6 +657,7 @@ class DejaViewAPI:
 
     def permanent_delete(self, soft_delete_ids: list[int]) -> None:
         """Permanently delete specified bin items from disk."""
+        now = datetime.now(timezone.utc).isoformat()
         for sid in soft_delete_ids:
             row = self._db.conn.execute(
                 "SELECT * FROM soft_deletes WHERE id = ?", (sid,),
@@ -615,10 +667,15 @@ class DejaViewAPI:
                     Path(row["trash_path"]).unlink(missing_ok=True)
                 except OSError:
                     pass
+                self._db.record_recovery(sid, now)
 
     def purge_expired(self) -> int:
         """Permanently delete all bin items past their 30-day retention period."""
+        now = datetime.now(timezone.utc).isoformat()
+        expired_rows = self._db.get_expired_soft_deletes(now)
         purged = purge_expired(self._trash_root)
+        for row in expired_rows:
+            self._db.record_recovery(row["id"], now)
         return len(purged)
 
     # ── Family Sharing ─────────────────────────────────────────────

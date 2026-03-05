@@ -72,7 +72,9 @@
       "delete": "Törlés",
       "ignore": "Mellőzés",
       "select_preset": "Előbeállítás alkalmazása",
-      "clear_all": "Összes törlése"
+      "clear_all": "Összes törlése",
+      "folder_scope": "Alkalmazás az összes fájlra ugyanabban a mappában",
+      "folder_confirm": "Biztosan ugyanazt a műveletet szeretné alkalmazni az összes képre ebben a mappában?"
     },
     "presets": {
       "KEEP_LARGEST_FILE": "Legnagyobb megtartása",
@@ -116,7 +118,8 @@
     "threshold": "Hasonlósági küszöb",
     "recommended_keeper": "Ajánlott: Tartsa meg ezt a fájlt",
     "reason": "Ok: {{reason}}",
-    "no_groups": "Nem találtunk hasonló képeket. Engedélyezze a hasonlóság-felismerést a szkennelés során."
+    "no_groups": "Nem találtunk hasonló képeket. Engedélyezze a hasonlóság-felismerést a szkennelés során.",
+    "compare_hint": "Kattintson bármelyik képre az összehasonlításhoz"
   },
   "bin": {
     "title": "Duplikátum Lomtár",
