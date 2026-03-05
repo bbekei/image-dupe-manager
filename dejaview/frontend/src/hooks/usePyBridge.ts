@@ -107,5 +107,9 @@ export function useScanProgress(callbacks: {
   useBackendEvent('scan:duplicate_found', (e: CustomEvent) => {
     cbRef.current.onDuplicateFound?.(e.detail.pixel_hash, e.detail.count)
   })
+
+  useBackendEvent('scan:similarity_progress', (e: CustomEvent) => {
+    cbRef.current.onProgress?.(e.detail.current, e.detail.total, 'similarity')
+  })
 }
 

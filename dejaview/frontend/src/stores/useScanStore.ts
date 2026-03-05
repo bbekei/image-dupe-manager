@@ -39,7 +39,7 @@ const phaseMap: Record<string, ScanPhase> = {
   error: 'error',
   started: 'discovery',
   resumed: 'hashing',
-  info: 'discovery',
+  // "info" is handled specially in setStatus — not mapped here
 }
 
 export const useScanStore = create<ScanState>((set) => ({
@@ -58,12 +58,13 @@ export const useScanStore = create<ScanState>((set) => ({
   setProgress: (current, total, phase) =>
     set({ current, total, phase: phaseMap[phase] ?? 'hashing' }),
   setStatus: (status, message) =>
-    set({
-      phase: phaseMap[status] ?? 'idle',
+    set((s) => ({
+      // "info" status messages are informational — keep the current phase
+      phase: status === 'info' ? s.phase : (phaseMap[status] ?? 'idle'),
       statusMessage: message,
       // Reset counters when a new scan starts
       ...(status === 'started' ? { current: 0, total: 0, discovered: 0, duplicatesFound: 0, error: null, scanErrors: [] } : {}),
-    }),
+    })),
   setDiscovered: (count) => set({ discovered: count }),
   incrementDuplicates: (count) =>
     set((s) => ({ duplicatesFound: s.duplicatesFound + count })),
