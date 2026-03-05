@@ -1,7 +1,7 @@
 import { useEffect, useCallback, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { ChevronRight, Check, Trash2, EyeOff, Wand2, FolderCheck } from 'lucide-react'
+import { ChevronRight, ChevronDown, Check, Trash2, EyeOff, Wand2, FolderCheck } from 'lucide-react'
 import { callBackend, useBackendEvent } from '../hooks/usePyBridge.ts'
 import { useReviewStore } from '../stores/useReviewStore.ts'
 import { useScanStore } from '../stores/useScanStore.ts'
@@ -19,16 +19,22 @@ function formatBytes(bytes: number): string {
 function FileCard({
   file,
   onAction,
+  onKeepAndDeleteOthers,
   currentAction,
+  groupSize,
 }: {
   file: FileInfo
   onAction: (fileId: number, action: FileAction, scope: 'file' | 'folder') => void
+  onKeepAndDeleteOthers?: (fileId: number) => void
   currentAction?: FileAction
+  groupSize: number
 }) {
   const { t } = useTranslation()
   const [folderScope, setFolderScope] = useState(false)
   const [pendingFolderAction, setPendingFolderAction] = useState<FileAction | null>(null)
+  const [keepMenuOpen, setKeepMenuOpen] = useState(false)
   const fileName = file.path.split(/[/\\]/).pop() ?? file.path
+  const showSplitKeep = groupSize >= 4 && onKeepAndDeleteOthers
 
   const handleFolderToggle = () => {
     if (!folderScope && currentAction) {
@@ -91,17 +97,59 @@ function FileCard({
 
       <div className="flex items-center gap-2 shrink-0">
         <div className="flex flex-col gap-1.5">
-          <button
-            onClick={() => handleAction('keep')}
-            className={`p-1.5 rounded text-xs ${
-              currentAction === 'keep'
-                ? 'bg-dv-success text-white'
-                : 'bg-dv-surface hover:bg-dv-surface-hover text-dv-text-muted'
-            }`}
-            title={t('browse.actions.keep')}
-          >
-            <Check size={14} />
-          </button>
+          {showSplitKeep ? (
+            <div className="relative">
+              <div className="flex">
+                <button
+                  onClick={() => handleAction('keep')}
+                  className={`p-1.5 rounded-l text-xs ${
+                    currentAction === 'keep'
+                      ? 'bg-dv-success text-white'
+                      : 'bg-dv-surface hover:bg-dv-surface-hover text-dv-text-muted'
+                  }`}
+                  title={t('browse.actions.keep')}
+                >
+                  <Check size={14} />
+                </button>
+                <button
+                  onClick={() => setKeepMenuOpen(!keepMenuOpen)}
+                  className={`px-0.5 rounded-r border-l text-xs ${
+                    currentAction === 'keep'
+                      ? 'bg-dv-success text-white border-white/30'
+                      : 'bg-dv-surface hover:bg-dv-surface-hover text-dv-text-muted border-dv-border'
+                  }`}
+                  title={t('browse.actions.keep_delete_others')}
+                >
+                  <ChevronDown size={10} />
+                </button>
+              </div>
+              {keepMenuOpen && (
+                <div className="absolute right-0 top-full mt-1 z-20 bg-dv-surface border border-dv-border rounded shadow-lg min-w-max">
+                  <button
+                    onClick={() => {
+                      onKeepAndDeleteOthers(file.id)
+                      setKeepMenuOpen(false)
+                    }}
+                    className="px-3 py-1.5 text-xs text-dv-text hover:bg-dv-surface-hover w-full text-left whitespace-nowrap"
+                  >
+                    {t('browse.actions.keep_delete_others')}
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <button
+              onClick={() => handleAction('keep')}
+              className={`p-1.5 rounded text-xs ${
+                currentAction === 'keep'
+                  ? 'bg-dv-success text-white'
+                  : 'bg-dv-surface hover:bg-dv-surface-hover text-dv-text-muted'
+              }`}
+              title={t('browse.actions.keep')}
+            >
+              <Check size={14} />
+            </button>
+          )}
           <button
             onClick={() => handleAction('delete')}
             className={`p-1.5 rounded text-xs ${
@@ -287,6 +335,22 @@ export function BrowseResults() {
     }
   }, [selectedFiles, sessionId, selectedGroupHash, loadGroupDetail])
 
+  const handleKeepAndDeleteOthers = useCallback(async (fileId: number) => {
+    try {
+      const groupFileIds = selectedFiles.map((f) => f.id)
+      const result = await callBackend<{ actions: Record<string, FileAction> }>(
+        'keep_and_delete_others', fileId, groupFileIds,
+      )
+      const updated: Record<number, FileAction> = {}
+      for (const [id, act] of Object.entries(result.actions)) {
+        updated[Number(id)] = act
+      }
+      setFileActions(updated)
+    } catch {
+      // handle error
+    }
+  }, [selectedFiles])
+
   const handlePreset = useCallback(async (preset: SelectionPreset) => {
     if (!sessionId) return
     try {
@@ -383,7 +447,9 @@ export function BrowseResults() {
                   key={file.id}
                   file={file}
                   onAction={handleFileAction}
+                  onKeepAndDeleteOthers={handleKeepAndDeleteOthers}
                   currentAction={fileActions[file.id]}
+                  groupSize={selectedFiles.length}
                 />
               ))}
             </div>

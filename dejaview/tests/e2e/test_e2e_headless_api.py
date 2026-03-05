@@ -192,6 +192,25 @@ class TestBrowseFlow:
         assert action_map[fids["a2"]] == "delete"
         assert action_map[fids["a3"]] == "delete"
 
+    def test_keep_and_delete_others(self, populated_session):
+        api, db, sid, scan_dir, trash_root, fids = populated_session
+
+        group_ids = [fids["a1"], fids["a2"], fids["a3"]]
+        result = api.keep_and_delete_others(fids["a2"], group_ids)
+
+        assert "actions" in result
+        action_map = {int(k): v for k, v in result["actions"].items()}
+        assert action_map[fids["a2"]] == "keep"
+        assert action_map[fids["a1"]] == "delete"
+        assert action_map[fids["a3"]] == "delete"
+
+        # Verify persistence in DB
+        db_actions = db.get_file_actions_for_session(sid)
+        db_map = {a["file_id"]: a["action"] for a in db_actions}
+        assert db_map[fids["a2"]] == "keep"
+        assert db_map[fids["a1"]] == "delete"
+        assert db_map[fids["a3"]] == "delete"
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Selection presets — apply_selection_preset

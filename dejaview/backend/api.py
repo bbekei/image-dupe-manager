@@ -50,9 +50,35 @@ def _rows_to_list(rows) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+ALLOWED_EVENTS: frozenset[str] = frozenset({
+    "scan:progress",
+    "scan:discovery_progress",
+    "scan:status",
+    "scan:hash_complete",
+    "scan:hash_batch",
+    "scan:directory_hashed",
+    "scan:duplicate_found",
+    "scan:similarity_progress",
+    "scan:similarity_complete",
+    "scan:error",
+    "exec:progress",
+    "exec:complete",
+    "exec:error",
+})
+
+
 def _emit_event(window: webview.Window, event_name: str, detail: dict) -> None:
-    """Dispatch a CustomEvent to the React frontend via evaluate_js."""
-    detail_json = json.dumps(detail)
+    """Dispatch a CustomEvent to the React frontend via evaluate_js.
+
+    Only events in ALLOWED_EVENTS are dispatched. Detail payloads are
+    serialised with ``ensure_ascii=True`` so that JS line-terminator
+    characters (U+2028 / U+2029) are escaped — they are valid in JSON
+    but act as newlines inside a JavaScript string literal.
+    """
+    if event_name not in ALLOWED_EVENTS:
+        log.warning("Blocked attempt to emit unknown event: %s", event_name)
+        return
+    detail_json = json.dumps(detail, ensure_ascii=True)
     js = (
         f'window.dispatchEvent(new CustomEvent("{event_name}", '
         f'{{detail: {detail_json}}}));'
@@ -236,7 +262,10 @@ class DejaViewAPI:
         scanner.scan_resumed.connect(lambda: on_status("resumed", "Scan resumed"), DC)
         scanner.scan_stopped.connect(lambda: on_status("stopped", "Scan stopped"), DC)
         scanner.scan_complete.connect(lambda: on_status("complete", "Scan complete"), DC)
-        scanner.scan_error.connect(lambda p, m: on_status("error", f"{p}: {m}"), DC)
+        scanner.scan_error.connect(
+            lambda p, m: self._emit("scan:error", {"path": p, "message": m}),
+            DC,
+        )
         scanner.status_message.connect(on_info_message, DC)
 
     def pause_scan(self) -> None:
@@ -365,9 +394,24 @@ class DejaViewAPI:
             f["action"] = actions.get(f["id"])
         return result
 
+    def _is_safe_thumb_path(self, thumb_path: str) -> bool:
+        """Return True only if *thumb_path* resolves inside ``self._thumb_dir``."""
+        try:
+            resolved = Path(thumb_path).resolve(strict=False)
+            return resolved.is_relative_to(self._thumb_dir.resolve())
+        except (OSError, ValueError):
+            return False
+
     def _read_thumbnail_base64(self, thumb_path: str | None) -> str:
-        """Read a thumbnail file and return a data URI, or empty string."""
+        """Read a thumbnail file and return a data URI, or empty string.
+
+        Only reads files that resolve inside the application's thumbnail
+        directory to prevent arbitrary file reads.
+        """
         if not thumb_path:
+            return ""
+        if not self._is_safe_thumb_path(thumb_path):
+            log.warning("Blocked thumbnail read outside thumb_dir: %s", thumb_path)
             return ""
         try:
             data = Path(thumb_path).read_bytes()
@@ -425,6 +469,12 @@ class DejaViewAPI:
         Returns ``{"actions": {file_id: action, ...}}`` for every file in the
         group so the frontend can refresh its state in one round-trip.
         """
+        if not isinstance(file_id, int) or not isinstance(action, str) or not isinstance(scope, str):
+            return {"actions": {}}
+        if action not in ("keep", "delete", "ignore"):
+            return {"actions": {}}
+        if scope not in ("file", "folder"):
+            return {"actions": {}}
         file_row = self._db.get_file(file_id)
         if not file_row:
             return {"actions": {}}
@@ -452,6 +502,40 @@ class DejaViewAPI:
             file_ids = [f["id"] for f in group_files]
             group_actions = self._get_group_actions(session_id, file_ids)
         return {"actions": group_actions}
+
+    def keep_and_delete_others(
+        self, keep_file_id: int, group_file_ids: list[int]
+    ) -> dict:
+        """Mark one file 'keep' and all others in the group 'delete'.
+
+        Works for both duplicate groups (shared pixel_hash) and similarity
+        groups (different pixel_hashes).  Accepts the full list of file IDs
+        in the group from the frontend so no grouping assumptions are needed.
+
+        Returns ``{"actions": {file_id: action, ...}}`` for the whole group.
+        """
+        if not isinstance(keep_file_id, int):
+            return {"actions": {}}
+        if not isinstance(group_file_ids, list) or not all(isinstance(i, int) for i in group_file_ids):
+            return {"actions": {}}
+        now = datetime.now(timezone.utc).isoformat()
+        file_row = self._db.get_file(keep_file_id)
+        if not file_row:
+            return {"actions": {}}
+
+        session_id = file_row["session_id"]
+
+        for fid in group_file_ids:
+            if fid == keep_file_id:
+                self._db.set_file_action(session_id, fid, "keep", "file", now)
+            else:
+                self._db.set_file_action(
+                    session_id, fid, "delete", "file", now
+                )
+
+        return {
+            "actions": self._get_group_actions(session_id, group_file_ids)
+        }
 
     def apply_folder_action(
         self, session_id: int, folder_path: str, action: str
@@ -693,7 +777,11 @@ class DejaViewAPI:
         return str(export_path)
 
     def import_hashes(self, file_path: str) -> dict:
-        """Import a peer's hash export file."""
+        """Import a peer's hash export file.
+
+        Validates that the file exists, has a ``.json`` extension, and is
+        within a reasonable size before parsing.
+        """
         if not file_path:
             # Use pywebview file dialog
             result = self._window.create_file_dialog(
@@ -704,7 +792,21 @@ class DejaViewAPI:
                 return {"imported": 0, "treasures": 0}
             file_path = result[0]
 
-        with open(file_path, "r", encoding="utf-8") as f:
+        resolved = Path(file_path).resolve(strict=False)
+        if resolved.suffix.lower() != ".json":
+            log.warning("Import rejected — not a .json file: %s", file_path)
+            return {"imported": 0, "treasures": 0, "error": "invalid_file_type"}
+
+        if not resolved.is_file():
+            log.warning("Import rejected — file not found: %s", file_path)
+            return {"imported": 0, "treasures": 0, "error": "file_not_found"}
+
+        MAX_IMPORT_BYTES = 10 * 1024 * 1024  # 10 MB
+        if resolved.stat().st_size > MAX_IMPORT_BYTES:
+            log.warning("Import rejected — file too large: %s", file_path)
+            return {"imported": 0, "treasures": 0, "error": "file_too_large"}
+
+        with open(resolved, "r", encoding="utf-8") as f:
             payload = json.load(f)
 
         username = payload.get("username", "unknown")
@@ -728,6 +830,81 @@ class DejaViewAPI:
         status, errors = self._drive_sync.sync(session["id"])
         return {"status": status, "errors": errors}
 
+    def get_sync_config(self) -> dict:
+        """Return the current sync configuration."""
+        config = self._db.get_sync_config()
+        authenticated = (
+            self._drive_sync.is_authenticated() if self._drive_sync else False
+        )
+        if not config:
+            return {
+                "local_username": "",
+                "gdrive_folder_id": "",
+                "export_privacy": "filename",
+                "sync_enabled": False,
+                "authenticated": authenticated,
+            }
+        return {
+            "local_username": config["local_username"] or "",
+            "gdrive_folder_id": config["gdrive_folder_id"] or "",
+            "export_privacy": config["export_privacy"] or "filename",
+            "sync_enabled": bool(config["sync_enabled"]),
+            "authenticated": authenticated,
+        }
+
+    def save_sync_config(
+        self, username: str, folder_id: str, privacy: str
+    ) -> dict:
+        """Validate and persist sync configuration.
+
+        Returns ``{"ok": True}`` on success or
+        ``{"ok": False, "error": "..."}`` on validation failure.
+        """
+        from data.export import validate_username
+        from data.sync import validate_folder_id
+
+        username = (username or "").strip()
+        folder_id = (folder_id or "").strip()
+
+        if not validate_username(username):
+            return {
+                "ok": False,
+                "error": "invalid_username",
+            }
+
+        if folder_id and not validate_folder_id(folder_id):
+            return {
+                "ok": False,
+                "error": "invalid_folder_id",
+            }
+
+        sync_enabled = 1 if folder_id else 0
+        self._db.upsert_sync_config(
+            local_username=username,
+            gdrive_folder_id=folder_id or None,
+            export_privacy=privacy,
+            sync_enabled=sync_enabled,
+        )
+        return {"ok": True}
+
+    def authenticate_drive(self) -> dict:
+        """Run OAuth2 authentication flow for Google Drive.
+
+        Returns ``{"ok": True}`` on success or
+        ``{"ok": False, "error": "..."}`` on failure.
+        """
+        if not self._drive_sync:
+            return {"ok": False, "error": "Drive sync not available"}
+        ok, msg = self._drive_sync.authenticate()
+        return {"ok": ok, "error": msg}
+
+    def remove_peer(self, username: str) -> None:
+        """Remove a synced peer and all their data."""
+        if self._drive_sync:
+            self._drive_sync.remove_peer(username)
+        else:
+            self._db.delete_remote_peer(username)
+
     def get_remote_peers(self) -> list[dict]:
         rows = self._db.get_all_remote_peers()
         return _rows_to_list(rows)
@@ -743,8 +920,15 @@ class DejaViewAPI:
     # ── Thumbnails & Configuration ─────────────────────────────────
 
     def get_thumbnail_url(self, thumb_path: str) -> str:
-        """Return a file:// URL for the thumbnail."""
+        """Return a file:// URL for the thumbnail.
+
+        Only returns URLs for paths that resolve inside the thumbnail
+        directory to prevent referencing arbitrary files.
+        """
         if not thumb_path:
+            return ""
+        if not self._is_safe_thumb_path(thumb_path):
+            log.warning("Blocked thumbnail URL outside thumb_dir: %s", thumb_path)
             return ""
         normalized = thumb_path.replace("\\", "/")
         return f"file:///{normalized}"
@@ -768,12 +952,23 @@ class DejaViewAPI:
         }
 
     def set_app_config(self, key: str, value) -> None:
-        """Update a single configuration value."""
-        allowed_keys = {
-            "language", "theme", "max_scan_workers",
-            "perf_logging", "scan_delay_ms",
+        """Update a single configuration value.
+
+        Validates key membership and value types before writing to DB.
+        """
+        if not isinstance(key, str):
+            return
+        ALLOWED_TYPES: dict[str, type | tuple[type, ...]] = {
+            "language": str,
+            "theme": str,
+            "max_scan_workers": (int, float),
+            "perf_logging": (bool, int),
+            "scan_delay_ms": (int, float),
         }
-        if key not in allowed_keys:
+        if key not in ALLOWED_TYPES:
+            return
+        if not isinstance(value, ALLOWED_TYPES[key]):
+            log.warning("set_app_config: invalid type for %s: %s", key, type(value).__name__)
             return
         if key == "scan_delay_ms":
             self._db.upsert_sync_config(scan_delay_ms=int(value))

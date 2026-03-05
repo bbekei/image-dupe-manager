@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Images, Star, Check, Trash2, EyeOff, Wand2 } from 'lucide-react'
+import { Images, Star, Check, ChevronDown, Trash2, EyeOff, Wand2 } from 'lucide-react'
 import { ReactCompareSlider, ReactCompareSliderImage } from 'react-compare-slider'
 import { callBackend } from '../hooks/usePyBridge.ts'
 import { useScanStore } from '../stores/useScanStore.ts'
@@ -114,6 +114,24 @@ export function SimilarityReview() {
       // handle error
     }
   }, [fileActions])
+
+  const handleKeepAndDeleteOthers = useCallback(async (fileId: number) => {
+    const groupFileIds = members.map((m) => m.id)
+    try {
+      const result = await callBackend<{ actions: Record<string, FileAction> }>(
+        'keep_and_delete_others', fileId, groupFileIds,
+      )
+      const updated: Record<number, FileAction> = { ...fileActions }
+      for (const [id, act] of Object.entries(result.actions)) {
+        updated[Number(id)] = act
+      }
+      setFileActions(updated)
+    } catch {
+      // handle error
+    }
+  }, [members, fileActions])
+
+  const [keepMenuOpenId, setKeepMenuOpenId] = useState<number | null>(null)
 
   const handlePreset = useCallback(async (preset: SelectionPreset) => {
     if (!sessionId) return
@@ -286,18 +304,61 @@ export function SimilarityReview() {
                 {file.width && file.height && <div>{file.width} x {file.height}</div>}
               </div>
               <div className="flex gap-1.5 mt-3" onClick={(e) => e.stopPropagation()}>
-                <button
-                  onClick={() => handleFileAction(file.id, 'keep')}
-                  className={`flex-1 flex items-center justify-center gap-1 py-1.5 rounded text-xs transition-colors ${
-                    action === 'keep'
-                      ? 'bg-dv-success text-white'
-                      : 'bg-dv-bg hover:bg-dv-surface-hover text-dv-text-muted'
-                  }`}
-                  title={t('browse.actions.keep')}
-                >
-                  <Check size={14} />
-                  {t('browse.actions.keep')}
-                </button>
+                {members.length >= 4 ? (
+                  <div className="flex-1 relative">
+                    <div className="flex w-full">
+                      <button
+                        onClick={() => handleFileAction(file.id, 'keep')}
+                        className={`flex-1 flex items-center justify-center gap-1 py-1.5 rounded-l text-xs transition-colors ${
+                          action === 'keep'
+                            ? 'bg-dv-success text-white'
+                            : 'bg-dv-bg hover:bg-dv-surface-hover text-dv-text-muted'
+                        }`}
+                        title={t('browse.actions.keep')}
+                      >
+                        <Check size={14} />
+                        {t('browse.actions.keep')}
+                      </button>
+                      <button
+                        onClick={() => setKeepMenuOpenId(keepMenuOpenId === file.id ? null : file.id)}
+                        className={`px-1 rounded-r border-l text-xs transition-colors ${
+                          action === 'keep'
+                            ? 'bg-dv-success text-white border-white/30'
+                            : 'bg-dv-bg hover:bg-dv-surface-hover text-dv-text-muted border-dv-border'
+                        }`}
+                        title={t('browse.actions.keep_delete_others')}
+                      >
+                        <ChevronDown size={10} />
+                      </button>
+                    </div>
+                    {keepMenuOpenId === file.id && (
+                      <div className="absolute left-0 top-full mt-1 z-20 bg-dv-surface border border-dv-border rounded shadow-lg min-w-max">
+                        <button
+                          onClick={() => {
+                            handleKeepAndDeleteOthers(file.id)
+                            setKeepMenuOpenId(null)
+                          }}
+                          className="px-3 py-1.5 text-xs text-dv-text hover:bg-dv-surface-hover w-full text-left whitespace-nowrap"
+                        >
+                          {t('browse.actions.keep_delete_others')}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => handleFileAction(file.id, 'keep')}
+                    className={`flex-1 flex items-center justify-center gap-1 py-1.5 rounded text-xs transition-colors ${
+                      action === 'keep'
+                        ? 'bg-dv-success text-white'
+                        : 'bg-dv-bg hover:bg-dv-surface-hover text-dv-text-muted'
+                    }`}
+                    title={t('browse.actions.keep')}
+                  >
+                    <Check size={14} />
+                    {t('browse.actions.keep')}
+                  </button>
+                )}
                 <button
                   onClick={() => handleFileAction(file.id, 'delete')}
                   className={`flex-1 flex items-center justify-center gap-1 py-1.5 rounded text-xs transition-colors ${

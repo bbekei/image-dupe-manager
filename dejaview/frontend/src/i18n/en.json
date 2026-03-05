@@ -12,7 +12,8 @@
     "bin": "Duplicates Bin",
     "family": "Family Library",
     "requests": "Requests",
-    "settings": "Settings"
+    "settings": "Settings",
+    "help": "Help"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -52,6 +53,7 @@
     "progress": "{{current}} of {{total}} files",
     "discovered": "{{count}} files found",
     "duplicates_found": "{{count}} duplicates found",
+    "errors_count": "{{count}} file errors",
     "complete": "Scan Complete",
     "paused": "Scan Paused",
     "stopped": "Scan Stopped"
@@ -73,6 +75,7 @@
       "ignore": "Ignore",
       "select_preset": "Apply Preset",
       "clear_all": "Clear All",
+      "keep_delete_others": "Keep and delete all others",
       "folder_scope": "Apply to all files in the same folder",
       "folder_confirm": "Are you sure you want to apply the same action to all images in this folder?"
     },
@@ -167,8 +170,32 @@
     "scan_delay": "Scan Throttle (ms)",
     "perf_logging": "Performance Logging",
     "google_drive": "Google Drive Sync",
+    "display_name": "Display Name",
+    "display_name_placeholder": "e.g. alice",
+    "display_name_hint": "1–64 characters: letters, digits, dash or underscore.",
+    "sign_in_google": "Sign in with Google",
+    "signing_in": "Signing in...",
+    "signed_in": "Signed in",
+    "not_signed_in": "Not signed in",
+    "folder_id": "Shared Folder ID",
+    "folder_id_placeholder": "Paste folder URL or ID here",
+    "folder_id_hint": "Paste a Google Drive folder URL or just the folder ID",
+    "folder_id_error": "Invalid folder ID format.",
+    "privacy_level": "Export Privacy Level",
+    "privacy_filename": "Filename only",
+    "privacy_hash_only": "Hash only",
+    "privacy_full_path": "Full path",
+    "save_sync": "Save Sync Settings",
+    "sync_saved": "Sync settings saved.",
+    "invalid_username": "Display name must be 1–64 characters, letters, digits, dash, or underscore only.",
+    "invalid_folder_id": "Invalid folder ID format (25–50 alphanumeric characters).",
+    "auth_success": "Successfully signed in with Google.",
+    "auth_failed": "Sign-in failed: {{error}}",
     "save": "Save",
     "saved": "Settings saved."
+  },
+  "help": {
+    "title": "User Guide"
   },
   "common": {
     "loading": "Loading...",

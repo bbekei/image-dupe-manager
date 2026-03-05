@@ -30,6 +30,8 @@ a = Analysis(
     datas=[
         # React frontend build output
         ('frontend/dist', 'frontend/dist'),
+        # App icon (for pywebview window icon on Linux/macOS)
+        ('resources/icons/dejaview.ico', 'resources/icons'),
         # App Hungarian translation (compiled .qm, retained for reference)
         ('resources/i18n/app_hu.qm', 'resources/i18n'),
         # Qt base Hungarian translation (standard button labels, dialogs)
@@ -79,8 +81,7 @@ exe = EXE(
     upx=True,
     console=False,  # GUI app — no console window
     disable_windowed_traceback=False,
-    # Uncomment when an .ico file is added to resources/icons/:
-    # icon='resources/icons/dejaview.ico',
+    icon='resources/icons/dejaview.ico',
 )
 
 coll = COLLECT(

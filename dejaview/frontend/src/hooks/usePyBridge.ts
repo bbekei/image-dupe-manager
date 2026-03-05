@@ -98,7 +98,10 @@ export function useScanProgress(callbacks: {
     const { status, message } = e.detail
     cbRef.current.onStatus?.(status, message)
     if (status === 'complete') cbRef.current.onComplete?.()
-    if (status === 'error') cbRef.current.onError?.('', message)
+  })
+
+  useBackendEvent('scan:error', (e: CustomEvent) => {
+    cbRef.current.onError?.(e.detail.path, e.detail.message)
   })
 
   useBackendEvent('scan:duplicate_found', (e: CustomEvent) => {

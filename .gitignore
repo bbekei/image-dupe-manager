@@ -30,6 +30,11 @@ desktop.ini
 # Temp files
 *.tmp
 
+# OAuth / credential files (never commit secrets)
+credentials.json
+client_secrets.json
+*.pem
+
 # Installer output
 dejaview/installer/
 

@@ -137,6 +137,16 @@ export interface ShareRequest {
   responded_at: string | null
 }
 
+// -- Sync Config --
+
+export interface SyncConfig {
+  local_username: string
+  gdrive_folder_id: string
+  export_privacy: 'hash_only' | 'filename' | 'full_path'
+  sync_enabled: boolean
+  authenticated: boolean
+}
+
 // -- App Config --
 
 export interface AppConfig {
@@ -207,6 +217,7 @@ export interface PyWebViewAPI {
   get_duplicate_groups(session_id: number, offset: number, limit: number, filters?: FilterCriteria): Promise<DuplicateGroup[]>
   get_group_detail(session_id: number, pixel_hash: string): Promise<FileInfo[]>
   set_file_action(file_id: number, action: FileAction, scope: ActionScope): Promise<{ actions: Record<string, FileAction> }>
+  keep_and_delete_others(keep_file_id: number, group_file_ids: number[]): Promise<{ actions: Record<string, FileAction> }>
   apply_folder_action(session_id: number, folder_path: string, action: FileAction): Promise<{ affected: number }>
   apply_selection_preset(session_id: number, preset: SelectionPreset, group_ids?: string[]): Promise<{ keep_count: number; delete_count: number }>
   get_plan_summary(session_id: number): Promise<PlanSummary>
@@ -223,6 +234,12 @@ export interface PyWebViewAPI {
   restore_from_bin(soft_delete_id: number): Promise<void>
   permanent_delete(soft_delete_ids: number[]): Promise<void>
   purge_expired(): Promise<number>
+
+  // Sync Config
+  get_sync_config(): Promise<SyncConfig>
+  save_sync_config(username: string, folder_id: string, privacy: string): Promise<{ ok: boolean; error?: string }>
+  authenticate_drive(): Promise<{ ok: boolean; error?: string }>
+  remove_peer(username: string): Promise<void>
 
   // Family Sharing
   export_hashes(session_id: number): Promise<string>

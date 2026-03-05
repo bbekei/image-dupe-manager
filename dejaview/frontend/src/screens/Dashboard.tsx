@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
   FolderSearch, Images, Users, HardDrive, Plus,
-  Pause, Square, Search, Loader2,
+  Pause, Square, Search, Loader2, AlertTriangle,
 } from 'lucide-react'
 import { callBackend, usePyBridgeReady, useScanProgress, useBackendEvent } from '../hooks/usePyBridge.ts'
 import { useScanStore } from '../stores/useScanStore.ts'
@@ -40,8 +40,8 @@ function ScanProgressPanel() {
   const navigate = useNavigate()
   const {
     phase, sessionId, current, total, discovered,
-    duplicatesFound, statusMessage,
-    setProgress, setStatus, setDiscovered, incrementDuplicates,
+    duplicatesFound, scanErrors,
+    setProgress, setStatus, setDiscovered, incrementDuplicates, addScanError,
   } = useScanStore()
 
   const isActive = phase !== 'idle' && phase !== 'complete' && phase !== 'stopped' && phase !== 'error'
@@ -64,6 +64,7 @@ function ScanProgressPanel() {
     onProgress: (c, t, p) => setProgress(c, t, p),
     onStatus: (status, message) => setStatus(status, message),
     onDuplicateFound: (_hash, count) => incrementDuplicates(count),
+    onError: (path, message) => addScanError(path, message),
   })
 
   useBackendEvent<{ discovered: number }>('scan:discovery_progress', (e) => {
@@ -142,7 +143,6 @@ function ScanProgressPanel() {
         {phase === 'complete' && t('scan.complete')}
         {phase === 'paused' && t('scan.paused')}
         {phase === 'stopped' && t('scan.stopped')}
-        {phase === 'error' && statusMessage}
       </div>
 
       {/* Progress bar */}
@@ -171,6 +171,18 @@ function ScanProgressPanel() {
       {duplicatesFound > 0 && (
         <div className="mt-2 text-xs text-dv-text-muted">
           {t('scan.duplicates_found', { count: duplicatesFound })}
+        </div>
+      )}
+
+      {/* Scan errors — subtle inline indicator */}
+      {scanErrors.length > 0 && (
+        <div className="mt-2 flex items-start gap-1.5 text-xs text-dv-warning">
+          <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+          <span>
+            {t('scan.errors_count', { count: scanErrors.length })}
+            {' — '}
+            <span className="text-dv-text-muted">{scanErrors[scanErrors.length - 1].path}: {scanErrors[scanErrors.length - 1].message}</span>
+          </span>
         </div>
       )}
     </div>

@@ -217,7 +217,8 @@ def main() -> None:
     qt_thread.start()
 
     # Start pywebview (blocks until window is closed)
-    webview.start(debug=args.dev)
+    icon_path = str(_base_dir() / "resources" / "icons" / "dejaview.ico")
+    webview.start(debug=args.dev, icon=icon_path)
 
     # Cleanup
     qt_app.quit()

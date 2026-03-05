@@ -12,7 +12,8 @@
     "bin": "Duplikátum Lomtár",
     "family": "Családi Könyvtár",
     "requests": "Kérések",
-    "settings": "Beállítások"
+    "settings": "Beállítások",
+    "help": "Súgó"
   },
   "dashboard": {
     "title": "Vezérlőpult",
@@ -52,6 +53,7 @@
     "progress": "{{current}} / {{total}} fájl",
     "discovered": "{{count}} fájl találva",
     "duplicates_found": "{{count}} duplikátum találva",
+    "errors_count": "{{count}} fájlhiba",
     "complete": "Szkennelés kész",
     "paused": "Szkennelés szüneteltetve",
     "stopped": "Szkennelés leállítva"
@@ -73,6 +75,7 @@
       "ignore": "Mellőzés",
       "select_preset": "Előbeállítás alkalmazása",
       "clear_all": "Összes törlése",
+      "keep_delete_others": "Megtartás és a többi törlése",
       "folder_scope": "Alkalmazás az összes fájlra ugyanabban a mappában",
       "folder_confirm": "Biztosan ugyanazt a műveletet szeretné alkalmazni az összes képre ebben a mappában?"
     },
@@ -167,8 +170,32 @@
     "scan_delay": "Szkennelés késleltetés (ms)",
     "perf_logging": "Teljesítménynaplózás",
     "google_drive": "Google Drive szinkronizálás",
+    "display_name": "Megjelenítési név",
+    "display_name_placeholder": "pl. alice",
+    "display_name_hint": "1–64 karakter: betűk, számok, kötőjel vagy aláhúzás.",
+    "sign_in_google": "Bejelentkezés Google-lal",
+    "signing_in": "Bejelentkezés...",
+    "signed_in": "Bejelentkezve",
+    "not_signed_in": "Nincs bejelentkezve",
+    "folder_id": "Megosztott mappa azonosító",
+    "folder_id_placeholder": "Illessze be a mappa URL-jét vagy azonosítóját",
+    "folder_id_hint": "Illesszen be egy Google Drive mappa URL-t vagy csak a mappa azonosítót",
+    "folder_id_error": "Érvénytelen mappa azonosító formátum.",
+    "privacy_level": "Exportálási adatvédelmi szint",
+    "privacy_filename": "Csak fájlnév",
+    "privacy_hash_only": "Csak hash",
+    "privacy_full_path": "Teljes útvonal",
+    "save_sync": "Szinkronizálási beállítások mentése",
+    "sync_saved": "Szinkronizálási beállítások mentve.",
+    "invalid_username": "A megjelenítési név 1–64 karakter legyen, csak betűk, számok, kötőjel vagy aláhúzás.",
+    "invalid_folder_id": "Érvénytelen mappa azonosító formátum (25–50 alfanumerikus karakter).",
+    "auth_success": "Sikeres bejelentkezés Google-lal.",
+    "auth_failed": "Bejelentkezés sikertelen: {{error}}",
     "save": "Mentés",
     "saved": "Beállítások mentve."
+  },
+  "help": {
+    "title": "Felhasználói kézikönyv"
   },
   "common": {
     "loading": "Betöltés...",

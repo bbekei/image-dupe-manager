@@ -9,6 +9,7 @@ import { DuplicatesBin } from './screens/DuplicatesBin.tsx'
 import { Family } from './screens/Family.tsx'
 import { Requests } from './screens/Requests.tsx'
 import { Settings } from './screens/Settings.tsx'
+import { Help } from './screens/Help.tsx'
 
 export default function App() {
   return (
@@ -24,6 +25,7 @@ export default function App() {
           <Route path="/family" element={<Family />} />
           <Route path="/requests" element={<Requests />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/help" element={<Help />} />
         </Route>
       </Routes>
     </HashRouter>

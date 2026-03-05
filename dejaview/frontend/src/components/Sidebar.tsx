@@ -10,6 +10,7 @@ import {
   Users,
   MessageSquare,
   Settings,
+  HelpCircle,
 } from 'lucide-react'
 
 const navItems = [
@@ -22,6 +23,7 @@ const navItems = [
   { to: '/family', icon: Users, label: 'nav.family' },
   { to: '/requests', icon: MessageSquare, label: 'nav.requests' },
   { to: '/settings', icon: Settings, label: 'nav.settings' },
+  { to: '/help', icon: HelpCircle, label: 'nav.help' },
 ] as const
 
 export function Sidebar() {

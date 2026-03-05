@@ -63,6 +63,7 @@ EXPECTED_METHODS = [
     "get_duplicate_groups",
     "get_group_detail",
     "set_file_action",
+    "keep_and_delete_others",
     "apply_folder_action",
     "apply_selection_preset",
     "get_plan_summary",
@@ -77,6 +78,11 @@ EXPECTED_METHODS = [
     "restore_from_bin",
     "permanent_delete",
     "purge_expired",
+    # Sync Config
+    "get_sync_config",
+    "save_sync_config",
+    "authenticate_drive",
+    "remove_peer",
     # Family Sharing
     "export_hashes",
     "import_hashes",
@@ -324,6 +330,45 @@ class TestScannerEventPayloads:
         assert '"scan:similarity_progress"' in js_code
         assert '"current": 10' in js_code
         assert '"total": 50' in js_code
+
+    def test_scan_error_emits_separate_event(self, api: DejaViewAPI):
+        """scan_error emits scan:error (not scan:status) to avoid phase change."""
+        from core.scanner import Scanner
+
+        scanner = Scanner(
+            db=api._db, session_id=1,
+            thumb_dir=api._thumb_dir, max_workers=1,
+        )
+        api._connect_scanner_signals(scanner)
+
+        scanner.scan_error.emit("/test/img.jpg", "permission denied")
+
+        call = api._window.evaluate_js.call_args
+        assert call is not None
+        js_code = call[0][0]
+        assert '"scan:error"' in js_code
+        assert '"path": "/test/img.jpg"' in js_code
+        assert '"message": "permission denied"' in js_code
+        # Must NOT change the scan phase
+        assert '"scan:status"' not in js_code
+
+    def test_scan_error_does_not_change_phase(self, api: DejaViewAPI):
+        """Per-file scan errors must not overwrite _scan_phase."""
+        from core.scanner import Scanner
+
+        scanner = Scanner(
+            db=api._db, session_id=1,
+            thumb_dir=api._thumb_dir, max_workers=1,
+        )
+        api._connect_scanner_signals(scanner)
+
+        # Simulate hashing phase then a per-file error
+        scanner.progress_updated.emit(5, 100)
+        assert api._scan_phase == "hashing"
+
+        scanner.scan_error.emit("/bad/file.jpg", "corrupt")
+        # Phase must still be hashing, not error
+        assert api._scan_phase == "hashing"
 
     def test_status_message_emits_info(self, api: DejaViewAPI):
         from core.scanner import Scanner

@@ -1,10 +1,10 @@
-# DejaView Home Photo Manager — User Guide
+# DejaView — User Guide
 
 ## What This App Does
 
-DejaView Home Photo Manager finds duplicate photos across your folders so you can see exactly where duplicates exist. It compares images by their visual content — so it catches duplicates even if files have been renamed, re-saved with different settings, or had their metadata changed.
+DejaView finds duplicate and visually similar photos across your folders. It compares images by their visual content — so it catches duplicates even if files have been renamed, re-saved with different settings, or had their metadata changed.
 
-You can also share your scan results with family members to find photos that exist across multiple people's libraries, without uploading the actual photos anywhere.
+You can also share your scan fingerprints with family members to find photos that exist across multiple people's libraries, without uploading the actual photos anywhere.
 
 ---
 
@@ -28,117 +28,180 @@ Use **Add or Remove Programs** in Windows Settings, or run the uninstaller from 
 
 ## The Interface
 
-The main window has three areas:
+The main window has a **sidebar** on the left with navigation links and a **content area** on the right:
 
-```
-┌────────────────────────────────────────────────────────┐
-│ Menu: File | Scan | Share | Help                        │
-├──────────────┬─────────────────────────────────────────┤
-│ FOLDER PANEL │  RESULTS PANEL                          │
-│              │  [All | Duplicates Only | Cross-Library] │
-│ [+ Add...]   │                                         │
-│ [- Remove]   │  Your scan results appear here          │
-│              │                                         │
-│ ▶ C:\Photos  │                                         │
-│ ▶ Z:\Family  │                                         │
-├──────────────┴─────────────────────────────────────────┤
-│ [▶ Start] [⏸ Pause] [⏹ Stop]   ████░░░░ 47%  230/490  │
-└────────────────────────────────────────────────────────┘
-```
-
-- **Folder panel** (left) — the folders you want to scan. During scanning, each folder shows a live file count (e.g. *120 files, 47 hashed*)
-- **Results panel** (right) — files found, with duplicate badges
-- **Scan bar** (bottom) — start, pause, stop controls and progress
+- **Dashboard** — Start scans and view session history
+- **Browse Duplicates** — Review exact duplicate groups and decide what to keep or delete
+- **Browse Similarities** — Review visually similar images side by side
+- **Review Plan** — See a summary of all planned actions before executing
+- **Execute Plan** — Run the cleanup with live progress
+- **Duplicates Bin** — Restore or permanently delete soft-deleted files
+- **Family Library** — Share fingerprints with family via Google Drive or file export
+- **Requests** — Manage incoming and outgoing photo requests
+- **Settings** — Language, theme, performance tuning, and sync configuration
+- **Help** — This guide
 
 ---
 
-## Step 1 — Add Folders
+## Getting Started
 
-1. Click **+ Add...** in the folder panel, or go to **File > Add Folder**
-2. A folder browser opens — navigate to your photo folder and click OK
-3. The folder appears in the list
+### Step 1 — Start a Scan
 
-You can add as many folders as you like, from different drives or network shares (e.g. `Z:\Family Photos`). To remove a folder, select it and click **– Remove**.
+1. Go to the **Dashboard**
+2. Click **Start New Scan** in the top-right corner
+3. A folder picker opens — select one or more folders containing your photos
+4. The scan starts automatically
 
----
+**Similarity detection:** Before starting the scan, you can tick the **Enable similarity detection** checkbox next to the Start button. This adds an extra pass that finds visually similar (but not identical) images. It takes longer but catches near-duplicates like crops, resizes, or re-compressed versions.
 
-## Step 2 — Scan
+### Step 2 — Monitor Progress
 
-Click **▶ Start** in the bottom bar. The scan runs in two stages:
+The **Scan Progress** panel appears on the Dashboard during scanning. It shows:
 
-### Stage 1 — Discovery
-The app walks through all added folders and finds every file. All files appear in the results panel immediately — before any duplicate checking begins. The progress bar shows *Discovering files...*
+- **Current phase** — Discovering files, Computing hashes, or Analyzing similarity
+- **Progress bar** with file count (e.g. "230 of 490 files")
+- **Duplicate count** — updates live as new duplicates are found
+- **Error count** — files that couldn't be read (with the last error shown)
 
-### Stage 2 — Duplicate Detection
-The app checks which files could be duplicates and compares their visual content using multiple CPU cores for speed. Files are processed starting from the deepest subfolders. As each folder completes, **● DUPLICATED FOLDER** markers update immediately — you can start browsing completed folders while the rest of the scan continues. **● DUPLICATE** badges appear periodically as new groups are detected. The folder panel shows live progress per root folder (e.g. *120 files, 47 hashed*), and the progress bar shows *230 / 490* style progress with an estimated time remaining that updates every second.
+**Controls during a scan:**
 
-> Files with no badge after the scan are unique — no visual duplicate was found anywhere in your scanned folders.
+| Button | Action |
+|--------|--------|
+| **Pause** | Pauses the scan. Progress is saved — you can close the app and resume later. |
+| **Stop** | Ends the scan permanently. Partial results remain available. |
+| **Resume** | Continues a paused scan from where it left off. Already-processed files are skipped. |
 
-### Pause and Resume
-Click **⏸ Pause** at any time. The current file finishes processing, then the scan stops. The status shows **PAUSED**. You can close the app — progress is saved. Reopen the app and click **▶ Resume** to continue from where you left off. Files already processed are not re-checked.
+When the scan finishes, a **View Results** button appears to jump straight to Browse Duplicates.
 
-### Stop
-Click **⏹ Stop** to end the scan permanently. Partial results remain visible.
-
-### Downloaded Photos
-Photos downloaded from the internet or received via email may carry a Windows security mark ("Mark of the Web") that can prevent the app from reading them. DejaView automatically removes this mark from image files during scanning so they can be processed normally.
-
-> After scanning, the app automatically switches to the **Duplicates Only** view if any duplicates were found. The status bar shows a summary like: *Scan complete: 150 files scanned, 12 duplicates in 5 groups.*
-
----
-
-## Step 3 — Review Results
-
-After scanning, use the filter bar at the top of the results panel to choose what to see:
-
-| Filter | Shows |
-|--------|-------|
-| **All** | Every file found in your scanned folders |
-| **Duplicates Only** | Only files that have at least one duplicate |
-| **Cross-Library** | Files that also exist in a synced family member's library |
-
-Switch to **Duplicates Only** to focus on just the duplicates. Files remain shown in their original folder structure so you can see where each copy lives.
-
-Select any file with a **● DUPLICATE** badge, then click the **Compare** button in the toolbar. You can also double-click the file, or right-click and choose **Compare Duplicates**.
-
-When all files inside a folder are duplicates, the folder itself is shown with a **● DUPLICATED FOLDER** badge and a file count. You can expand the folder to see individual files, or compare the folder as a whole to see where the duplicated content exists.
+> **Downloaded photos:** Photos downloaded from the internet may carry a Windows security mark ("Mark of the Web"). DejaView automatically removes this mark during scanning so the files can be processed normally.
 
 ---
 
-## Step 4 — Compare Duplicates
+## Browse Duplicates
 
-The Compare View shows all copies of a duplicate group side by side in a read-only viewer:
+The **Browse Duplicates** screen has a two-panel layout:
 
-```
-┌──────────────┐   ┌──────────────┐   ┌──────────────┐
-│   [image]    │   │   [image]    │   │   [image]    │
-│ C:\Photos\   │   │ Z:\Family\   │   │ D:\Backup\   │
-│ beach.jpg    │   │ photo.jpg    │   │ img0041.jpg  │
-│ 2.1 MB       │   │ 1.8 MB       │   │ 2.1 MB       │
-│ 2023-06-15   │   │ 2023-07-30   │   │ 2023-06-15   │
-└──────────────┘   └──────────────┘   └──────────────┘
-                    [Close]
-```
+- **Left panel** — A scrollable list of duplicate groups, each identified by a short hash and file count
+- **Right panel** — The files in the selected group, with thumbnails, file paths, sizes, and dimensions
 
-Each tile shows a thumbnail preview, the file's location, size, and modification date. This is a read-only view — use it to inspect where your duplicates live and compare their details. Click **Close** to return to the results panel.
+### Marking Files
 
-If you compare a duplicated folder, the Compare View shows folder-level tiles with the folder path, total file count, and size. This makes it easy to identify and manage entire folder copies.
+Each file in a group has three action buttons:
+
+| Button | Color when active | Meaning |
+|--------|------------------|---------|
+| **Keep** (checkmark) | Green | Keep this file |
+| **Delete** (trash) | Red | Move this file to the Duplicates Bin |
+| **Ignore** (eye-off) | Yellow | Skip this file — take no action |
+
+Clicking an active button again toggles the action off.
+
+### Keep and Delete Others
+
+For groups with 4 or more files, the Keep button has a dropdown arrow. Click the arrow and choose **Keep and delete all others** to mark one file as Keep and all remaining files in the group as Delete in a single action.
+
+### Smart Selection Presets
+
+The preset toolbar above the group list lets you automatically mark files across all groups:
+
+| Preset | Rule |
+|--------|------|
+| **Keep Largest** | Keeps the file with the largest file size in each group |
+| **Keep Newest** | Keeps the most recently modified file |
+| **Keep Oldest** | Keeps the oldest file by modification date |
+| **Keep Shortest Path** | Keeps the file with the shortest file path |
+| **Keep Highest Resolution** | Keeps the file with the highest pixel dimensions |
+
+### Folder Scope
+
+The folder icon button next to each file's action buttons enables **folder scope**. When activated, the action you set on that file is applied to all scanned files in the same folder, across all duplicate groups. A confirmation prompt appears before applying.
 
 ---
 
-## Sharing with Family Members
+## Browse Similarities
 
-You can share your scan fingerprints with trusted people to find photos duplicated across different libraries. **The actual photos are never uploaded anywhere.** Only compact fingerprints (and optionally filenames) leave your machine.
+The **Browse Similarities** screen lets you review groups of visually similar (but not identical) images. This screen is only populated if you enabled similarity detection during the scan.
+
+### Compare Slider
+
+At the top of the screen, a **compare slider** shows two images side by side with a draggable divider. This lets you spot subtle visual differences between similar files.
+
+### Selecting Files for Comparison
+
+Click any image thumbnail in the grid below to assign it to the left (L) or right (R) slot in the compare slider. Click an already-selected image to deselect it. The first two images in each group are pre-selected automatically.
+
+### Keeper Recommendation
+
+A green banner shows the **recommended file to keep** along with the reason (e.g. highest resolution, largest file). This is a suggestion — you can override it with your own choices.
+
+### Group Navigation
+
+Use the **Back** and **Next** buttons to move between similarity groups. The current position is shown as "1 / 5" etc.
+
+### Actions and Presets
+
+The same Keep / Delete / Ignore buttons and smart presets from Browse Duplicates are available here.
+
+---
+
+## Review Plan
+
+Before executing any changes, visit **Review Plan** to see a summary of all your decisions:
+
+- **Keep count** — files that will remain untouched
+- **Delete count** — files that will be moved to the Duplicates Bin
+- **Ignore count** — files skipped (no action)
+- **Total recoverable space** — how much disk space will be freed
+
+A scrollable list shows each planned action with the file path and size.
+
+**Clear All Actions** resets all decisions if you want to start over.
+
+---
+
+## Execute Plan
+
+Click **Execute Plan** on the Review Plan screen to begin. A confirmation dialog reminds you that files will be moved to the Duplicates Bin and can be recovered within 30 days.
+
+The **Execute** screen shows:
+
+- **Progress bar** with current/total count
+- **Stage indicator** — "Local Cleanup" (moving files to bin) followed by "Cloud Sync" if family sharing is configured
+- **Real-time log** — each file operation as it happens
+- **Completion summary** — success and error counts
+
+When execution finishes, a **View Duplicates Bin** button appears.
+
+---
+
+## Duplicates Bin
+
+Deleted files are not removed from disk immediately. They are moved to the **Duplicates Bin** where they can be recovered for 30 days.
+
+Each item shows:
+
+- The original file path and size
+- **Expiration countdown** — "Expires in X days" or "Expired"
+- **Restore** button — moves the file back to its original location
+
+### Permanent Deletion
+
+- Select items with checkboxes, then click **Permanently Delete** to remove them from disk. This cannot be undone.
+- **Purge Expired** removes all items past the 30-day window. A confirmation dialog appears first.
+
+---
+
+## Family Sharing
+
+You can share scan fingerprints with trusted family members to find photos duplicated across different people's libraries. **The actual photos are never uploaded anywhere.** Only compact fingerprints (and optionally filenames) leave your machine.
 
 ### Setting Up Google Drive Sync
 
-One person in the group does the initial setup once:
-
-1. Go to **Share > Configure Sync...**
-2. Enter a display name (e.g. `alice`) — this labels your data in the shared folder
+1. Go to **Settings** and scroll to the **Google Drive Sync** section
+2. Enter a **Display Name** (e.g. `alice`) — this labels your data in the shared folder
 3. Click **Sign in with Google** — a browser window opens for authorization. The app only gets access to files it creates, not your full Google Drive.
-4. In Google Drive's website, create a shared folder and share it with your family members. The app shows a direct link and brief instructions for this step.
-5. Paste the shared folder's URL or ID into the app
+4. In Google Drive's website, create a shared folder and share it with your family members
+5. Paste the shared folder's ID into the **Shared Folder ID** field
 6. Choose a **privacy level** for what you share with others:
 
    | Level | Shares |
@@ -147,58 +210,52 @@ One person in the group does the initial setup once:
    | **Hash only** | Fingerprints only; filenames and paths stay private |
    | **Full path** | Fingerprints and complete file paths |
 
-7. Click **Save**
+7. Click **Save Sync Settings**
 
-Each other person repeats steps 2–7 with their own display name, pointing at the same shared folder.
+Each other family member repeats these steps with their own display name, pointing at the same shared folder.
 
-### After Setup
+### Manual Export / Import
 
-The app handles sync automatically:
+If you prefer not to use Google Drive, go to the **Family Library** screen:
 
-- **On startup** — silently downloads everyone else's latest results in the background
-- **After each scan** — uploads your updated results automatically
-- **On close** — runs a final upload if anything changed
+- **Export Hashes** — saves your scan fingerprints to a `.json` file. Send it by email or USB to the other person.
+- **Import Hashes** — opens a `.json` file you received. Cross-library matches appear immediately.
 
-The status bar shows:
-- `↕ Syncing...` — sync in progress
-- `✓ Synced 2 min ago` — up to date
-
-**If you are offline**, the status bar shows `⚠ Sync unavailable — showing last known data`. The Cross-Library view still shows results from the last successful sync. Your upload is queued and sent automatically next time you are online.
-
-### Viewing Cross-Library Duplicates
-
-Switch to the **Cross-Library** filter to see your photos that also exist in someone else's library.
-
-In the Compare View, tiles from other people's libraries show their display name. All tiles are read-only — the Compare View is for inspecting and comparing duplicates across libraries.
+The privacy level from Settings also controls what is included in exported files.
 
 ### Managing Synced Libraries
 
-Go to **Share > Manage Synced Libraries** to see all the people you are syncing with. You can remove any person at any time; their data is cleared from your local database.
+The **Family Library** screen shows all connected family members with their last sync date. You can **Sync Now** to pull the latest data, or remove a member (their data is cleared from your local database).
 
 ---
 
-## Manual Export / Import (No Google Drive)
+## Requests
 
-If you prefer not to use Google Drive, you can share results as a file:
+The **Requests** screen has two tabs:
 
-1. **Export** — go to **Share > Export Scan Results...**, enter a display name, and save the `.json` file. Send it by email or USB to the other person.
-2. **Import** — go to **Share > Import Scan Results...** and open a `.json` file you received. Cross-library matches appear immediately.
-
-The privacy level you configured in **Share > Configure Sync** also controls what is included in manually exported files.
+- **Incoming** — photo requests from family members. You can **Approve** or **Decline** each request.
+- **Outgoing** — requests you've sent to others. Shows the current status (Pending, Approved, Declined, or Cancelled).
 
 ---
 
 ## Settings
 
-### Changing the Language
+### Language
 
-The app automatically uses Hungarian or English based on your Windows system
-language. To override this, go to **File > Settings**, choose your preferred
-language from the dropdown, and click **Save**. You will need to restart the
-application for the change to take effect.
+Choose between **English**, **Hungarian**, or **Auto-detect** (follows your Windows system language).
 
 ### Theme
 
-A theme selector is available in the Settings dialog. Currently only the
-system default theme is supported; additional themes are planned for a
-future release.
+Switch between **Dark** and **Light** mode.
+
+### Performance
+
+| Setting | Description |
+|---------|-------------|
+| **Max Scan Workers** | Number of CPU threads used during scanning (1–16). Higher values scan faster but use more CPU. |
+| **Scan Throttle (ms)** | Delay between operations (0–5000). Higher values reduce CPU usage during scanning. 0 = no throttling. |
+| **Performance Logging** | When enabled, writes detailed timing data to a CSV file for diagnostics. |
+
+### Google Drive Sync
+
+See the [Family Sharing](#family-sharing) section above for setup instructions.
