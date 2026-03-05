@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DejaView &mdash; De-Duplicate &amp; Cleanse Your Photo Library</title>
+<meta name="description" content="Free, open-source Windows app that finds duplicate and similar photos across your library. Share fingerprints with family via Google Drive to discover missing memories.">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  /* Matches the DejaView app color system */
+  --bg: #1a1b2e;
+  --surface: #242642;
+  --surface-hover: #2d2f52;
+  --border: #3a3c5e;
+  --text: #e8e9f0;
+  --text-muted: #9ca3af;
+  --primary: #6366f1;
+  --primary-hover: #818cf8;
+  --primary-glow: rgba(99, 102, 241, 0.15);
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --sidebar: #151625;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { background: var(--bg); color: var(--text); font-family: 'Inter', system-ui, -apple-system, sans-serif; overflow-x: hidden; }
+
+/* NAV */
+.topnav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 1rem 2.5rem;
+  background: rgba(26, 27, 46, 0.88); backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border);
+}
+.topnav-brand {
+  display: flex; align-items: center; gap: 0.6rem; text-decoration: none;
+}
+.topnav-brand .brand-icon {
+  width: 32px; height: 32px; border-radius: 8px; background: var(--primary);
+  display: flex; align-items: center; justify-content: center;
+  color: white; font-weight: 700; font-size: 0.75rem;
+}
+.topnav-brand span { font-size: 1.1rem; font-weight: 600; color: var(--text); }
+.topnav-links { display: flex; gap: 2rem; list-style: none; }
+.topnav-links a {
+  color: var(--text-muted); text-decoration: none; font-size: 0.82rem;
+  font-weight: 500; transition: color 0.2s;
+}
+.topnav-links a:hover { color: var(--primary-hover); }
+@media (max-width: 600px) {
+  .topnav-links { gap: 1rem; }
+  .topnav-links a { font-size: 0.72rem; }
+  .topnav { padding: 0.75rem 1.25rem; }
+}
+
+/* HERO */
+.hero {
+  min-height: 100vh;
+  display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;
+  padding: 8rem 2rem 5rem;
+  position: relative; overflow: hidden;
+}
+.hero::before {
+  content: ''; position: absolute; inset: 0;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 35%, rgba(99,102,241,0.12) 0%, transparent 70%),
+    radial-gradient(ellipse 50% 50% at 80% 80%, rgba(129,140,248,0.06) 0%, transparent 60%);
+  pointer-events: none;
+}
+.hero-logo {
+  width: 120px; height: 120px; border-radius: 24px; margin-bottom: 2rem;
+  box-shadow: 0 8px 32px rgba(99,102,241,0.2);
+  opacity: 0; animation: fadeUp 0.8s ease 0.1s forwards;
+}
+.hero-eyebrow {
+  font-size: 0.72rem; letter-spacing: 0.32em; text-transform: uppercase; color: var(--primary-hover);
+  font-weight: 500; margin-bottom: 1.5rem; opacity: 0; animation: fadeUp 0.8s ease 0.2s forwards;
+}
+.hero h1 {
+  font-size: clamp(3rem, 9vw, 6rem); font-weight: 800;
+  line-height: 1; letter-spacing: -0.03em; margin-bottom: 1.5rem;
+  opacity: 0; animation: fadeUp 0.8s ease 0.4s forwards;
+}
+.hero h1 em { font-style: normal; color: var(--primary-hover); }
+.hero-sub {
+  font-size: clamp(1rem, 2.2vw, 1.15rem); font-weight: 300; color: var(--text-muted);
+  max-width: 560px; line-height: 1.75; margin-bottom: 3rem;
+  opacity: 0; animation: fadeUp 0.8s ease 0.6s forwards;
+}
+.hero-cta {
+  display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center;
+  opacity: 0; animation: fadeUp 0.8s ease 0.8s forwards;
+}
+.btn-primary {
+  background: var(--primary); color: white; font-family: 'Inter', sans-serif;
+  font-weight: 600; font-size: 0.88rem; letter-spacing: 0.02em;
+  padding: 0.9rem 2.2rem; border: none; border-radius: 10px; cursor: pointer;
+  text-decoration: none; display: inline-block;
+  transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
+  box-shadow: 0 4px 16px rgba(99,102,241,0.3);
+}
+.btn-primary:hover { background: var(--primary-hover); transform: translateY(-2px); box-shadow: 0 6px 24px rgba(99,102,241,0.4); }
+.btn-ghost {
+  background: transparent; color: var(--text); font-family: 'Inter', sans-serif;
+  font-weight: 500; font-size: 0.88rem;
+  padding: 0.9rem 2.2rem; border: 1px solid var(--border); border-radius: 10px; cursor: pointer;
+  text-decoration: none; display: inline-block; transition: border-color 0.2s, color 0.2s;
+}
+.btn-ghost:hover { border-color: var(--primary); color: var(--primary-hover); }
+.scroll-hint {
+  position: absolute; bottom: 2.5rem; left: 50%; transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 0.5rem;
+  color: var(--text-muted); font-size: 0.68rem; letter-spacing: 0.22em; text-transform: uppercase;
+  opacity: 0; animation: fadeUp 1s ease 1.4s forwards;
+}
+.scroll-arrow { width: 1px; height: 38px; background: linear-gradient(to bottom, transparent, var(--primary)); animation: scrollPulse 2s ease infinite; }
+
+/* SECTIONS */
+.section { padding: 7rem 2rem; }
+.container { max-width: 1100px; margin: 0 auto; }
+.section-label {
+  font-size: 0.72rem; letter-spacing: 0.25em; text-transform: uppercase;
+  color: var(--primary-hover); font-weight: 600; margin-bottom: 0.75rem;
+}
+.section-title { font-size: clamp(1.8rem, 4.5vw, 2.8rem); font-weight: 700; line-height: 1.2; margin-bottom: 1.25rem; }
+.section-title em { font-style: normal; color: var(--primary-hover); }
+.lead { font-size: 1rem; font-weight: 300; line-height: 1.8; color: var(--text-muted); max-width: 640px; }
+.divider { width: 40px; height: 3px; background: var(--primary); border-radius: 2px; margin: 1.25rem 0 2rem; }
+
+/* PROBLEM */
+.problem-section { background: var(--surface); }
+.problem-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4rem; align-items: center; }
+@media (max-width: 768px) { .problem-grid { grid-template-columns: 1fr; gap: 2.5rem; } }
+.stat-pile { display: flex; flex-direction: column; gap: 1.2rem; }
+.stat-card {
+  background: var(--bg); border: 1px solid var(--border);
+  padding: 1.4rem 1.75rem; border-radius: 12px; position: relative; overflow: hidden;
+}
+.stat-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--primary); border-radius: 0 2px 2px 0; }
+.stat-num { font-size: 2.5rem; font-weight: 800; color: var(--primary-hover); line-height: 1; margin-bottom: 0.3rem; }
+.stat-label { font-size: 0.82rem; font-weight: 300; color: var(--text-muted); line-height: 1.5; }
+
+/* DEMO VIDEOS */
+.demo-section { background: var(--bg); }
+.video-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 2rem; margin-top: 3rem; }
+.video-card { text-align: center; }
+.video-card .video-wrap {
+  position: relative; width: 100%; padding-bottom: 56.25%;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; overflow: hidden; margin-bottom: 1rem;
+}
+.video-card .video-wrap iframe {
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0;
+}
+.video-card .video-wrap .placeholder {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 0.75rem; color: var(--text-muted);
+}
+.placeholder-icon { font-size: 2.5rem; opacity: 0.4; }
+.placeholder-text { font-size: 0.75rem; letter-spacing: 0.12em; text-transform: uppercase; font-weight: 500; }
+.video-card h3 { font-size: 1.05rem; font-weight: 600; margin-bottom: 0.4rem; }
+.video-card p { font-size: 0.85rem; font-weight: 300; line-height: 1.65; color: var(--text-muted); max-width: 340px; margin: 0 auto; }
+
+/* HOW */
+.how-section { background: var(--surface); }
+.steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 2rem; margin-top: 4rem; }
+.step { position: relative; padding-top: 0.5rem; }
+.step-num { font-size: 4.5rem; font-weight: 800; color: rgba(99,102,241,0.1); line-height: 1; margin-bottom: 0.25rem; user-select: none; }
+.step h3 { font-size: 1.15rem; font-weight: 600; margin-bottom: 0.6rem; }
+.step p { font-size: 0.855rem; font-weight: 300; line-height: 1.75; color: var(--text-muted); }
+
+/* PRIVACY */
+.privacy-section { background: var(--bg); }
+.privacy-inner { display: grid; grid-template-columns: 1fr 1fr; gap: 5rem; align-items: center; }
+@media (max-width: 768px) { .privacy-inner { grid-template-columns: 1fr; gap: 2.5rem; } }
+.privacy-badges { display: flex; flex-direction: column; gap: 1rem; }
+.badge {
+  display: flex; align-items: flex-start; gap: 1rem; padding: 1.2rem 1.5rem;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  transition: border-color 0.2s;
+}
+.badge:hover { border-color: rgba(99,102,241,0.4); }
+.badge-icon { font-size: 1.3rem; line-height: 1; flex-shrink: 0; margin-top: 0.15rem; }
+.badge-text strong {
+  display: block; font-size: 0.82rem; font-weight: 600; color: var(--primary-hover);
+  margin-bottom: 0.2rem; letter-spacing: 0.02em;
+}
+.badge-text span { font-size: 0.82rem; font-weight: 300; color: var(--text-muted); line-height: 1.55; }
+
+/* SHARING */
+.sharing-section { background: var(--surface); }
+.family-nodes { display: flex; gap: 1.5rem; align-items: center; flex-wrap: wrap; justify-content: center; margin-top: 4rem; }
+.node { display: flex; flex-direction: column; align-items: center; gap: 0.6rem; }
+.node-circle {
+  width: 64px; height: 64px; border: 2px solid var(--primary); border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; font-size: 1.6rem;
+  background: var(--primary-glow);
+}
+.node-circle.center {
+  width: 80px; height: 80px; background: rgba(99,102,241,0.18);
+  box-shadow: 0 0 24px rgba(99,102,241,0.25);
+}
+.node-label { font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); font-weight: 500; }
+.conn-line { width: 40px; height: 2px; background: linear-gradient(to right, var(--primary), rgba(99,102,241,0.2)); align-self: center; flex-shrink: 0; border-radius: 1px; }
+.sharing-caption { margin-top: 2.5rem; text-align: center; font-size: 0.88rem; font-weight: 300; color: var(--text-muted); max-width: 520px; margin-left: auto; margin-right: auto; line-height: 1.75; }
+
+/* FEATURES */
+.features-section { background: var(--bg); }
+.features-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.2rem; margin-top: 3.5rem; }
+.feature-card {
+  padding: 1.75rem; border: 1px solid var(--border); background: var(--surface);
+  border-radius: 12px; transition: border-color 0.25s, background 0.25s, transform 0.25s;
+}
+.feature-card:hover { border-color: rgba(99,102,241,0.4); background: var(--surface-hover); transform: translateY(-2px); }
+.feature-icon {
+  width: 40px; height: 40px; border-radius: 10px; background: var(--primary-glow);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.2rem; margin-bottom: 1rem;
+}
+.feature-card h3 { font-size: 1.05rem; font-weight: 600; margin-bottom: 0.5rem; }
+.feature-card p { font-size: 0.84rem; font-weight: 300; line-height: 1.7; color: var(--text-muted); }
+
+/* REQUIREMENTS */
+.requirements-section { background: var(--surface); }
+.req-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.2rem; }
+.req-card {
+  padding: 1.5rem; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 12px; display: flex; flex-direction: column; gap: 0.5rem;
+}
+.req-icon {
+  width: 40px; height: 40px; border-radius: 10px; background: var(--primary-glow);
+  display: flex; align-items: center; justify-content: center; font-size: 1.2rem;
+  margin-bottom: 0.25rem;
+}
+.req-card h3 { font-size: 0.95rem; font-weight: 600; }
+.req-card p { font-size: 0.84rem; font-weight: 300; line-height: 1.6; color: var(--text-muted); }
+
+/* QUOTE */
+.quote-section { background: var(--surface); text-align: center; padding: 6rem 2rem; }
+.big-quote {
+  font-size: clamp(1.3rem, 3vw, 2.2rem); font-weight: 300; font-style: italic;
+  line-height: 1.5; max-width: 750px; margin: 0 auto 1.5rem;
+}
+.big-quote em { color: var(--primary-hover); font-style: normal; font-weight: 600; }
+.quote-attr { font-size: 0.75rem; letter-spacing: 0.15em; text-transform: uppercase; color: var(--text-muted); font-weight: 500; }
+
+/* BEER */
+.beer-section {
+  background: var(--bg); text-align: center; padding: 6rem 2rem;
+  border-top: 1px solid var(--border);
+}
+.beer-icon { font-size: 3rem; margin-bottom: 1.5rem; display: block; }
+.beer-section h2 { font-size: clamp(1.6rem, 3.5vw, 2.4rem); font-weight: 700; margin-bottom: 1rem; }
+.beer-section h2 em { font-style: normal; color: var(--primary-hover); }
+.beer-text {
+  font-size: 1rem; font-weight: 300; color: var(--text-muted); max-width: 500px;
+  margin: 0 auto 2.5rem; line-height: 1.8;
+}
+.btn-beer {
+  background: var(--warning); color: #1a1b2e; font-family: 'Inter', sans-serif;
+  font-weight: 600; font-size: 0.9rem; letter-spacing: 0.02em;
+  padding: 1rem 2.5rem; border: none; border-radius: 10px; cursor: pointer;
+  text-decoration: none; display: inline-block;
+  transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
+  box-shadow: 0 4px 16px rgba(245,158,11,0.3);
+}
+.btn-beer:hover { background: #fbbf24; transform: translateY(-2px); box-shadow: 0 6px 24px rgba(245,158,11,0.4); }
+
+/* DOWNLOAD CTA */
+.cta-section {
+  background: var(--primary); padding: 6rem 2rem; text-align: center;
+  position: relative; overflow: hidden;
+}
+.cta-section::before {
+  content: ''; position: absolute; inset: 0;
+  background: radial-gradient(ellipse 60% 80% at 50% 50%, rgba(255,255,255,0.08) 0%, transparent 70%);
+  pointer-events: none;
+}
+.cta-section h2 { font-size: clamp(1.8rem, 4.5vw, 3rem); font-weight: 800; color: white; margin-bottom: 1rem; line-height: 1.1; position: relative; }
+.cta-section p { font-size: 1rem; font-weight: 300; color: rgba(255,255,255,0.75); margin-bottom: 2.5rem; max-width: 440px; margin-left: auto; margin-right: auto; line-height: 1.7; position: relative; }
+.cta-buttons { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; position: relative; }
+.btn-dark {
+  background: var(--bg); color: white; font-family: 'Inter', sans-serif;
+  font-weight: 600; font-size: 0.88rem;
+  padding: 1rem 2.5rem; border: none; border-radius: 10px; cursor: pointer;
+  text-decoration: none; display: inline-block;
+  transition: background 0.2s, transform 0.2s;
+}
+.btn-dark:hover { background: var(--surface); transform: translateY(-2px); }
+.btn-outline-light {
+  background: transparent; color: white; font-family: 'Inter', sans-serif;
+  font-weight: 500; font-size: 0.88rem;
+  padding: 1rem 2.2rem; border: 1px solid rgba(255,255,255,0.3); border-radius: 10px; cursor: pointer;
+  text-decoration: none; display: inline-block; transition: border-color 0.2s, background 0.2s;
+}
+.btn-outline-light:hover { border-color: white; background: rgba(255,255,255,0.1); }
+
+/* FOOTER */
+footer {
+  background: var(--sidebar); border-top: 1px solid var(--border);
+  padding: 3rem 2rem; text-align: center; color: var(--text-muted); font-size: 0.78rem;
+}
+footer .footer-brand {
+  display: flex; align-items: center; justify-content: center; gap: 0.5rem; margin-bottom: 0.75rem;
+}
+footer .footer-icon {
+  width: 24px; height: 24px; border-radius: 6px; background: var(--primary);
+  display: inline-flex; align-items: center; justify-content: center;
+  color: white; font-weight: 700; font-size: 0.55rem;
+}
+footer .footer-name { font-size: 1.1rem; font-weight: 600; color: var(--text); }
+footer a { color: var(--primary-hover); text-decoration: none; }
+footer a:hover { text-decoration: underline; }
+
+/* ANIMATIONS */
+@keyframes fadeUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes scrollPulse { 0%,100% { opacity: 0.3; } 50% { opacity: 1; } }
+.reveal { opacity: 0; transform: translateY(28px); transition: opacity 0.7s ease, transform 0.7s ease; }
+.reveal.visible { opacity: 1; transform: translateY(0); }
+</style>
+</head>
+<body>
+
+<!-- Nav -->
+<nav class="topnav">
+  <a href="#" class="topnav-brand">
+    <div class="brand-icon">DV</div>
+    <span>DejaView</span>
+  </a>
+  <ul class="topnav-links">
+    <li><a href="#demo">Demo</a></li>
+    <li><a href="#how">How It Works</a></li>
+    <li><a href="#features">Features</a></li>
+    <li><a href="#requirements">Requirements</a></li>
+    <li><a href="#download">Download</a></li>
+  </ul>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+  <img src="assets/logo.png" alt="DejaView logo" class="hero-logo">
+  <p class="hero-eyebrow">Photo duplicate manager</p>
+  <h1>Deja<em>View</em></h1>
+  <p class="hero-sub">Find every duplicate. Keep the best copy. Share fingerprints with family &mdash; and never lose a memory again.</p>
+  <div class="hero-cta">
+    <a href="#download" class="btn-primary">Download Free</a>
+    <a href="#how" class="btn-ghost">How It Works</a>
+  </div>
+  <div class="scroll-hint"><span>Scroll</span><div class="scroll-arrow"></div></div>
+</section>
+
+<!-- Problem -->
+<section class="section problem-section">
+  <div class="container">
+    <div class="problem-grid">
+      <div class="reveal">
+        <p class="section-label">The problem</p>
+        <h2 class="section-title">Grandma's 78th birthday lives in <em>25 identical copies</em> across the cloud</h2>
+        <div class="divider"></div>
+        <p class="lead">Over the past 20 years, a typical family has used 30&ndash;40 digital devices to take photos &mdash; from early 640&times;480 cameras to today's smartphones. The result: unmanageable libraries, thousands of duplicates, and wasted cloud storage you're still paying for.</p>
+      </div>
+      <div class="stat-pile reveal">
+        <div class="stat-card">
+          <div class="stat-num">5&times;</div>
+          <div class="stat-label">The same photo existed in five different folders on the developer's own machine &mdash; without him knowing</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num">60%</div>
+          <div class="stat-label">Overlap between two relatives' photo libraries &mdash; 20 years of shared life in digital form</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num">100 GB+</div>
+          <div class="stat-label">Typical photo volume per household, a significant portion of which is duplicated</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Demo Videos -->
+<section class="section demo-section" id="demo">
+  <div class="container">
+    <div class="reveal">
+      <p class="section-label">See it in action</p>
+      <h2 class="section-title">A quick <em>demo</em></h2>
+      <div class="divider"></div>
+    </div>
+    <div class="video-grid">
+      <div class="video-card reveal">
+        <div class="video-wrap">
+          <!-- Replace VIDEO_ID_1 with your YouTube video ID -->
+          <!--<iframe src="https://www.youtube.com/embed/VIDEO_ID_1" title="Scanning your library" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>-->
+          <div class="placeholder">
+            <span class="placeholder-icon">&#9654;</span>
+            <span class="placeholder-text">Video coming soon</span>
+          </div>
+        </div>
+        <h3>Scan Your Library</h3>
+        <p>Add folders, hit scan, and watch as duplicates surface in real time.</p>
+      </div>
+      <div class="video-card reveal">
+        <div class="video-wrap">
+          <!--<iframe src="https://www.youtube.com/embed/VIDEO_ID_2" title="Review and clean up" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>-->
+          <div class="placeholder">
+            <span class="placeholder-icon">&#9654;</span>
+            <span class="placeholder-text">Video coming soon</span>
+          </div>
+        </div>
+        <h3>Review &amp; Clean Up</h3>
+        <p>Smart auto-selection picks which copies to keep. You approve the plan before anything moves.</p>
+      </div>
+      <div class="video-card reveal">
+        <div class="video-wrap">
+          <!--<iframe src="https://www.youtube.com/embed/VIDEO_ID_3" title="Family sync" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>-->
+          <div class="placeholder">
+            <span class="placeholder-icon">&#9654;</span>
+            <span class="placeholder-text">Video coming soon</span>
+          </div>
+        </div>
+        <h3>Family Sync</h3>
+        <p>Share library fingerprints via Google Drive. Discover missing photos from relatives.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- How It Works -->
+<section class="section how-section" id="how">
+  <div class="container">
+    <div class="reveal">
+      <p class="section-label">How it works</p>
+      <h2 class="section-title">Four steps to <em>photo peace</em></h2>
+      <div class="divider"></div>
+    </div>
+    <div class="steps">
+      <div class="step reveal">
+        <div class="step-num">01</div>
+        <h3>Scan</h3>
+        <p>DejaView walks your folders and generates a pixel-level fingerprint for each image. Everything stays on your machine &mdash; nothing is uploaded.</p>
+      </div>
+      <div class="step reveal">
+        <div class="step-num">02</div>
+        <h3>Group</h3>
+        <p>Identical and similar images are grouped together. You can see exactly how many copies live in which folders.</p>
+      </div>
+      <div class="step reveal">
+        <div class="step-num">03</div>
+        <h3>Decide</h3>
+        <p>Mark files manually or use smart auto-selection: keep the oldest, the newest, or the highest-resolution copy.</p>
+      </div>
+      <div class="step reveal">
+        <div class="step-num">04</div>
+        <h3>Clean</h3>
+        <p>Selected duplicates move to a soft-delete bin with 30-day recovery. An independent safety check runs before anything is removed.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Privacy -->
+<section class="section privacy-section">
+  <div class="container">
+    <div class="privacy-inner">
+      <div class="reveal">
+        <p class="section-label">Privacy &amp; safety</p>
+        <h2 class="section-title">Your photos <em>stay yours</em></h2>
+        <div class="divider"></div>
+        <p class="lead">DejaView works with fingerprints, never the photos themselves. All processing happens locally on your computer &mdash; nothing is uploaded anywhere unless you choose to share your fingerprint file with family.</p>
+      </div>
+      <div class="privacy-badges reveal">
+        <div class="badge">
+          <div class="badge-icon">&#x1F512;</div>
+          <div class="badge-text">
+            <strong>100% local processing</strong>
+            <span>Your photos never leave your machine. The scanner only generates fingerprints &mdash; it never moves or copies the originals.</span>
+          </div>
+        </div>
+        <div class="badge">
+          <div class="badge-icon">&#x1F5C2;</div>
+          <div class="badge-text">
+            <strong>Only fingerprints sync</strong>
+            <span>When you share with family, only the hash database goes to Google Drive &mdash; never the actual photos.</span>
+          </div>
+        </div>
+        <div class="badge">
+          <div class="badge-icon">&#x21A9;</div>
+          <div class="badge-text">
+            <strong>30-day undo window</strong>
+            <span>No photo is permanently deleted without your explicit approval. Anything in the bin can be restored.</span>
+          </div>
+        </div>
+        <div class="badge">
+          <div class="badge-icon">&#x2705;</div>
+          <div class="badge-text">
+            <strong>Independent safety check</strong>
+            <span>A separate verification module double-checks that no photo you want to keep ends up in the bin.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Family Sharing -->
+<section class="section sharing-section">
+  <div class="container reveal">
+    <p class="section-label">Family sharing</p>
+    <h2 class="section-title">Together, the <em>picture is complete</em></h2>
+    <div class="divider"></div>
+    <p class="lead">Once your own library is in order, share the fingerprint database with parents, siblings, in-laws. Find out who has what, and request the missing moments from each other.</p>
+    <div class="family-nodes">
+      <div class="node"><div class="node-circle">&#x1F474;</div><div class="node-label">Dad</div></div>
+      <div class="conn-line"></div>
+      <div class="node"><div class="node-circle">&#x1F469;</div><div class="node-label">Mom-in-law</div></div>
+      <div class="conn-line"></div>
+      <div class="node"><div class="node-circle center">&#x1F3E0;</div><div class="node-label">You</div></div>
+      <div class="conn-line" style="background:linear-gradient(to left,var(--primary),rgba(99,102,241,0.2))"></div>
+      <div class="node"><div class="node-circle">&#x1F9D1;</div><div class="node-label">Brother</div></div>
+      <div class="conn-line" style="background:linear-gradient(to left,var(--primary),rgba(99,102,241,0.2))"></div>
+      <div class="node"><div class="node-circle">&#x1F467;</div><div class="node-label">Sister</div></div>
+    </div>
+    <p class="sharing-caption">Everyone only shares the fingerprint file. DejaView reveals the overlaps &mdash; if someone requests a folder, you decide whether to share it.</p>
+  </div>
+</section>
+
+<!-- Features -->
+<section class="section features-section" id="features">
+  <div class="container">
+    <div class="reveal">
+      <p class="section-label">Features</p>
+      <h2 class="section-title">Everything you need to <em>tame your library</em></h2>
+      <div class="divider"></div>
+    </div>
+    <div class="features-grid">
+      <div class="feature-card reveal">
+        <div class="feature-icon">&#x1F50D;</div>
+        <h3>Duplicate Detection</h3>
+        <p>Pixel-accurate fingerprint matching: if two images are the same, DejaView finds them &mdash; regardless of folder, filename, or date.</p>
+      </div>
+      <div class="feature-card reveal">
+        <div class="feature-icon">&#x1F30A;</div>
+        <h3>Similarity Grouping</h3>
+        <p>That burst of 40 nearly identical shots? Grouped together so you can pick your favourites and let go of the rest.</p>
+      </div>
+      <div class="feature-card reveal">
+        <div class="feature-icon">&#x1F916;</div>
+        <h3>Smart Auto-Selection</h3>
+        <p>Set a rule &mdash; "keep the highest resolution" or "keep the oldest" &mdash; and the app does the picking for you.</p>
+      </div>
+      <div class="feature-card reveal">
+        <div class="feature-icon">&#x1F5D1;</div>
+        <h3>Safe Bin</h3>
+        <p>30-day grace period, reversible decisions, and an independent module that verifies everything before removal.</p>
+      </div>
+      <div class="feature-card reveal">
+        <div class="feature-icon">&#x1F517;</div>
+        <h3>Family Sync</h3>
+        <p>Share fingerprint databases over Google Drive. The whole family can discover gaps in their shared photo heritage.</p>
+      </div>
+      <div class="feature-card reveal">
+        <div class="feature-icon">&#x26A1;</div>
+        <h3>Fast &amp; Resumable</h3>
+        <p>Multi-threaded scanning with pause and resume. Close the app mid-scan and pick up exactly where you left off.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- System Requirements -->
+<section class="section requirements-section" id="requirements">
+  <div class="container">
+    <div class="reveal" style="text-align:center; margin-bottom: 3rem;">
+      <p class="section-label">System requirements</p>
+      <h2 class="section-title">What you <em>need to run</em> DejaView</h2>
+      <div class="divider" style="margin-left:auto; margin-right:auto;"></div>
+    </div>
+    <div class="req-grid reveal">
+      <div class="req-card">
+        <div class="req-icon">&#x1F4BB;</div>
+        <h3>Operating System</h3>
+        <p>Windows 10 or Windows 11</p>
+      </div>
+      <div class="req-card">
+        <div class="req-icon">&#x1F4BE;</div>
+        <h3>Disk Space</h3>
+        <p>~150 MB for the app. Thumbnails and database use roughly 150 MB per 10,000 images.</p>
+      </div>
+      <div class="req-card">
+        <div class="req-icon">&#x1F9E0;</div>
+        <h3>RAM</h3>
+        <p>4 GB minimum, 8 GB recommended for large libraries</p>
+      </div>
+      <div class="req-card">
+        <div class="req-icon">&#x2601;</div>
+        <h3>Google Drive (optional)</h3>
+        <p>Required only for family sharing. A free Google account is enough.</p>
+      </div>
+      <div class="req-card">
+        <div class="req-icon">&#x1F310;</div>
+        <h3>Network</h3>
+        <p>Not required. All scanning and deduplication works fully offline.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Quote -->
+<section class="quote-section">
+  <blockquote class="big-quote reveal">
+    &ldquo;One photo existed in <em>five different folders</em>, five separate copies &mdash; and I had no idea. That was my record, after 20 years of manual photo management.&rdquo;
+  </blockquote>
+  <p class="quote-attr reveal">&mdash; The developer of DejaView</p>
+</section>
+
+<!-- Beer -->
+<section class="beer-section" id="support">
+  <div class="container reveal">
+    <span class="beer-icon">&#x1F37A;</span>
+    <h2>If DejaView saved your day, <em>buy me a beer</em></h2>
+    <p class="beer-text">
+      This app is free and open source. No ads, no tracking, no subscription.
+      If it rescued your photo library from chaos, a cold one goes a long way
+      toward fuelling late-night debugging sessions.
+    </p>
+    <a href="https://buymeacoffee.com/bbekei" class="btn-beer">Buy Me a Beer</a>
+  </div>
+</section>
+
+<!-- Download CTA -->
+<section class="cta-section" id="download">
+  <div class="container reveal">
+    <h2>Reclaim your photo library.</h2>
+    <p>Download DejaView, point it at your folders, and see how much space and sanity you can get back.</p>
+    <div class="cta-buttons">
+      <a href="https://github.com/bbekei/dejaview-pages/releases/latest/download/DejaView_Setup.exe" class="btn-dark">Download for Windows</a>
+      <a href="https://github.com/bbekei/image-dupe-manager" class="btn-outline-light">View on GitHub</a>
+    </div>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer>
+  <div class="footer-brand">
+    <div class="footer-icon">DV</div>
+    <span class="footer-name">DejaView</span>
+  </div>
+  <p>Local. Safe. Free.<br>&copy; 2025 DejaView &nbsp;|&nbsp; <a href="https://github.com/bbekei/image-dupe-manager">GitHub</a></p>
+</footer>
+
+<script>
+  const reveals = document.querySelectorAll('.reveal');
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach((entry, i) => {
+      if (entry.isIntersecting) {
+        setTimeout(() => entry.target.classList.add('visible'), i * 80);
+        obs.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.1 });
+  reveals.forEach(el => obs.observe(el));
+</script>
+</body>
+</html>

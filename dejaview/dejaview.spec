@@ -63,9 +63,37 @@ a = Analysis(
         'pytest',
         'pytest_qt',
         'pytest_cov',
+        # Not used by DejaView — transitive deps from Anaconda environment
+        'babel',
+        'sphinx',
+        'pywt',
+        'docutils',
+        'lxml',
     ],
     noarchive=False,
 )
+
+# ---------------------------------------------------------------------------
+# Strip googleapiclient discovery_cache down to only the Drive v3 API doc.
+# The full cache contains 575 JSON files (~93 MB) for every Google service.
+# ---------------------------------------------------------------------------
+_keep_discovery = {'drive.v3.json'}
+_discovery_prefix = os.path.join('googleapiclient', 'discovery_cache', 'documents', '')
+a.datas = [
+    (dest, src, kind) for dest, src, kind in a.datas
+    if not dest.startswith(_discovery_prefix)
+    or os.path.basename(dest) in _keep_discovery
+]
+
+# ---------------------------------------------------------------------------
+# Exclude Intel MKL DLLs (~600 MB).  Anaconda's numpy ships with MKL but
+# DejaView only uses numpy for imagehash — the built-in fallback is enough.
+# ---------------------------------------------------------------------------
+_mkl_prefixes = ('mkl_', 'libiomp5md')
+a.binaries = [
+    (dest, src, kind) for dest, src, kind in a.binaries
+    if not any(Path(dest).name.lower().startswith(p) for p in _mkl_prefixes)
+]
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
