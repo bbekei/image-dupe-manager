@@ -179,15 +179,30 @@ export function BrowseResults() {
     try {
       const files = await callBackend<FileInfo[]>('get_group_detail', sessionId, pixelHash)
       setSelectedFiles(files)
+      // Populate fileActions from backend-supplied action field
+      const actions: Record<number, FileAction> = {}
+      for (const f of files) {
+        if (f.action) actions[f.id] = f.action
+      }
+      setFileActions(actions)
     } catch {
       setSelectedFiles([])
+      setFileActions({})
     }
   }, [sessionId, setSelectedGroup])
 
   const handleFileAction = useCallback(async (fileId: number, action: FileAction) => {
     try {
-      await callBackend('set_file_action', fileId, action, 'file')
-      setFileActions((prev) => ({ ...prev, [fileId]: action }))
+      const result = await callBackend<{ actions: Record<string, FileAction> }>(
+        'set_file_action', fileId, action, 'file',
+      )
+      // Backend returns the full group actions map (includes auto-keep, toggle)
+      // Keys are stringified file IDs from JSON serialisation
+      const updated: Record<number, FileAction> = {}
+      for (const [id, act] of Object.entries(result.actions)) {
+        updated[Number(id)] = act
+      }
+      setFileActions(updated)
     } catch {
       // handle error
     }

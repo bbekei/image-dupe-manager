@@ -83,6 +83,14 @@ class DejaViewAPI:
         self._executor = None
         self._window: Optional[webview.Window] = None
 
+        # Scan progress state (updated by signal handlers, read by polling)
+        self._scan_phase = "idle"
+        self._scan_current = 0
+        self._scan_total = 0
+        self._scan_discovered = 0
+        self._scan_duplicates = 0
+        self._scan_message = ""
+
     def set_window(self, window: webview.Window) -> None:
         """Called after window creation to enable event forwarding."""
         self._window = window
@@ -95,11 +103,30 @@ class DejaViewAPI:
 
     # ── Scan & Session Management ──────────────────────────────────
 
+    def get_scan_progress(self) -> dict:
+        """Return current scan progress state (called by frontend polling)."""
+        return {
+            "phase": self._scan_phase,
+            "current": self._scan_current,
+            "total": self._scan_total,
+            "discovered": self._scan_discovered,
+            "duplicates": self._scan_duplicates,
+            "message": self._scan_message,
+        }
+
     def start_scan(
         self, folders: list[str], session_name: str, enable_similarity: bool
     ) -> int:
         """Start a new multi-pass scan. Returns session_id."""
         from PyQt6.QtCore import QCoreApplication
+
+        # Reset progress state
+        self._scan_phase = "started"
+        self._scan_current = 0
+        self._scan_total = 0
+        self._scan_discovered = 0
+        self._scan_duplicates = 0
+        self._scan_message = ""
 
         now = datetime.now(timezone.utc).isoformat()
         session_id = self._db.create_session(session_name, now)
@@ -133,68 +160,84 @@ class DejaViewAPI:
         return session_id
 
     def _connect_scanner_signals(self, scanner) -> None:
-        """Wire Scanner Qt signals to CustomEvent dispatches."""
-        scanner.progress_updated.connect(
-            lambda c, t: self._emit("scan:progress", {
-                "current": c, "total": t, "phase": "hashing",
-            })
-        )
-        scanner.file_discovered.connect(
-            lambda fid, path: self._emit("scan:file_discovered", {
-                "file_id": fid, "path": path,
-            })
-        )
+        """Wire Scanner Qt signals to in-memory progress state + CustomEvent dispatches.
+
+        Uses DirectConnection so handlers run in the Scanner's thread directly,
+        bypassing Qt's event-loop-based signal delivery. This is critical because
+        pywebview's thread (where connections are made) has no Qt event loop.
+        """
+        from PyQt6.QtCore import Qt
+
+        DC = Qt.ConnectionType.DirectConnection
+
+        def on_progress(c, t):
+            # Emit final discovery count when transitioning to hashing
+            if self._scan_phase not in ("hashing", "similarity"):
+                self._emit(
+                    "scan:discovery_progress",
+                    {"discovered": self._scan_discovered},
+                )
+            self._scan_current = c
+            self._scan_total = t
+            self._scan_phase = "hashing"
+            self._emit("scan:progress", {"current": c, "total": t, "phase": "hashing"})
+
+        def on_file_discovered(fid, path):
+            self._scan_discovered += 1
+            # Throttle event emission to avoid flooding the frontend
+            if self._scan_discovered <= 5 or self._scan_discovered % 10 == 0:
+                self._emit(
+                    "scan:discovery_progress",
+                    {"discovered": self._scan_discovered},
+                )
+
+        def on_duplicate_found(h, ids):
+            self._scan_duplicates += len(ids)
+            self._emit("scan:duplicate_found", {"pixel_hash": h, "count": len(ids)})
+
+        def on_similarity_progress(c, t):
+            self._scan_current = c
+            self._scan_total = t
+            self._scan_phase = "similarity"
+            self._emit("scan:similarity_progress", {"current": c, "total": t})
+
+        def on_status(status, message=""):
+            self._scan_phase = status
+            self._scan_message = message
+            self._emit("scan:status", {"status": status, "message": message})
+
+        def on_info_message(message):
+            # Informational text only — don't overwrite _scan_phase
+            self._scan_message = message
+            self._emit("scan:status", {"status": "info", "message": message})
+
+        scanner.progress_updated.connect(on_progress, DC)
+        scanner.file_discovered.connect(on_file_discovered, DC)
         scanner.hash_complete.connect(
-            lambda fid, h: self._emit("scan:hash_complete", {
-                "file_id": fid, "pixel_hash": h,
-            })
+            lambda fid, h: self._emit("scan:hash_complete", {"file_id": fid, "pixel_hash": h}),
+            DC,
         )
         scanner.hash_complete_batch.connect(
-            lambda batch: self._emit("scan:hash_batch", {
-                "count": len(batch), "duplicates_found": 0,
-            })
+            lambda batch: self._emit("scan:hash_batch", {"count": len(batch), "duplicates_found": 0}),
+            DC,
         )
         scanner.directory_hashed.connect(
-            lambda d: self._emit("scan:directory_hashed", {
-                "directory": d, "file_count": 0,
-            })
+            lambda d: self._emit("scan:directory_hashed", {"directory": d, "file_count": 0}),
+            DC,
         )
-        scanner.duplicate_found.connect(
-            lambda h, ids: self._emit("scan:duplicate_found", {
-                "pixel_hash": h, "count": len(ids),
-            })
-        )
-        scanner.similarity_progress.connect(
-            lambda c, t: self._emit("scan:similarity_progress", {
-                "current": c, "total": t,
-            })
-        )
+        scanner.duplicate_found.connect(on_duplicate_found, DC)
+        scanner.similarity_progress.connect(on_similarity_progress, DC)
         scanner.similarity_grouping_complete.connect(
-            lambda gc: self._emit("scan:similarity_complete", {
-                "group_count": gc,
-            })
+            lambda gc: self._emit("scan:similarity_complete", {"group_count": gc}),
+            DC,
         )
-        scanner.scan_started.connect(
-            lambda: self._emit("scan:status", {"status": "started", "message": "Scan started"})
-        )
-        scanner.scan_paused.connect(
-            lambda: self._emit("scan:status", {"status": "paused", "message": "Scan paused"})
-        )
-        scanner.scan_resumed.connect(
-            lambda: self._emit("scan:status", {"status": "resumed", "message": "Scan resumed"})
-        )
-        scanner.scan_stopped.connect(
-            lambda: self._emit("scan:status", {"status": "stopped", "message": "Scan stopped"})
-        )
-        scanner.scan_complete.connect(
-            lambda: self._emit("scan:status", {"status": "complete", "message": "Scan complete"})
-        )
-        scanner.scan_error.connect(
-            lambda path, msg: self._emit("scan:status", {"status": "error", "message": f"{path}: {msg}"})
-        )
-        scanner.status_message.connect(
-            lambda msg: self._emit("scan:status", {"status": "info", "message": msg})
-        )
+        scanner.scan_started.connect(lambda: on_status("started", "Scan started"), DC)
+        scanner.scan_paused.connect(lambda: on_status("paused", "Scan paused"), DC)
+        scanner.scan_resumed.connect(lambda: on_status("resumed", "Scan resumed"), DC)
+        scanner.scan_stopped.connect(lambda: on_status("stopped", "Scan stopped"), DC)
+        scanner.scan_complete.connect(lambda: on_status("complete", "Scan complete"), DC)
+        scanner.scan_error.connect(lambda p, m: on_status("error", f"{p}: {m}"), DC)
+        scanner.status_message.connect(on_info_message, DC)
 
     def pause_scan(self) -> None:
         if self._scanner:
@@ -308,11 +351,18 @@ class DejaViewAPI:
         return result
 
     def get_group_detail(self, session_id: int, pixel_hash: str) -> list[dict]:
-        """Return full metadata for all files in a specific duplicate group."""
+        """Return full metadata for all files in a specific duplicate group.
+
+        Each file dict includes an ``action`` key (``'keep'``, ``'delete'``,
+        ``'ignore'``, or ``None`` if undecided).
+        """
         files = self._db.get_files_by_pixel_hash(session_id, pixel_hash)
         result = _rows_to_list(files)
+        file_ids = [f["id"] for f in result]
+        actions = self._get_group_actions(session_id, file_ids)
         for f in result:
             f["thumbnail_data"] = self._read_thumbnail_base64(f.get("thumbnail_path"))
+            f["action"] = actions.get(f["id"])
         return result
 
     def _read_thumbnail_base64(self, thumb_path: str | None) -> str:
@@ -326,15 +376,82 @@ class DejaViewAPI:
         except OSError:
             return ""
 
-    def set_file_action(self, file_id: int, action: str, scope: str) -> None:
-        """Mark a file with an action (keep/delete/ignore)."""
+    def _get_file_action(
+        self, session_id: int, file_id: int
+    ) -> str | None:
+        """Return the current action for a file, or None if undecided."""
+        row = self._db.conn.execute(
+            "SELECT action FROM file_actions "
+            "WHERE session_id = ? AND file_id = ?",
+            (session_id, file_id),
+        ).fetchone()
+        return row["action"] if row else None
+
+    def _get_group_actions(
+        self, session_id: int, file_ids: list[int]
+    ) -> dict[int, str]:
+        """Return ``{file_id: action}`` for the given file IDs."""
+        if not file_ids:
+            return {}
+        ph = ",".join("?" * len(file_ids))
+        rows = self._db.conn.execute(
+            f"SELECT file_id, action FROM file_actions "
+            f"WHERE session_id = ? AND file_id IN ({ph})",
+            [session_id, *file_ids],
+        ).fetchall()
+        return {r["file_id"]: r["action"] for r in rows}
+
+    def _auto_keep_last_undecided(
+        self, session_id: int, pixel_hash: str
+    ) -> None:
+        """If only one undecided file remains in a group, auto-mark it 'keep'."""
+        group_files = self._db.get_files_by_pixel_hash(session_id, pixel_hash)
+        file_ids = [f["id"] for f in group_files]
+        existing = self._get_group_actions(session_id, file_ids)
+        undecided = [fid for fid in file_ids if fid not in existing]
+        if len(undecided) == 1:
+            now = datetime.now(timezone.utc).isoformat()
+            self._db.set_file_action(
+                session_id, undecided[0], "keep", "file", now
+            )
+
+    def set_file_action(self, file_id: int, action: str, scope: str) -> dict:
+        """Mark a file with an action (keep/delete/ignore).
+
+        Supports toggle: clicking the same action again clears it.
+        Auto-keep: when 'delete' leaves only one undecided file in the
+        duplicate group, that file is automatically marked 'keep'.
+
+        Returns ``{"actions": {file_id: action, ...}}`` for every file in the
+        group so the frontend can refresh its state in one round-trip.
+        """
         file_row = self._db.get_file(file_id)
         if not file_row:
-            return
+            return {"actions": {}}
+
+        session_id = file_row["session_id"]
+        pixel_hash = file_row["pixel_hash"]
         now = datetime.now(timezone.utc).isoformat()
-        self._db.set_file_action(
-            file_row["session_id"], file_id, action, scope, now
-        )
+
+        # Toggle: same action again → clear it
+        current = self._get_file_action(session_id, file_id)
+        if current == action:
+            self._db.clear_file_action(session_id, file_id)
+        else:
+            self._db.set_file_action(session_id, file_id, action, scope, now)
+            # Auto-keep the last undecided file when deleting
+            if action == "delete" and pixel_hash:
+                self._auto_keep_last_undecided(session_id, pixel_hash)
+
+        # Return all actions for the group
+        group_actions = {}
+        if pixel_hash:
+            group_files = self._db.get_files_by_pixel_hash(
+                session_id, pixel_hash
+            )
+            file_ids = [f["id"] for f in group_files]
+            group_actions = self._get_group_actions(session_id, file_ids)
+        return {"actions": group_actions}
 
     def apply_selection_preset(
         self, session_id: int, preset: str, group_ids: list[str] | None = None
@@ -359,7 +476,7 @@ class DejaViewAPI:
                 "path": r["path"],
                 "size": r["size"],
                 "action": "delete",
-                "pixel_hash": r.get("pixel_hash", ""),
+                "pixel_hash": r["pixel_hash"] or "",
             })
         return {
             "keep_count": summary.get("keep_count", 0),
@@ -371,7 +488,11 @@ class DejaViewAPI:
 
     def execute_plan(self, session_id: int) -> None:
         """Execute all planned file actions (soft-delete, sync). Emits progress events."""
+        from PyQt6.QtCore import Qt
+
         from core.executor import PlanExecutor
+
+        DC = Qt.ConnectionType.DirectConnection
 
         executor = PlanExecutor(
             db=self._db,
@@ -382,31 +503,38 @@ class DejaViewAPI:
         self._executor = executor
 
         # Connect executor signals to event forwarding
+        # Uses DirectConnection so handlers run in PlanExecutor's thread
+        # (no Qt event loop in pywebview's main thread).
         executor.progress_updated.connect(
             lambda c, t: self._emit("exec:progress", {
                 "current": c, "total": t, "action": "cleanup", "file_path": "",
-            })
+            }),
+            DC,
         )
         executor.execution_complete.connect(
             lambda s, e: self._emit("exec:complete", {
                 "success": s, "errors": e,
                 "summary": f"{s} succeeded, {e} failed",
-            })
+            }),
+            DC,
         )
         executor.execution_error.connect(
             lambda path, msg: self._emit("exec:error", {
                 "message": msg, "file_path": path,
-            })
+            }),
+            DC,
         )
         executor.log_message.connect(
             lambda msg: self._emit("exec:progress", {
                 "current": 0, "total": 0, "action": "log", "file_path": msg,
-            })
+            }),
+            DC,
         )
         executor.stage_changed.connect(
             lambda stage: self._emit("exec:progress", {
                 "current": 0, "total": 0, "action": stage, "file_path": "",
-            })
+            }),
+            DC,
         )
 
         executor.start()

@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 import { callBackend, usePyBridgeReady, useScanProgress, useBackendEvent } from '../hooks/usePyBridge.ts'
 import { useScanStore } from '../stores/useScanStore.ts'
-import type { Session, ScanSummary } from '../types/api.ts'
+import type { Session, ScanSummary, ScanProgress } from '../types/api.ts'
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B'
@@ -39,30 +39,36 @@ function ScanProgressPanel() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const {
-    phase, current, total, statusMessage, duplicatesFound,
-    setProgress, setStatus, incrementDuplicates, sessionId,
+    phase, sessionId, current, total, discovered,
+    duplicatesFound, statusMessage,
+    setProgress, setStatus, setDiscovered, incrementDuplicates,
   } = useScanStore()
-  const [discoveredCount, setDiscoveredCount] = useState(0)
 
-  // Wire backend scan events to the Zustand store
+  const isActive = phase !== 'idle' && phase !== 'complete' && phase !== 'stopped' && phase !== 'error'
+
+  // Seed initial state from backend (recovery after navigation away and back)
+  useEffect(() => {
+    if (!sessionId) return
+    callBackend<ScanProgress>('get_scan_progress').then(p => {
+      setDiscovered(p.discovered)
+      if (p.phase === 'hashing' || p.phase === 'similarity') {
+        setProgress(p.current, p.total, p.phase)
+      } else {
+        setStatus(p.phase, p.message)
+      }
+    }).catch(() => {})
+  }, [sessionId, setProgress, setStatus, setDiscovered])
+
+  // Push events from backend (replaces polling)
   useScanProgress({
-    onProgress: (c, tot, p) => setProgress(c, tot, p),
-    onStatus: (status, message) => {
-      setStatus(status, message)
-      if (status === 'started') setDiscoveredCount(0)
-    },
+    onProgress: (c, t, p) => setProgress(c, t, p),
+    onStatus: (status, message) => setStatus(status, message),
     onDuplicateFound: (_hash, count) => incrementDuplicates(count),
-    onComplete: () => setStatus('complete', ''),
-    onError: (_path, message) => setStatus('error', message),
   })
 
-  // Count files as they are discovered in pass 1
-  useBackendEvent('scan:file_discovered', () => {
-    setDiscoveredCount((c) => c + 1)
+  useBackendEvent<{ discovered: number }>('scan:discovery_progress', (e) => {
+    setDiscovered(e.detail.discovered)
   })
-
-  const scanning = phase === 'discovery' || phase === 'hashing' || phase === 'similarity'
-  const pct = total > 0 ? Math.round((current / total) * 100) : 0
 
   const handlePause = async () => {
     await callBackend('pause_scan')
@@ -78,15 +84,19 @@ function ScanProgressPanel() {
 
   if (phase === 'idle') return null
 
+  const pct = total > 0
+    ? Math.round((current / total) * 100)
+    : 0
+
   return (
     <div className="bg-dv-surface rounded-xl border border-dv-border p-5 mb-8">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-3">
-          {scanning && <Loader2 size={20} className="text-dv-primary animate-spin" />}
+          {isActive && <Loader2 size={20} className="text-dv-primary animate-spin" />}
           <h3 className="font-semibold text-dv-text">{t('scan.title')}</h3>
         </div>
         <div className="flex items-center gap-2">
-          {scanning && (
+          {isActive && (
             <>
               <button
                 onClick={handlePause}
@@ -136,7 +146,7 @@ function ScanProgressPanel() {
       </div>
 
       {/* Progress bar */}
-      {(scanning || phase === 'paused') && (
+      {isActive && (
         <>
           <div className="w-full bg-dv-bg rounded-full h-2.5 mb-2">
             <div
@@ -150,7 +160,7 @@ function ScanProgressPanel() {
             <span>
               {total > 0
                 ? t('scan.progress', { current, total })
-                : t('scan.discovered', { count: discoveredCount })}
+                : t('scan.discovered', { count: discovered })}
             </span>
             {total > 0 && <span>{pct}%</span>}
           </div>
@@ -170,7 +180,7 @@ function ScanProgressPanel() {
 export function Dashboard() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { setSessionId, phase } = useScanStore()
+  const { setSessionId, phase, setStatus } = useScanStore()
   const [sessions, setSessions] = useState<Session[]>([])
   const [summary, setSummary] = useState<ScanSummary | null>(null)
   const [loading, setLoading] = useState(true)
@@ -194,20 +204,27 @@ export function Dashboard() {
   usePyBridgeReady(loadData)
   useEffect(() => { loadData() }, [loadData])
 
-  const scanning = phase !== 'idle' && phase !== 'complete' && phase !== 'error' && phase !== 'stopped'
+  // Reload session data when scan completes so stats update immediately
+  useEffect(() => {
+    if (phase === 'complete') loadData()
+  }, [phase, loadData])
+
+  const isScanning = phase !== 'idle' && phase !== 'complete' && phase !== 'error' && phase !== 'stopped'
+  const [enableSimilarity, setEnableSimilarity] = useState(false)
 
   const handleStartScan = async () => {
     try {
       const folders = await callBackend<string[]>('select_folders')
       if (folders && folders.length > 0) {
+        // Set phase to discovery immediately so progress panel appears
+        setStatus('started', '')
         const sessionId = await callBackend<number>(
           'start_scan',
           folders,
           `Scan ${new Date().toLocaleDateString()}`,
-          false,
+          enableSimilarity,
         )
         setSessionId(sessionId)
-        // Stay on Dashboard — ScanProgressPanel will show progress
       }
     } catch {
       // User cancelled folder selection
@@ -230,14 +247,26 @@ export function Dashboard() {
           <h1 className="text-2xl font-bold text-dv-text">{t('dashboard.title')}</h1>
           <p className="text-dv-text-muted mt-1">{t('dashboard.welcome')}</p>
         </div>
-        <button
-          onClick={handleStartScan}
-          disabled={scanning}
-          className="flex items-center gap-2 px-5 py-2.5 bg-dv-primary hover:bg-dv-primary-hover text-white rounded-lg transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <Plus size={18} />
-          {t('dashboard.start_scan')}
-        </button>
+        <div className="flex items-center gap-4">
+          <label className="flex items-center gap-2 text-sm text-dv-text-muted cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={enableSimilarity}
+              onChange={(e) => setEnableSimilarity(e.target.checked)}
+              disabled={isScanning}
+              className="accent-dv-primary w-4 h-4"
+            />
+            {t('scan.enable_similarity')}
+          </label>
+          <button
+            onClick={handleStartScan}
+            disabled={isScanning}
+            className="flex items-center gap-2 px-5 py-2.5 bg-dv-primary hover:bg-dv-primary-hover text-white rounded-lg transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Plus size={18} />
+            {t('dashboard.start_scan')}
+          </button>
+        </div>
       </div>
 
       {/* Scan progress panel — visible during and after scan */}

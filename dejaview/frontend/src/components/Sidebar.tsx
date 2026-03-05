@@ -15,9 +15,9 @@ import {
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'nav.dashboard' },
   { to: '/browse', icon: Search, label: 'nav.browse' },
+  { to: '/similarity', icon: Images, label: 'nav.similarity' },
   { to: '/plan', icon: ClipboardList, label: 'nav.plan' },
   { to: '/execute', icon: Play, label: 'nav.execute' },
-  { to: '/similarity', icon: Images, label: 'nav.similarity' },
   { to: '/bin', icon: Trash2, label: 'nav.bin' },
   { to: '/family', icon: Users, label: 'nav.family' },
   { to: '/requests', icon: MessageSquare, label: 'nav.requests' },

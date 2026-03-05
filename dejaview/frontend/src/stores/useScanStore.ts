@@ -7,6 +7,7 @@ interface ScanState {
   phase: ScanPhase
   current: number
   total: number
+  discovered: number
   statusMessage: string
   duplicatesFound: number
   error: string | null
@@ -15,6 +16,7 @@ interface ScanState {
   setPhase: (phase: ScanPhase) => void
   setProgress: (current: number, total: number, phase: string) => void
   setStatus: (status: string, message: string) => void
+  setDiscovered: (count: number) => void
   incrementDuplicates: (count: number) => void
   setError: (error: string | null) => void
   reset: () => void
@@ -30,6 +32,7 @@ const phaseMap: Record<string, ScanPhase> = {
   error: 'error',
   started: 'discovery',
   resumed: 'hashing',
+  info: 'discovery',
 }
 
 export const useScanStore = create<ScanState>((set) => ({
@@ -37,6 +40,7 @@ export const useScanStore = create<ScanState>((set) => ({
   phase: 'idle',
   current: 0,
   total: 0,
+  discovered: 0,
   statusMessage: '',
   duplicatesFound: 0,
   error: null,
@@ -46,7 +50,13 @@ export const useScanStore = create<ScanState>((set) => ({
   setProgress: (current, total, phase) =>
     set({ current, total, phase: phaseMap[phase] ?? 'hashing' }),
   setStatus: (status, message) =>
-    set({ phase: phaseMap[status] ?? 'idle', statusMessage: message }),
+    set({
+      phase: phaseMap[status] ?? 'idle',
+      statusMessage: message,
+      // Reset counters when a new scan starts
+      ...(status === 'started' ? { current: 0, total: 0, discovered: 0, duplicatesFound: 0, error: null } : {}),
+    }),
+  setDiscovered: (count) => set({ discovered: count }),
   incrementDuplicates: (count) =>
     set((s) => ({ duplicatesFound: s.duplicatesFound + count })),
   setError: (error) => set({ error, phase: error ? 'error' : 'idle' }),
@@ -56,6 +66,7 @@ export const useScanStore = create<ScanState>((set) => ({
       phase: 'idle',
       current: 0,
       total: 0,
+      discovered: 0,
       statusMessage: '',
       duplicatesFound: 0,
       error: null,

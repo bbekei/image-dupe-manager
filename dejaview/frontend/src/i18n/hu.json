@@ -5,10 +5,10 @@
   },
   "nav": {
     "dashboard": "Vezérlőpult",
-    "browse": "Eredmények böngészése",
+    "browse": "Duplikátumok böngészése",
     "plan": "Terv áttekintése",
-    "execute": "Végrehajtás",
-    "similarity": "Hasonló képek",
+    "execute": "Terv végrehajtása",
+    "similarity": "Hasonlóságok böngészése",
     "bin": "Duplikátum Lomtár",
     "family": "Családi Könyvtár",
     "requests": "Kérések",
