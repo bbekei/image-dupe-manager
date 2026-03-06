@@ -57,8 +57,12 @@ export function Family() {
   const handleImport = async () => {
     try {
       // The backend handles file selection
-      const result = await callBackend<{ imported: number; treasures: number }>('import_hashes', '')
-      toast.success(`Imported ${result.imported} files, ${result.treasures} treasures found`)
+      const result = await callBackend<{ imported: number; username?: string; error?: string }>('import_hashes', '')
+      if (result.error) {
+        toast.error(`Import failed: ${result.error}`)
+      } else {
+        toast.success(`Imported peer '${result.username}'`)
+      }
       loadPeers()
     } catch {
       toast.error('Import failed')

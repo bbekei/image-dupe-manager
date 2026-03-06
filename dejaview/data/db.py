@@ -961,7 +961,7 @@ class Database:
     def upsert_remote_peer(
         self, username: str, last_seen_at: str, file_mtime: Optional[str] = None
     ) -> int:
-        cur = self.conn.execute(
+        self.conn.execute(
             """
             INSERT INTO remote_peers (username, last_seen_at, file_mtime)
             VALUES (?, ?, ?)

@@ -56,7 +56,6 @@ def recommend_keeper(files: list[dict]) -> tuple[int, str]:
         return (resolution, size, modified, -path_len)
 
     best = max(files, key=_sort_key)
-    best_key = _sort_key(best)
 
     # Determine reason.
     w = best.get("width") or 0

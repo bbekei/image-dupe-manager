@@ -256,7 +256,7 @@ export interface PyWebViewAPI {
 
   // Family Sharing
   export_hashes(session_id: number): Promise<string>
-  import_hashes(file_path: string): Promise<{ imported: number; treasures: number }>
+  import_hashes(file_path: string): Promise<{ imported: number; username?: string; error?: string }>
   sync_drive(): Promise<{ status: string; errors: Record<string, string> }>
   get_remote_peers(): Promise<RemotePeer[]>
   get_requests(session_id: number): Promise<ShareRequest[]>

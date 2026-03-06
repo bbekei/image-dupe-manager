@@ -43,7 +43,7 @@ def _base_dir() -> Path:
     return Path(__file__).parent
 
 
-def _startup_thumbnail_cleanup(db: Database, thumb_dir: Path) -> None:
+def _startup_thumbnail_cleanup(db: Database) -> None:
     """Remove orphaned thumbnails left by a previously interrupted session."""
     try:
         orphans = db.cleanup_orphaned_thumbnails()
@@ -176,7 +176,7 @@ def main() -> None:
     db = Database(db_path)
     db.open()
 
-    _startup_thumbnail_cleanup(db, thumb_dir)
+    _startup_thumbnail_cleanup(db)
     _startup_trash_purge(trash_root)
 
     drive_sync = _create_drive_sync(db, app_dir)

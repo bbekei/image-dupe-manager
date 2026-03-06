@@ -818,17 +818,15 @@ class DejaViewAPI:
             log.warning("Import rejected — file too large: %s", file_path)
             return {"imported": 0, "treasures": 0, "error": "file_too_large"}
 
-        with open(resolved, "r", encoding="utf-8") as f:
-            payload = json.load(f)
+        with open(resolved, "rb") as f:
+            raw = f.read()
 
-        username = payload.get("username", "unknown")
-        # Find the active session
-        session = self._db.get_latest_session()
-        session_id = session["id"] if session else 0
-        imported, treasures = import_payload(
-            self._db, payload, username, session_id
-        )
-        return {"imported": imported, "treasures": treasures}
+        try:
+            username = import_payload(self._db, raw)
+        except ImportError as exc:
+            log.warning("Import rejected: %s", exc)
+            return {"imported": 0, "error": str(exc)}
+        return {"imported": 1, "username": username}
 
     def sync_drive(self) -> dict:
         """Upload export to Google Drive and download peer exports."""
