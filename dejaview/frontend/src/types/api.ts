@@ -91,9 +91,21 @@ export interface PlanAction {
 
 // -- Similarity --
 
-export interface SimilarityGroup {
+export interface SimilarityGroupSummary {
   id: number
   session_id: number
+  member_count: number
+  status: string
+  representative_path: string
+}
+
+export interface SimilarityGroupsPage {
+  groups: SimilarityGroupSummary[]
+  total_count: number
+}
+
+export interface SimilarityGroup {
+  id: number
   member_count: number
   members: FileInfo[]
 }
@@ -225,7 +237,8 @@ export interface PyWebViewAPI {
   clear_all_actions(session_id: number): Promise<void>
 
   // Similarity
-  get_similarity_groups(session_id: number, threshold?: number): Promise<SimilarityGroup[]>
+  get_similarity_groups(session_id: number, offset: number, limit: number): Promise<SimilarityGroupsPage>
+  get_similarity_group_detail(group_id: number): Promise<SimilarityGroup>
   apply_similarity_preset(session_id: number, preset: SelectionPreset, group_ids?: number[]): Promise<{ keep_count: number; delete_count: number }>
   recommend_keeper(files: FileInfo[]): Promise<KeeperRecommendation>
 

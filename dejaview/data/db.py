@@ -1606,6 +1606,22 @@ class Database:
             (session_id,),
         ).fetchall()
 
+    def get_similarity_groups_paginated(
+        self, session_id: int, offset: int = 0, limit: int = 50
+    ) -> list[sqlite3.Row]:
+        """Return similarity groups with LIMIT/OFFSET for pagination."""
+        return self.conn.execute(
+            """
+            SELECT sg.*, f.path AS representative_path
+            FROM similarity_groups sg
+            LEFT JOIN files f ON f.id = sg.representative_file_id
+            WHERE sg.session_id = ?
+            ORDER BY sg.member_count DESC, sg.id
+            LIMIT ? OFFSET ?
+            """,
+            (session_id, limit, offset),
+        ).fetchall()
+
     def get_similarity_group_count(self, session_id: int) -> int:
         """Return count of similarity groups for a session."""
         row = self.conn.execute(

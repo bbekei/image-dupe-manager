@@ -681,25 +681,37 @@ class DejaViewAPI:
     # ── Similarity Detection ───────────────────────────────────────
 
     def get_similarity_groups(
-        self, session_id: int, threshold: int = 8
-    ) -> list[dict]:
-        """Return groups of visually similar images."""
-        db_groups = self._db.get_similarity_groups(session_id)
-        result = []
+        self, session_id: int, offset: int = 0, limit: int = 50
+    ) -> dict:
+        """Return paginated similarity group summaries (no members/thumbnails)."""
+        total = self._db.get_similarity_group_count(session_id)
+        db_groups = self._db.get_similarity_groups_paginated(
+            session_id, offset, limit,
+        )
+        groups = []
         for g in db_groups:
-            members = self._db.get_similarity_group_members(g["id"])
-            member_list = _rows_to_list(members)
-            for m in member_list:
-                m["thumbnail_data"] = self._read_thumbnail_base64(
-                    m.get("thumbnail_path")
-                )
-            result.append({
+            groups.append({
                 "id": g["id"],
-                "session_id": session_id,
-                "member_count": len(member_list),
-                "members": member_list,
+                "session_id": g["session_id"],
+                "member_count": g["member_count"],
+                "status": g["status"],
+                "representative_path": g["representative_path"],
             })
-        return result
+        return {"groups": groups, "total_count": total}
+
+    def get_similarity_group_detail(self, group_id: int) -> dict:
+        """Return full member data with thumbnails for a single group."""
+        members = self._db.get_similarity_group_members(group_id)
+        member_list = _rows_to_list(members)
+        for m in member_list:
+            m["thumbnail_data"] = self._read_thumbnail_base64(
+                m.get("thumbnail_path")
+            )
+        return {
+            "id": group_id,
+            "member_count": len(member_list),
+            "members": member_list,
+        }
 
     def apply_similarity_preset(
         self,

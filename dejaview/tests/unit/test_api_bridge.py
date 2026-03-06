@@ -71,6 +71,7 @@ EXPECTED_METHODS = [
     "clear_all_actions",
     # Similarity
     "get_similarity_groups",
+    "get_similarity_group_detail",
     "apply_similarity_preset",
     "recommend_keeper",
     # Bin
@@ -540,12 +541,30 @@ class TestReturnShapes:
         result = api.get_bin_items(sid)
         assert isinstance(result, list)
 
-    def test_get_similarity_groups_returns_list(
+    def test_get_similarity_groups_returns_page(
         self, api: DejaViewAPI, session_factory
     ):
         sid = session_factory()
         result = api.get_similarity_groups(sid)
-        assert isinstance(result, list)
+        assert isinstance(result, dict)
+        assert "groups" in result
+        assert "total_count" in result
+        assert isinstance(result["groups"], list)
+        assert isinstance(result["total_count"], int)
+
+    def test_get_similarity_group_detail_returns_dict(
+        self, api: DejaViewAPI, session_factory
+    ):
+        sid = session_factory()
+        fid = api._db.insert_file(sid, "/tmp/a.jpg", 100, "2024-01-01", "2024-01-01")
+        gid = api._db.create_similarity_group(sid, "2024-01-01", fid, member_count=1)
+        api._db.add_similarity_group_members_batch([(gid, fid, 0)])
+        result = api.get_similarity_group_detail(gid)
+        assert isinstance(result, dict)
+        assert "id" in result
+        assert "members" in result
+        assert isinstance(result["members"], list)
+        assert len(result["members"]) == 1
 
     def test_get_remote_peers_returns_list(self, api: DejaViewAPI):
         result = api.get_remote_peers()
