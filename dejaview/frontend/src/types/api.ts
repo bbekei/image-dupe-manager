@@ -178,6 +178,30 @@ export type SelectionPreset =
   | 'KEEP_SHORTEST_PATH'
   | 'KEEP_HIGHEST_RESOLUTION'
 
+export type SortField = 'size' | 'resolution' | 'modified_at' | 'path_depth' | 'filename_length'
+
+export interface SortCriterion {
+  field: SortField
+  ascending: boolean
+}
+
+export interface SelectionResult {
+  keep_count: number
+  delete_count: number
+  active_preset: string
+}
+
+export interface SelectionProgressEvent {
+  current: number
+  total: number
+}
+
+export interface SelectionCompleteEvent {
+  keep_count: number
+  delete_count: number
+  active_preset: string
+}
+
 // -- Events from Python backend --
 
 export interface ScanProgressEvent {
@@ -231,7 +255,8 @@ export interface PyWebViewAPI {
   set_file_action(file_id: number, action: FileAction, scope: ActionScope): Promise<{ actions: Record<string, FileAction> }>
   keep_and_delete_others(keep_file_id: number, group_file_ids: number[]): Promise<{ actions: Record<string, FileAction> }>
   apply_folder_action(session_id: number, folder_path: string, action: FileAction): Promise<{ affected: number }>
-  apply_selection_preset(session_id: number, preset: SelectionPreset, group_ids?: string[]): Promise<{ keep_count: number; delete_count: number }>
+  apply_selection_preset(session_id: number, preset: SelectionPreset, group_ids?: string[]): Promise<SelectionResult>
+  apply_custom_selection(session_id: number, criteria: SortCriterion[]): Promise<SelectionResult>
   get_plan_summary(session_id: number): Promise<PlanSummary>
   execute_plan(session_id: number): Promise<void>
   clear_all_actions(session_id: number): Promise<void>
@@ -239,7 +264,8 @@ export interface PyWebViewAPI {
   // Similarity
   get_similarity_groups(session_id: number, offset: number, limit: number): Promise<SimilarityGroupsPage>
   get_similarity_group_detail(group_id: number): Promise<SimilarityGroup>
-  apply_similarity_preset(session_id: number, preset: SelectionPreset, group_ids?: number[]): Promise<{ keep_count: number; delete_count: number }>
+  apply_similarity_preset(session_id: number, preset: SelectionPreset, group_ids?: number[]): Promise<SelectionResult>
+  apply_custom_similarity_selection(session_id: number, criteria: SortCriterion[]): Promise<SelectionResult>
   recommend_keeper(files: FileInfo[]): Promise<KeeperRecommendation>
 
   // Bin

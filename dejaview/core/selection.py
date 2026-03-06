@@ -11,7 +11,9 @@ UX Redesign Phase 5 — Advanced Cleanup.
 
 from datetime import datetime, timezone
 from enum import Enum, auto
-from typing import Optional
+from typing import Callable, Optional, Union
+
+from core.sort_chain import PRESET_CHAINS, SortCriterion, pick_keeper
 
 
 class SelectionPreset(Enum):
@@ -19,8 +21,10 @@ class SelectionPreset(Enum):
 
     KEEP_LARGEST_FILE = auto()  # best quality proxy (largest file size)
     KEEP_NEWEST = auto()  # most recent modified_at
+    KEEP_OLDEST = auto()  # earliest modified_at — the "original"
     KEEP_DEEPEST_PATH = auto()  # most organized folder (deepest path)
     KEEP_SHORTEST_PATH = auto()  # simplest location (shortest path)
+    KEEP_HIGHEST_RESOLUTION = auto()  # max(width * height)
 
 
 def identify_master_copy(files: list[dict]) -> Optional[int]:
@@ -77,11 +81,65 @@ def get_master_copies(db, session_id: int) -> dict[str, int]:
     return masters
 
 
+def _resolve_criteria(
+    preset_or_chain: Union[SelectionPreset, list[SortCriterion]],
+) -> list[SortCriterion]:
+    """Convert a SelectionPreset or raw chain to a list[SortCriterion]."""
+    if isinstance(preset_or_chain, list):
+        return preset_or_chain
+    return PRESET_CHAINS[preset_or_chain.name]
+
+
+def _fetch_groups(
+    db, session_id: int, pixel_hashes: Optional[list[str]],
+) -> tuple[list[str], Optional[dict[str, list[dict]]]]:
+    """Return (hash_list, bulk_data_or_None) for apply_preset."""
+    if pixel_hashes is not None:
+        return pixel_hashes, None
+    bulk_data = db.get_all_duplicate_files_bulk(session_id)
+    return list(bulk_data.keys()), bulk_data
+
+
+def _get_group_files(
+    db, session_id: int, pixel_hash: str,
+    bulk_data: Optional[dict[str, list[dict]]],
+) -> list[dict]:
+    """Return file dicts for a single group, from bulk cache or per-group query."""
+    if bulk_data is not None:
+        return bulk_data[pixel_hash]
+    return [dict(f) for f in db.get_cluster_files(session_id, pixel_hash)]
+
+
+def _apply_to_group(
+    file_dicts: list[dict],
+    criteria: list[SortCriterion],
+    session_id: int,
+    now: str,
+    batch: list[tuple[int, int, str, str, str]],
+) -> tuple[int, int]:
+    """Pick keeper for one group and append actions to batch. Returns (keep, delete) counts."""
+    if len(file_dicts) < 2:
+        return 0, 0
+    keeper_id = pick_keeper(file_dicts, criteria)
+    keep = 0
+    delete = 0
+    for f in file_dicts:
+        fid = f["id"]
+        action = "keep" if fid == keeper_id else "delete"
+        batch.append((session_id, fid, action, "file", now))
+        if fid == keeper_id:
+            keep += 1
+        else:
+            delete += 1
+    return keep, delete
+
+
 def apply_preset(
     db,
     session_id: int,
-    preset: SelectionPreset,
+    preset: Union[SelectionPreset, list[SortCriterion]],
     pixel_hashes: Optional[list[str]] = None,
+    progress_callback: Optional[Callable[[int, int], None]] = None,
 ) -> tuple[int, int]:
     """Apply a selection preset to duplicate groups, creating file_actions.
 
@@ -92,79 +150,33 @@ def apply_preset(
     Args:
         db: Database instance.
         session_id: Active session.
-        preset: Which selection strategy to use.
+        preset: Which selection strategy to use — either a SelectionPreset
+            enum or a custom list[SortCriterion] chain.
         pixel_hashes: Optional subset of hashes to process.  If None,
             processes all duplicate groups in the session.
+        progress_callback: Optional callback(current, total) for progress.
 
     Returns:
         (keep_count, delete_count) — number of files marked.
     """
-    if pixel_hashes is not None:
-        groups = [
-            {"pixel_hash": h}
-            for h in pixel_hashes
-        ]
-    else:
-        groups = db.get_duplicate_groups(session_id)
+    criteria = _resolve_criteria(preset)
+    hash_list, bulk_data = _fetch_groups(db, session_id, pixel_hashes)
 
+    total = len(hash_list)
     now = datetime.now(timezone.utc).isoformat()
     keep_count = 0
     delete_count = 0
     batch: list[tuple[int, int, str, str, str]] = []
 
-    for g in groups:
-        pixel_hash = g["pixel_hash"]
-        files = db.get_cluster_files(session_id, pixel_hash)
-        file_dicts = [dict(f) for f in files]
-
-        if len(file_dicts) < 2:
-            continue
-
-        keeper_id = _pick_keeper(file_dicts, preset)
-
-        for f in file_dicts:
-            fid = f["id"]
-            if fid == keeper_id:
-                batch.append((session_id, fid, "keep", "file", now))
-                keep_count += 1
-            else:
-                batch.append((session_id, fid, "delete", "file", now))
-                delete_count += 1
+    for i, pixel_hash in enumerate(hash_list):
+        file_dicts = _get_group_files(db, session_id, pixel_hash, bulk_data)
+        k, d = _apply_to_group(file_dicts, criteria, session_id, now, batch)
+        keep_count += k
+        delete_count += d
+        if progress_callback:
+            progress_callback(i + 1, total)
 
     if batch:
         db.set_file_actions_batch(batch)
 
     return keep_count, delete_count
-
-
-def _pick_keeper(files: list[dict], preset: SelectionPreset) -> int:
-    """Pick the file_id to keep based on the preset.
-
-    Args:
-        files: List of file dicts (must have len >= 2).
-        preset: Selection strategy.
-
-    Returns:
-        file_id of the file to keep.
-    """
-    if preset == SelectionPreset.KEEP_LARGEST_FILE:
-        key = lambda f: (f.get("size") or 0, f.get("modified_at") or "")
-        best = max(files, key=key)
-    elif preset == SelectionPreset.KEEP_NEWEST:
-        key = lambda f: (f.get("modified_at") or "", f.get("size") or 0)
-        best = max(files, key=key)
-    elif preset == SelectionPreset.KEEP_DEEPEST_PATH:
-        key = lambda f: (f.get("path", "").count("/") + f.get("path", "").count("\\"), f.get("size") or 0)
-        best = max(files, key=key)
-    elif preset == SelectionPreset.KEEP_SHORTEST_PATH:
-        # Shortest path = fewest separators; tiebreak by largest size
-        key = lambda f: (
-            -(f.get("path", "").count("/") + f.get("path", "").count("\\")),
-            f.get("size") or 0,
-        )
-        best = max(files, key=key)
-    else:
-        # Fallback to largest file
-        best = max(files, key=lambda f: f.get("size") or 0)
-
-    return best["id"]

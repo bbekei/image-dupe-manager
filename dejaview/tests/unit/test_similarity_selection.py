@@ -10,10 +10,10 @@ import pytest
 
 from core.similarity_selection import (
     SimilarityPreset,
-    _pick_similarity_keeper,
     apply_similarity_preset,
     recommend_keeper,
 )
+from core.sort_chain import PRESET_CHAINS, pick_keeper
 from data.db import Database
 
 
@@ -113,7 +113,7 @@ class TestRecommendKeeper:
 
 
 # ---------------------------------------------------------------------------
-# _pick_similarity_keeper tests
+# pick_keeper with SimilarityPreset chain tests
 # ---------------------------------------------------------------------------
 
 class TestPickSimilarityKeeper:
@@ -123,8 +123,8 @@ class TestPickSimilarityKeeper:
             _file(1, width=800, height=600),    # 480k
             _file(2, width=4032, height=3024),   # 12.2M
         ]
-        assert _pick_similarity_keeper(
-            files, SimilarityPreset.KEEP_HIGHEST_RESOLUTION
+        assert pick_keeper(
+            files, PRESET_CHAINS[SimilarityPreset.KEEP_HIGHEST_RESOLUTION.name]
         ) == 2
 
     def test_keep_largest_file(self):
@@ -132,8 +132,8 @@ class TestPickSimilarityKeeper:
             _file(1, size=1000),
             _file(2, size=50000),
         ]
-        assert _pick_similarity_keeper(
-            files, SimilarityPreset.KEEP_LARGEST_FILE
+        assert pick_keeper(
+            files, PRESET_CHAINS[SimilarityPreset.KEEP_LARGEST_FILE.name]
         ) == 2
 
     def test_keep_newest(self):
@@ -141,8 +141,8 @@ class TestPickSimilarityKeeper:
             _file(1, modified_at="2024-01-01"),
             _file(2, modified_at="2024-12-25"),
         ]
-        assert _pick_similarity_keeper(
-            files, SimilarityPreset.KEEP_NEWEST
+        assert pick_keeper(
+            files, PRESET_CHAINS[SimilarityPreset.KEEP_NEWEST.name]
         ) == 2
 
     def test_keep_oldest(self):
@@ -150,8 +150,8 @@ class TestPickSimilarityKeeper:
             _file(1, modified_at="2020-01-01"),
             _file(2, modified_at="2024-12-25"),
         ]
-        assert _pick_similarity_keeper(
-            files, SimilarityPreset.KEEP_OLDEST
+        assert pick_keeper(
+            files, PRESET_CHAINS[SimilarityPreset.KEEP_OLDEST.name]
         ) == 1
 
     def test_keep_shortest_path(self):
@@ -159,8 +159,8 @@ class TestPickSimilarityKeeper:
             _file(1, path="/a/b/c/d/e/f/img.jpg"),
             _file(2, path="/a/img.jpg"),
         ]
-        assert _pick_similarity_keeper(
-            files, SimilarityPreset.KEEP_SHORTEST_PATH
+        assert pick_keeper(
+            files, PRESET_CHAINS[SimilarityPreset.KEEP_SHORTEST_PATH.name]
         ) == 2
 
 

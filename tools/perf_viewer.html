@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DejaView — Performance Telemetry Viewer</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3/dist/chartjs-plugin-annotation.min.js"></script>
+<style>
+  :root {
+    --bg: #1a1b2e;
+    --surface: #242642;
+    --surface-hover: #2d2f52;
+    --border: #3a3c5e;
+    --text: #e8e9f0;
+    --text-muted: #9ca3af;
+    --primary: #6366f1;
+    --primary-hover: #818cf8;
+    --success: #22c55e;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+    --info: #3b82f6;
+    --amber: #fbbf24;
+    --emerald: #34d399;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  header h1 { font-size: 18px; font-weight: 600; }
+  header h1 span { color: var(--primary); }
+
+  .file-picker { display: flex; align-items: center; gap: 12px; }
+
+  .file-picker label {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 16px; background: var(--primary); color: white;
+    border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500;
+    transition: background 0.15s;
+  }
+  .file-picker label:hover { background: var(--primary-hover); }
+  .file-picker input { display: none; }
+  .file-name { font-size: 13px; color: var(--text-muted); }
+
+  /* Empty state */
+  .empty-state {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; height: calc(100vh - 65px); gap: 16px;
+    color: var(--text-muted);
+  }
+  .empty-state svg { opacity: 0.4; }
+  .empty-state p { font-size: 15px; }
+
+  /* Dashboard */
+  .dashboard { padding: 24px; display: none; max-width: 1200px; margin: 0 auto; }
+
+  /* Summary cards */
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 14px; margin-bottom: 20px;
+  }
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 18px;
+  }
+  .card .label {
+    font-size: 11px; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;
+  }
+  .card .value { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .card .sub { font-size: 12px; color: var(--text-muted); margin-top: 3px; }
+
+  .card.primary .value { color: var(--primary); }
+  .card.info .value    { color: var(--info); }
+  .card.success .value { color: var(--success); }
+  .card.warning .value { color: var(--warning); }
+  .card.danger .value  { color: var(--danger); }
+  .card.amber .value   { color: var(--amber); }
+  .card.emerald .value { color: var(--emerald); }
+
+  /* Traffic light indicator */
+  .traffic-light {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 22px; font-weight: 700;
+  }
+  .traffic-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    display: inline-block; flex-shrink: 0;
+  }
+  .traffic-dot.green  { background: var(--success); box-shadow: 0 0 6px rgba(34,197,94,0.5); }
+  .traffic-dot.yellow { background: var(--warning); box-shadow: 0 0 6px rgba(245,158,11,0.5); }
+  .traffic-dot.red    { background: var(--danger);  box-shadow: 0 0 6px rgba(239,68,68,0.5); }
+
+  /* Stage bar */
+  .stage-bar {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 18px; margin-bottom: 20px;
+  }
+  .stage-bar .title {
+    font-size: 11px; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;
+  }
+  .stage-track {
+    display: flex; height: 28px; border-radius: 6px;
+    overflow: hidden; background: var(--surface-hover);
+  }
+  .stage-segment {
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 600; color: white; min-width: 0;
+    overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+    padding: 0 8px;
+  }
+  .stage-segment.discovery { background: var(--info); }
+  .stage-segment.hashing   { background: var(--primary); }
+
+  /* Charts — single column, full width */
+  .charts { display: flex; flex-direction: column; gap: 20px; }
+  .chart-box {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 20px;
+  }
+  .chart-box h3 { font-size: 14px; font-weight: 600; margin-bottom: 12px; }
+  .chart-container { position: relative; height: 240px; }
+
+  /* Health notes */
+  .health-notes {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 18px 22px; margin-top: 20px;
+  }
+  .health-notes h3 {
+    font-size: 14px; font-weight: 600; margin-bottom: 10px;
+  }
+  .health-notes ul { list-style: none; padding: 0; }
+  .health-notes li {
+    padding: 6px 0; font-size: 13px; line-height: 1.5;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: flex-start; gap: 8px;
+  }
+  .health-notes li:last-child { border-bottom: none; }
+  .note-icon { flex-shrink: 0; margin-top: 2px; }
+  .note-icon.warn { color: var(--warning); }
+  .note-icon.err  { color: var(--danger); }
+  .note-icon.ok   { color: var(--success); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><span>DejaView</span> Performance Viewer</h1>
+  <div class="file-picker">
+    <label>
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      Open CSV
+      <input type="file" id="csvInput" accept=".csv">
+    </label>
+    <span class="file-name" id="fileName">No file selected</span>
+  </div>
+</header>
+
+<div class="empty-state" id="emptyState">
+  <svg width="64" height="64" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M3 15a4 4 0 014-4h1l1-4h6l1 4h1a4 4 0 014 4v1a2 2 0 01-2 2H5a2 2 0 01-2-2v-1z"/><line x1="12" y1="3" x2="12" y2="7"/></svg>
+  <p>Select a <strong>perf_*.csv</strong> file to view scan performance data</p>
+</div>
+
+<div class="dashboard" id="dashboard">
+  <div class="cards" id="cards"></div>
+  <div class="stage-bar" id="stageBar">
+    <div class="title">Time Breakdown</div>
+    <div class="stage-track" id="stageTrack"></div>
+  </div>
+  <div class="charts" id="charts"></div>
+  <div class="health-notes" id="healthNotes" style="display:none">
+    <h3>Diagnostics</h3>
+    <ul id="healthList"></ul>
+  </div>
+</div>
+
+<script>
+// ── Constants ────────────────────────────────────────────────────────
+const C = {
+  primary: '#6366f1', primaryFade: 'rgba(99,102,241,0.15)',
+  info:    '#3b82f6', infoFade:    'rgba(59,130,246,0.15)',
+  success: '#22c55e', successFade: 'rgba(34,197,94,0.15)',
+  warning: '#f59e0b', warningFade: 'rgba(245,158,11,0.15)',
+  danger:  '#ef4444', dangerFade:  'rgba(239,68,68,0.15)',
+  amber:   '#fbbf24', amberFade:   'rgba(251,191,36,0.15)',
+  emerald: '#34d399', emeraldFade: 'rgba(52,211,153,0.15)',
+  muted:   '#9ca3af',
+  stageBands: {
+    discovery: 'rgba(59,130,246,0.08)',
+    hashing:   'rgba(99,102,241,0.08)',
+  },
+};
+
+// ── CSV Parser ───────────────────────────────────────────────────────
+function parseCSV(text) {
+  const lines = text.split('\n').filter(l => l.trim() && !l.startsWith('#'));
+  if (lines.length < 2) return { rows: [], summary: null };
+  const headers = lines[0].split(',').map(h => h.trim());
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const vals = lines[i].split(',');
+    if (vals.length < headers.length) continue;
+    const row = {};
+    headers.forEach((h, j) => row[h] = vals[j]?.trim() ?? '');
+    rows.push(row);
+  }
+  let summary = null;
+  const summaryLine = text.split('\n').find(l => l.startsWith('# SUMMARY:'));
+  if (summaryLine) {
+    try { summary = JSON.parse(summaryLine.replace('# SUMMARY:', '').trim()); } catch {}
+  }
+  return { rows, summary };
+}
+
+function num(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
+
+// ── Derived metrics ──────────────────────────────────────────────────
+function deriveMetrics(rows) {
+  const workers = num(rows[0]?.workers) || 1;
+  return rows.map((r, i) => {
+    const prev = i > 0 ? rows[i - 1] : null;
+    const dt = prev ? (num(r.wall_clock) - num(prev.wall_clock)) : 1;
+    const dFiles = prev ? (num(r.files_hashed_total) - num(prev.files_hashed_total)) : 0;
+    return {
+      wc:               num(r.wall_clock),
+      stage:            r.stage,
+      timestamp:        r.timestamp,
+      throughput:       dt > 0 ? dFiles / dt : 0,
+      filesCum:         num(r.files_hashed_total),
+      utilization:      Math.min(num(r.active_futures) / workers, 1),
+      activeFutures:    num(r.active_futures),
+      queueDepth:       num(r.executor_queue_depth),
+      eventsPerSec:     num(r.signals_per_sec),
+      uiBacklog:        num(r.pending_file_ids) + num(r.pending_hash_ids),
+      dbBatchMs:        num(r.db_batch_ms),
+      lockWaitMs:       num(r.lock_wait_ms),
+      pendingDbUpdates: num(r.pending_db_updates),
+      workers:          workers,
+    };
+  });
+}
+
+// ── Stage boundaries (for chart background bands) ────────────────────
+function stageBands(data) {
+  const bands = [];
+  let cur = null;
+  for (const d of data) {
+    if (d.stage !== cur) {
+      if (bands.length > 0) bands[bands.length - 1].end = d.wc;
+      if (d.stage) bands.push({ stage: d.stage, start: d.wc, end: d.wc });
+      cur = d.stage;
+    }
+  }
+  if (bands.length > 0) bands[bands.length - 1].end = data[data.length - 1].wc;
+  return bands;
+}
+
+function stageAnnotations(bands) {
+  const obj = {};
+  bands.forEach((b, i) => {
+    obj['band' + i] = {
+      type: 'box', drawTime: 'beforeDatasetsDraw',
+      xMin: b.start, xMax: b.end,
+      backgroundColor: C.stageBands[b.stage] || 'transparent',
+      borderWidth: 0,
+    };
+  });
+  return obj;
+}
+
+// ── Formatting ───────────────────────────────────────────────────────
+function fmtTime(s) {
+  if (s < 60) return s.toFixed(1) + 's';
+  const m = Math.floor(s / 60);
+  return m + 'm ' + (s % 60).toFixed(0) + 's';
+}
+function fmtK(n) { return n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(Math.round(n)); }
+function fmtPct(n) { return Math.round(n * 100) + '%'; }
+
+// ── Chart.js defaults ────────────────────────────────────────────────
+Chart.defaults.color = '#9ca3af';
+Chart.defaults.borderColor = '#3a3c5e';
+Chart.defaults.font.family = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+Chart.defaults.font.size = 11;
+Chart.defaults.plugins.legend.labels.usePointStyle = true;
+Chart.defaults.plugins.legend.labels.pointStyleWidth = 8;
+Chart.defaults.elements.line.tension = 0.3;
+Chart.defaults.elements.line.borderWidth = 2;
+Chart.defaults.elements.point.radius = 0;
+Chart.defaults.elements.point.hoverRadius = 4;
+
+let chartInstances = [];
+function destroyCharts() { chartInstances.forEach(c => c.destroy()); chartInstances = []; }
+
+function addChart(title, config) {
+  const box = document.createElement('div');
+  box.className = 'chart-box';
+  box.innerHTML = `<h3>${title}</h3><div class="chart-container"><canvas></canvas></div>`;
+  document.getElementById('charts').appendChild(box);
+  const chart = new Chart(box.querySelector('canvas').getContext('2d'), config);
+  chartInstances.push(chart);
+}
+
+function baseOpts(bands, yTitle, extras) {
+  return {
+    responsive: true, maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    scales: {
+      x: {
+        type: 'linear',
+        title: { display: true, text: 'Time (seconds)', color: C.muted },
+        grid: { color: 'rgba(58,60,94,0.4)' },
+      },
+      y: {
+        beginAtZero: true,
+        title: { display: true, text: yTitle, color: C.muted },
+        grid: { color: 'rgba(58,60,94,0.4)' },
+      },
+      ...(extras?.scales || {}),
+    },
+    plugins: {
+      tooltip: {
+        backgroundColor: '#242642', borderColor: '#3a3c5e', borderWidth: 1,
+        titleColor: '#e8e9f0', bodyColor: '#e8e9f0',
+      },
+      annotation: { annotations: stageAnnotations(bands) },
+      ...(extras?.plugins || {}),
+    },
+  };
+}
+
+function ds(label, data, color, fill) {
+  return { label, data, borderColor: color, backgroundColor: fill || 'transparent', fill: !!fill, pointHitRadius: 8 };
+}
+
+// ── Summary Cards ────────────────────────────────────────────────────
+function renderCards(data, summary) {
+  const el = document.getElementById('cards');
+  el.innerHTML = '';
+
+  const totalTime = summary?.total_elapsed_s ?? data[data.length - 1].wc;
+  const totalFiles = summary?.files_hashed ?? data[data.length - 1].filesCum;
+  const hashingTime = summary?.stages?.hashing ?? totalTime;
+  const avgSpeed = hashingTime > 0 ? (totalFiles / hashingTime) : 0;
+  const workers = data[0].workers;
+
+  // Worker utilization (hashing stage only)
+  const hashRows = data.filter(d => d.stage === 'hashing');
+  const avgUtil = hashRows.length > 0
+    ? hashRows.reduce((s, d) => s + d.utilization, 0) / hashRows.length : 0;
+  let utilColor, utilLabel, utilDot;
+  if (avgUtil >= 0.7) { utilColor = 'success'; utilLabel = 'Good'; utilDot = 'green'; }
+  else if (avgUtil >= 0.4) { utilColor = 'warning'; utilLabel = 'Moderate'; utilDot = 'yellow'; }
+  else { utilColor = 'danger'; utilLabel = 'Low'; utilDot = 'red'; }
+
+  // UI responsiveness
+  const maxEvtRate = Math.max(...data.map(d => d.eventsPerSec));
+  const maxBacklog = Math.max(...data.map(d => d.uiBacklog));
+  let uiGrade, uiDot, uiCls;
+  if (maxEvtRate <= 200 && maxBacklog <= 100) {
+    uiGrade = 'Smooth'; uiDot = 'green'; uiCls = 'success';
+  } else if (maxEvtRate <= 500 || maxBacklog <= 500) {
+    uiGrade = 'Minor delays'; uiDot = 'yellow'; uiCls = 'warning';
+  } else {
+    uiGrade = 'Likely freezes'; uiDot = 'red'; uiCls = 'danger';
+  }
+
+  const utilHtml = '<span class="traffic-light"><span class="traffic-dot ' + utilDot + '"></span>' + fmtPct(avgUtil) + '</span>';
+  const uiHtml = '<span class="traffic-light"><span class="traffic-dot ' + uiDot + '"></span>' + uiGrade + '</span>';
+
+  const cards = [
+    { label: 'Total Scan Time',    value: fmtTime(totalTime),         sub: data.length + ' samples',     cls: 'primary' },
+    { label: 'Files Processed',    value: totalFiles.toLocaleString(), sub: workers + ' worker threads',  cls: 'info' },
+    { label: 'Average Speed',      value: avgSpeed.toFixed(1),        sub: 'files/sec (hashing only)',   cls: 'emerald' },
+    { label: 'Worker Utilization', value: utilHtml,                    sub: utilLabel,                     cls: utilColor },
+    { label: 'UI Responsiveness',  value: uiHtml,                     sub: '',                            cls: uiCls },
+  ];
+
+  cards.forEach(function(c) {
+    const d = document.createElement('div');
+    d.className = 'card ' + c.cls;
+    let html = '<div class="label">' + c.label + '</div>';
+    html += '<div class="value">' + c.value + '</div>';
+    if (c.sub) html += '<div class="sub">' + c.sub + '</div>';
+    d.innerHTML = html;
+    el.appendChild(d);
+  });
+}
+
+// ── Stage bar ────────────────────────────────────────────────────────
+function renderStageBar(summary, data) {
+  const track = document.getElementById('stageTrack');
+  track.innerHTML = '';
+
+  let discovery = 0, hashing = 0;
+  if (summary?.stages) {
+    discovery = summary.stages.discovery || 0;
+    hashing = summary.stages.hashing || 0;
+  } else {
+    data.forEach(d => {
+      if (d.stage === 'discovery') discovery = Math.max(discovery, num(d.wc));
+      if (d.stage === 'hashing') hashing = Math.max(hashing, num(d.wc));
+    });
+  }
+  const total = discovery + hashing || 1;
+
+  const segments = [
+    { name: 'discovery', time: discovery, label: 'Discovery' },
+    { name: 'hashing',   time: hashing,   label: 'Hashing' },
+  ].filter(s => s.time > 0);
+
+  segments.forEach(s => {
+    const pct = (s.time / total * 100);
+    const el = document.createElement('div');
+    el.className = `stage-segment ${s.name}`;
+    el.style.width = pct + '%';
+    el.textContent = pct > 12 ? `${s.label} ${fmtTime(s.time)} (${pct.toFixed(0)}%)` : fmtTime(s.time);
+    el.title = `${s.label}: ${fmtTime(s.time)} (${pct.toFixed(1)}%)`;
+    track.appendChild(el);
+  });
+}
+
+// ── Charts ───────────────────────────────────────────────────────────
+function renderCharts(data) {
+  const el = document.getElementById('charts');
+  el.innerHTML = '';
+  destroyCharts();
+
+  const bands = stageBands(data);
+  const wc = data.map(d => d.wc);
+  const workers = data[0].workers;
+
+  // Chart 1: Hashing Throughput (dual axis)
+  addChart('Hashing Throughput', {
+    type: 'line',
+    data: {
+      labels: wc,
+      datasets: [
+        { ...ds('Files/sec', data.map(d => d.throughput), C.emerald, C.emeraldFade), yAxisID: 'y' },
+        { ...ds('Total hashed', data.map(d => d.filesCum), C.muted, false), yAxisID: 'y1', borderDash: [4, 3], borderWidth: 1.5 },
+      ],
+    },
+    options: baseOpts(bands, 'Files/sec', {
+      scales: {
+        y1: {
+          position: 'right', beginAtZero: true,
+          title: { display: true, text: 'Cumulative files', color: C.muted },
+          grid: { drawOnChartArea: false },
+        },
+      },
+    }),
+  });
+
+  // Chart 2: Worker Activity
+  addChart('Worker Activity', {
+    type: 'line',
+    data: {
+      labels: wc,
+      datasets: [
+        { ...ds('Active workers', data.map(d => d.activeFutures), C.info, C.infoFade) },
+        { ...ds('Queued items', data.map(d => d.queueDepth), C.warning, C.warningFade) },
+      ],
+    },
+    options: baseOpts(bands, 'Count', {
+      plugins: {
+        annotation: {
+          annotations: {
+            ...stageAnnotations(bands),
+            workerLine: {
+              type: 'line', drawTime: 'afterDatasetsDraw',
+              yMin: workers, yMax: workers,
+              borderColor: C.muted, borderWidth: 1, borderDash: [6, 3],
+              label: {
+                display: true, content: `${workers} workers configured`,
+                position: 'start', backgroundColor: 'transparent',
+                color: C.muted, font: { size: 10 },
+              },
+            },
+          },
+        },
+      },
+    }),
+  });
+
+  // Chart 3: UI Health (dual axis)
+  addChart('UI Health', {
+    type: 'line',
+    data: {
+      labels: wc,
+      datasets: [
+        { ...ds('Events/sec', data.map(d => d.eventsPerSec), C.warning, false), yAxisID: 'y' },
+        { ...ds('Pending UI updates', data.map(d => d.uiBacklog), C.danger, C.dangerFade), yAxisID: 'y1' },
+      ],
+    },
+    options: baseOpts(bands, 'Events/sec', {
+      scales: {
+        y1: {
+          position: 'right', beginAtZero: true,
+          title: { display: true, text: 'Pending updates', color: C.muted },
+          grid: { drawOnChartArea: false },
+        },
+      },
+      plugins: {
+        annotation: {
+          annotations: {
+            ...stageAnnotations(bands),
+            smoothLine: {
+              type: 'line', drawTime: 'afterDatasetsDraw',
+              yMin: 200, yMax: 200, yScaleID: 'y',
+              borderColor: 'rgba(34,197,94,0.4)', borderWidth: 1, borderDash: [6, 3],
+              label: {
+                display: true, content: 'Smooth threshold',
+                position: 'end', backgroundColor: 'transparent',
+                color: 'rgba(34,197,94,0.6)', font: { size: 10 },
+              },
+            },
+          },
+        },
+      },
+    }),
+  });
+
+  // Chart 4: Database Performance (bar + line combo)
+  addChart('Database Performance', {
+    type: 'bar',
+    data: {
+      labels: wc,
+      datasets: [
+        {
+          label: 'DB write time (ms)', data: data.map(d => d.dbBatchMs),
+          backgroundColor: C.infoFade, borderColor: C.info,
+          borderWidth: 1, barPercentage: 1.0, categoryPercentage: 1.0,
+          yAxisID: 'y', order: 2,
+        },
+        {
+          ...ds('Lock wait (ms)', data.map(d => d.lockWaitMs), C.danger, false),
+          type: 'line', yAxisID: 'y', order: 1,
+        },
+      ],
+    },
+    options: baseOpts(bands, 'Milliseconds', {
+      plugins: {
+        annotation: {
+          annotations: {
+            ...stageAnnotations(bands),
+            contentionLine: {
+              type: 'line', drawTime: 'afterDatasetsDraw',
+              yMin: 50, yMax: 50,
+              borderColor: 'rgba(239,68,68,0.4)', borderWidth: 1, borderDash: [6, 3],
+              label: {
+                display: true, content: 'Contention warning',
+                position: 'end', backgroundColor: 'transparent',
+                color: 'rgba(239,68,68,0.6)', font: { size: 10 },
+              },
+            },
+          },
+        },
+      },
+    }),
+  });
+}
+
+// ── Health Notes ─────────────────────────────────────────────────────
+function renderHealthNotes(data, summary) {
+  const notes = [];
+  const totalTime = summary?.total_elapsed_s ?? data[data.length - 1].wc;
+  const totalFiles = summary?.files_hashed ?? data[data.length - 1].filesCum;
+  const discoveryTime = summary?.stages?.discovery ?? 0;
+  const hashingTime = summary?.stages?.hashing ?? totalTime;
+  const workers = data[0].workers;
+
+  // Worker utilization during hashing
+  const hashRows = data.filter(d => d.stage === 'hashing');
+  const avgUtil = hashRows.length > 0
+    ? hashRows.reduce((s, d) => s + d.utilization, 0) / hashRows.length : 0;
+  const avgQueueDepth = hashRows.length > 0
+    ? hashRows.reduce((s, d) => s + d.queueDepth, 0) / hashRows.length : 0;
+
+  // Discovery bottleneck
+  if (discoveryTime > 0 && hashingTime > 0 && discoveryTime > hashingTime * 0.3) {
+    const pct = (discoveryTime / totalTime * 100).toFixed(0);
+    notes.push({ type: 'warn', text: `File discovery took ${fmtTime(discoveryTime)} (${pct}% of scan time). For large folders, discovery is the bottleneck since hashing cannot start until it completes.` });
+  }
+
+  // Worker utilization
+  if (avgUtil < 0.4 && hashRows.length > 0) {
+    const idlePct = ((1 - avgUtil) * 100).toFixed(0);
+    notes.push({ type: 'warn', text: `Workers were idle ${idlePct}% of the time during hashing. This usually means disk I/O is the bottleneck. Adding more workers may not help — consider scanning from an SSD.` });
+  } else if (avgUtil > 0.9 && avgQueueDepth > workers) {
+    notes.push({ type: 'warn', text: `All ${workers} workers were fully busy with items still queued. Increasing the worker count in Settings may speed up future scans.` });
+  }
+
+  // Signal storm
+  const maxEvtRate = Math.max(...data.map(d => d.eventsPerSec));
+  if (maxEvtRate > 500) {
+    const stormRow = data.find(d => d.eventsPerSec === maxEvtRate);
+    notes.push({ type: 'err', text: `Event rate peaked at ${Math.round(maxEvtRate)}/sec during ${stormRow?.stage || 'scan'}, which can cause UI lag. This is a known area being improved.` });
+  }
+
+  // UI backlog
+  const maxBacklog = Math.max(...data.map(d => d.uiBacklog));
+  if (maxBacklog > 500) {
+    const bRow = data.find(d => d.uiBacklog === maxBacklog);
+    notes.push({ type: 'err', text: `Up to ${Math.round(maxBacklog)} UI updates were queued at once, likely causing the interface to feel sluggish during ${bRow?.stage || 'scan'}.` });
+  }
+
+  // Lock contention
+  const maxLockWait = Math.max(...data.map(d => d.lockWaitMs));
+  if (maxLockWait > 50) {
+    notes.push({ type: 'err', text: `Database lock contention reached ${maxLockWait.toFixed(1)}ms. This is unusual — consider sharing this CSV file with the developers.` });
+  }
+
+  // Slow throughput
+  const filesPerSec = hashingTime > 0 ? totalFiles / hashingTime : 0;
+  if (filesPerSec > 0 && filesPerSec < 10) {
+    notes.push({ type: 'warn', text: `Hashing throughput was only ${filesPerSec.toFixed(1)} files/sec. This is typical for mechanical hard drives or network storage. SSD storage significantly improves performance.` });
+  }
+
+  // Render
+  const container = document.getElementById('healthNotes');
+  const list = document.getElementById('healthList');
+  list.innerHTML = '';
+
+  if (notes.length === 0) {
+    container.style.display = 'block';
+    const li = document.createElement('li');
+    li.innerHTML = `<span class="note-icon ok"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></span><span>No issues detected. Scan performance looks healthy.</span>`;
+    list.appendChild(li);
+    return;
+  }
+
+  container.style.display = 'block';
+  notes.forEach(n => {
+    const li = document.createElement('li');
+    const iconCls = n.type === 'err' ? 'err' : 'warn';
+    const svg = n.type === 'err'
+      ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>'
+      : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+    li.innerHTML = `<span class="note-icon ${iconCls}">${svg}</span><span>${n.text}</span>`;
+    list.appendChild(li);
+  });
+}
+
+// ── Main entry ───────────────────────────────────────────────────────
+document.getElementById('csvInput').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  document.getElementById('fileName').textContent = file.name;
+
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    const { rows, summary } = parseCSV(ev.target.result);
+    if (rows.length === 0) { alert('No data rows found in CSV.'); return; }
+
+    const data = deriveMetrics(rows);
+    document.getElementById('emptyState').style.display = 'none';
+    document.getElementById('dashboard').style.display = 'block';
+
+    renderCards(data, summary);
+    renderStageBar(summary, data);
+    renderCharts(data);
+    renderHealthNotes(data, summary);
+  };
+  reader.readAsText(file);
+});
+</script>
+</body>
+</html>

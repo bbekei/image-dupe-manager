@@ -66,6 +66,7 @@ EXPECTED_METHODS = [
     "keep_and_delete_others",
     "apply_folder_action",
     "apply_selection_preset",
+    "apply_custom_selection",
     "get_plan_summary",
     "execute_plan",
     "clear_all_actions",
@@ -73,6 +74,7 @@ EXPECTED_METHODS = [
     "get_similarity_groups",
     "get_similarity_group_detail",
     "apply_similarity_preset",
+    "apply_custom_similarity_selection",
     "recommend_keeper",
     # Bin
     "get_bin_items",
@@ -585,3 +587,128 @@ class TestReturnShapes:
         result = api.sync_drive()
         assert isinstance(result, dict)
         assert result["status"] == "unavailable"
+
+
+# ---------------------------------------------------------------------------
+# 5. Composable sort chain — custom selection endpoints
+# ---------------------------------------------------------------------------
+
+class TestCustomSelectionEndpoints:
+    """Contract tests for apply_custom_selection and apply_custom_similarity_selection."""
+
+    def _setup_dupes(self, api, session_factory):
+        """Create a session with a duplicate group."""
+        import datetime
+        sid = session_factory()
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        hash_a = ("a" * 32)[:32]
+        f1 = api._db.insert_file(sid, "/big.jpg", 5000, "2024-06-01", now)
+        f2 = api._db.insert_file(sid, "/small.jpg", 1000, "2024-01-01", now)
+        api._db.update_pixel_hash(f1, hash_a, "/t/1.jpg")
+        api._db.update_pixel_hash(f2, hash_a, "/t/2.jpg")
+        return sid, f1, f2
+
+    def _setup_sim_group(self, api, session_factory):
+        """Create a session with a similarity group."""
+        import datetime
+        sid = session_factory()
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        f1 = api._db.insert_file(sid, "/hires.jpg", 8000, "2024-06-01", now)
+        f2 = api._db.insert_file(sid, "/lores.jpg", 1000, "2024-01-01", now)
+        api._db.update_pixel_hash(f1, ("a" * 32)[:32], "/t/1.jpg")
+        api._db.update_pixel_hash(f2, ("b" * 32)[:32], "/t/2.jpg")
+        api._db.update_perceptual_hashes_batch([
+            (f1, "aaaa", 3840, 2160),
+            (f2, "aabb", 800, 600),
+        ])
+        gid = api._db.create_similarity_group(sid, now, f1, member_count=2)
+        api._db.add_similarity_group_members_batch([(gid, f1, 0), (gid, f2, 5)])
+        return sid, gid, f1, f2
+
+    def test_apply_custom_selection_returns_shape(
+        self, api: DejaViewAPI, session_factory
+    ):
+        sid, f1, f2 = self._setup_dupes(api, session_factory)
+        result = api.apply_custom_selection(sid, [
+            {"field": "size", "ascending": False},
+        ])
+        assert "keep_count" in result
+        assert "delete_count" in result
+        assert "active_preset" in result
+        assert result["active_preset"] == "custom"
+        assert result["keep_count"] + result["delete_count"] == 2
+
+    def test_apply_custom_selection_respects_chain(
+        self, api: DejaViewAPI, session_factory
+    ):
+        sid, f1, f2 = self._setup_dupes(api, session_factory)
+        # Keep smallest file (ascending=True for size)
+        api.apply_custom_selection(sid, [
+            {"field": "size", "ascending": True},
+        ])
+        actions = api._db.get_file_actions_for_session(sid)
+        action_map = {a["file_id"]: a["action"] for a in actions}
+        assert action_map[f2] == "keep"   # 1000 bytes — smallest
+        assert action_map[f1] == "delete"  # 5000 bytes
+
+    def test_apply_custom_selection_emits_events(
+        self, api: DejaViewAPI, session_factory
+    ):
+        sid, _, _ = self._setup_dupes(api, session_factory)
+        api.apply_custom_selection(sid, [
+            {"field": "size", "ascending": False},
+        ])
+        # Check that selection:complete was emitted
+        calls = api._window.evaluate_js.call_args_list
+        js_strings = [c[0][0] for c in calls]
+        assert any("selection:complete" in s for s in js_strings)
+
+    def test_apply_custom_selection_clears_previous(
+        self, api: DejaViewAPI, session_factory
+    ):
+        sid, f1, f2 = self._setup_dupes(api, session_factory)
+        # First apply: keep largest
+        api.apply_custom_selection(sid, [{"field": "size", "ascending": False}])
+        # Second apply: keep smallest — should clear previous
+        api.apply_custom_selection(sid, [{"field": "size", "ascending": True}])
+        actions = api._db.get_file_actions_for_session(sid)
+        action_map = {a["file_id"]: a["action"] for a in actions}
+        assert action_map[f2] == "keep"   # now smallest wins
+        assert action_map[f1] == "delete"
+
+    def test_apply_custom_similarity_selection_returns_shape(
+        self, api: DejaViewAPI, session_factory
+    ):
+        sid, _, _, _ = self._setup_sim_group(api, session_factory)
+        result = api.apply_custom_similarity_selection(sid, [
+            {"field": "resolution", "ascending": False},
+        ])
+        assert "keep_count" in result
+        assert "delete_count" in result
+        assert result["active_preset"] == "custom"
+
+    def test_apply_custom_similarity_selection_respects_chain(
+        self, api: DejaViewAPI, session_factory
+    ):
+        sid, _, f1, f2 = self._setup_sim_group(api, session_factory)
+        api.apply_custom_similarity_selection(sid, [
+            {"field": "resolution", "ascending": False},
+        ])
+        actions = api._db.get_file_actions_for_session(sid)
+        action_map = {a["file_id"]: a["action"] for a in actions}
+        assert action_map[f1] == "keep"    # 3840x2160 — highest res
+        assert action_map[f2] == "delete"
+
+    def test_preset_endpoint_returns_active_preset(
+        self, api: DejaViewAPI, session_factory
+    ):
+        sid, _, _ = self._setup_dupes(api, session_factory)
+        result = api.apply_selection_preset(sid, "KEEP_LARGEST_FILE")
+        assert result["active_preset"] == "KEEP_LARGEST_FILE"
+
+    def test_similarity_preset_returns_active_preset(
+        self, api: DejaViewAPI, session_factory
+    ):
+        sid, _, _, _ = self._setup_sim_group(api, session_factory)
+        result = api.apply_similarity_preset(sid, "KEEP_HIGHEST_RESOLUTION")
+        assert result["active_preset"] == "KEEP_HIGHEST_RESOLUTION"

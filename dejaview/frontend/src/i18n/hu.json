@@ -124,6 +124,28 @@
     "no_groups": "Nem találtunk hasonló képeket. Engedélyezze a hasonlóság-felismerést a szkennelés során.",
     "compare_hint": "Kattintson bármelyik képre az összehasonlításhoz"
   },
+  "selection": {
+    "advanced_title": "Haladó kiválasztás",
+    "advanced_toggle": "Haladó",
+    "add_criterion": "Szempont hozzáadása",
+    "apply_custom": "Egyéni lánc alkalmazása",
+    "applying": "Alkalmazás...",
+    "ascending": "Legkisebb / legrégebbi megtartása",
+    "descending": "Legnagyobb / legújabb megtartása",
+    "custom": "Egyéni",
+    "fields": {
+      "size_desc": "Fájlméret (Legnagyobb)",
+      "size_asc": "Fájlméret (Legkisebb)",
+      "resolution_desc": "Felbontás (Legmagasabb)",
+      "resolution_asc": "Felbontás (Legalacsonyabb)",
+      "modified_at_desc": "Dátum (Legújabb)",
+      "modified_at_asc": "Dátum (Legrégebbi)",
+      "path_depth_desc": "Elérési út (Legmélyebb)",
+      "path_depth_asc": "Elérési út (Legrövidebb)",
+      "filename_length_desc": "Fájlnév (Leghosszabb)",
+      "filename_length_asc": "Fájlnév (Legrövidebb)"
+    }
+  },
   "bin": {
     "title": "Duplikátum Lomtár",
     "items": "{{count}} elem",

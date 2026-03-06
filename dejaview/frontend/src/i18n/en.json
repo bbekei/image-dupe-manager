@@ -124,6 +124,28 @@
     "no_groups": "No similar images found. Enable similarity detection during scan.",
     "compare_hint": "Click any image below to select it for comparison"
   },
+  "selection": {
+    "advanced_title": "Advanced Selection",
+    "advanced_toggle": "Advanced",
+    "add_criterion": "Add Criterion",
+    "apply_custom": "Apply Custom Chain",
+    "applying": "Applying...",
+    "ascending": "Keep smallest / oldest",
+    "descending": "Keep largest / newest",
+    "custom": "Custom",
+    "fields": {
+      "size_desc": "File Size (Largest)",
+      "size_asc": "File Size (Smallest)",
+      "resolution_desc": "Resolution (Highest)",
+      "resolution_asc": "Resolution (Lowest)",
+      "modified_at_desc": "Date (Newest)",
+      "modified_at_asc": "Date (Oldest)",
+      "path_depth_desc": "Path (Deepest)",
+      "path_depth_asc": "Path (Shortest)",
+      "filename_length_desc": "Filename (Longest)",
+      "filename_length_asc": "Filename (Shortest)"
+    }
+  },
   "bin": {
     "title": "Duplicates Bin",
     "items": "{{count}} items",

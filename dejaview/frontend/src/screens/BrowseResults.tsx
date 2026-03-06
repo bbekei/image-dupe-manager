@@ -1,11 +1,12 @@
 import { useEffect, useCallback, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { ChevronRight, ChevronDown, Check, Trash2, EyeOff, Wand2, FolderCheck } from 'lucide-react'
+import { ChevronRight, ChevronDown, Check, Trash2, EyeOff, Wand2, FolderCheck, Settings2 } from 'lucide-react'
 import { callBackend, useBackendEvent } from '../hooks/usePyBridge.ts'
 import { useReviewStore } from '../stores/useReviewStore.ts'
 import { useScanStore } from '../stores/useScanStore.ts'
-import type { DuplicateGroup, FileInfo, FileAction, SelectionPreset } from '../types/api.ts'
+import { CriteriaBuilder } from '../components/CriteriaBuilder.tsx'
+import type { DuplicateGroup, FileInfo, FileAction, SelectionPreset, SortCriterion, SelectionResult } from '../types/api.ts'
 
 const PAGE_SIZE = 50
 
@@ -265,6 +266,10 @@ export function BrowseResults() {
   } = useReviewStore()
   const [selectedFiles, setSelectedFiles] = useState<FileInfo[]>([])
   const [fileActions, setFileActions] = useState<Record<number, FileAction>>({})
+  const [activePreset, setActivePreset] = useState<string | null>(null)
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [selectionProgress, setSelectionProgress] = useState<{ current: number; total: number } | null>(null)
+  const [applyingPreset, setApplyingPreset] = useState(false)
   const parentRef = useRef<HTMLDivElement>(null)
 
   const loadGroups = useCallback(async () => {
@@ -311,6 +316,7 @@ export function BrowseResults() {
   }, [sessionId, setSelectedGroup])
 
   const handleFileAction = useCallback(async (fileId: number, action: FileAction, scope: 'file' | 'folder' = 'file') => {
+    setActivePreset(null)
     try {
       if (scope === 'folder') {
         // Apply action to ALL scanned files in the same folder (across all groups)
@@ -351,14 +357,44 @@ export function BrowseResults() {
     }
   }, [selectedFiles])
 
+  // Listen for selection progress/complete events
+  useBackendEvent('selection:progress', (e: CustomEvent) => {
+    setSelectionProgress({ current: e.detail.current, total: e.detail.total })
+  })
+  useBackendEvent('selection:complete', (e: CustomEvent) => {
+    setSelectionProgress(null)
+    setApplyingPreset(false)
+    setActivePreset(e.detail.active_preset)
+    if (selectedGroupHash) loadGroupDetail(selectedGroupHash)
+  })
+
   const handlePreset = useCallback(async (preset: SelectionPreset) => {
     if (!sessionId) return
+    setApplyingPreset(true)
+    setActivePreset(preset)
     try {
-      await callBackend('apply_selection_preset', sessionId, preset)
-      // Reload current group to reflect changes
+      await callBackend<SelectionResult>('apply_selection_preset', sessionId, preset)
       if (selectedGroupHash) loadGroupDetail(selectedGroupHash)
     } catch {
       // handle error
+    } finally {
+      setApplyingPreset(false)
+      setSelectionProgress(null)
+    }
+  }, [sessionId, selectedGroupHash, loadGroupDetail])
+
+  const handleCustomChain = useCallback(async (criteria: SortCriterion[]) => {
+    if (!sessionId) return
+    setApplyingPreset(true)
+    setActivePreset('custom')
+    try {
+      await callBackend<SelectionResult>('apply_custom_selection', sessionId, criteria)
+      if (selectedGroupHash) loadGroupDetail(selectedGroupHash)
+    } catch {
+      // handle error
+    } finally {
+      setApplyingPreset(false)
+      setSelectionProgress(null)
     }
   }, [sessionId, selectedGroupHash, loadGroupDetail])
 
@@ -388,18 +424,58 @@ export function BrowseResults() {
         </div>
 
         {/* Preset toolbar */}
-        <div className="px-3 py-2 border-b border-dv-border flex flex-wrap gap-1">
-          {presets.map((preset) => (
+        <div className="px-3 py-2 border-b border-dv-border space-y-2">
+          <div className="flex flex-wrap gap-1">
+            {presets.map((preset) => (
+              <button
+                key={preset}
+                onClick={() => handlePreset(preset)}
+                disabled={applyingPreset}
+                className={`flex items-center gap-1 px-2 py-1 text-xs rounded ${
+                  activePreset === preset
+                    ? 'bg-dv-primary text-white ring-2 ring-dv-primary/40'
+                    : 'bg-dv-surface hover:bg-dv-surface-hover text-dv-text-muted'
+                } disabled:opacity-50`}
+                title={t(`browse.presets.${preset}`)}
+              >
+                <Wand2 size={12} />
+                {t(`browse.presets.${preset}`)}
+              </button>
+            ))}
             <button
-              key={preset}
-              onClick={() => handlePreset(preset)}
-              className="flex items-center gap-1 px-2 py-1 text-xs bg-dv-surface hover:bg-dv-surface-hover rounded text-dv-text-muted"
-              title={t(`browse.presets.${preset}`)}
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className={`flex items-center gap-1 px-2 py-1 text-xs rounded ${
+                showAdvanced || activePreset === 'custom'
+                  ? 'bg-dv-primary text-white'
+                  : 'bg-dv-surface hover:bg-dv-surface-hover text-dv-text-muted'
+              }`}
             >
-              <Wand2 size={12} />
-              {t(`browse.presets.${preset}`)}
+              <Settings2 size={12} />
+              {t('selection.advanced_toggle')}
             </button>
-          ))}
+          </div>
+
+          {/* Progress bar */}
+          {selectionProgress && (
+            <div className="flex items-center gap-2">
+              <div className="flex-1 h-1.5 bg-dv-bg rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-dv-primary rounded-full transition-all"
+                  style={{ width: `${selectionProgress.total > 0 ? (selectionProgress.current / selectionProgress.total) * 100 : 0}%` }}
+                />
+              </div>
+              <span className="text-xs text-dv-text-muted">{t('selection.applying')}</span>
+            </div>
+          )}
+
+          {/* Advanced panel */}
+          {showAdvanced && (
+            <CriteriaBuilder
+              onApply={handleCustomChain}
+              disabled={applyingPreset}
+              progress={selectionProgress}
+            />
+          )}
         </div>
 
         <div ref={parentRef} className="flex-1 overflow-y-auto">

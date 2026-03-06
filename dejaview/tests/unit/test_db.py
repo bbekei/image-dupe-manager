@@ -1411,3 +1411,122 @@ class TestSimilarityCRUD:
         db.create_similarity_group(sid_b, _now(), fb, member_count=1)
         assert db.get_similarity_group_count(sid_a) == 1
         assert db.get_similarity_group_count(sid_b) == 2
+
+
+# ---------------------------------------------------------------------------
+# Scoped clearing + bulk fetch (Composable Sort Chain feature)
+# ---------------------------------------------------------------------------
+
+class TestScopedClearing:
+    """Tests for clear_duplicate_actions, clear_similarity_actions, get_all_duplicate_files_bulk."""
+
+    @pytest.fixture(autouse=True)
+    def _setup(self, db: Database, session_factory):
+        self.db = db
+        self.sid = session_factory("Scoped")
+        # Create duplicate group: hash_a with 2 files
+        self.hash_a = _make_hash("a")
+        self.f1 = db.insert_file(self.sid, "/dup/img1.jpg", 1000, "2024-01-01", _now())
+        self.f2 = db.insert_file(self.sid, "/dup/img2.jpg", 500, "2024-01-02", _now())
+        db.update_pixel_hash(self.f1, self.hash_a, "/thumbs/a.jpg")
+        db.update_pixel_hash(self.f2, self.hash_a, "/thumbs/a.jpg")
+        # Create a unique file (not in any duplicate group)
+        self.hash_u = _make_hash("u")
+        self.f_unique = db.insert_file(self.sid, "/unique/solo.jpg", 200, "2024-01-01", _now())
+        db.update_pixel_hash(self.f_unique, self.hash_u, "/thumbs/u.jpg")
+        # Create similarity group with f1 and f_unique
+        self.gid = db.create_similarity_group(self.sid, _now(), self.f1, member_count=2)
+        db.add_similarity_group_members_batch([
+            (self.gid, self.f1, 0),
+            (self.gid, self.f_unique, 5),
+        ])
+
+    def test_clear_duplicate_actions_only_clears_dupes(self):
+        """clear_duplicate_actions removes only duplicate-group file actions."""
+        ts = _now()
+        # Set actions on all three files
+        self.db.set_file_actions_batch([
+            (self.sid, self.f1, "keep", "file", ts),
+            (self.sid, self.f2, "delete", "file", ts),
+            (self.sid, self.f_unique, "keep", "file", ts),
+        ])
+        self.db.clear_duplicate_actions(self.sid)
+        decided = self.db.get_decided_file_ids(self.sid)
+        # f_unique action should survive (not in duplicate group)
+        assert self.f_unique in decided
+        # Duplicate group members should be cleared
+        assert self.f1 not in decided
+        assert self.f2 not in decided
+
+    def test_clear_similarity_actions_only_clears_similarity(self):
+        """clear_similarity_actions removes only similarity-group member actions."""
+        ts = _now()
+        self.db.set_file_actions_batch([
+            (self.sid, self.f1, "keep", "file", ts),
+            (self.sid, self.f2, "delete", "file", ts),
+            (self.sid, self.f_unique, "keep", "file", ts),
+        ])
+        self.db.clear_similarity_actions(self.sid)
+        decided = self.db.get_decided_file_ids(self.sid)
+        # f2 is only in duplicate group, not similarity → should survive
+        assert self.f2 in decided
+        # f1 and f_unique are similarity members → should be cleared
+        assert self.f1 not in decided
+        assert self.f_unique not in decided
+
+    def test_clear_duplicate_actions_empty_session(self):
+        """No crash when session has no actions."""
+        self.db.clear_duplicate_actions(self.sid)
+        assert self.db.get_decided_file_ids(self.sid) == set()
+
+    def test_clear_similarity_actions_empty_session(self):
+        """No crash when session has no actions."""
+        self.db.clear_similarity_actions(self.sid)
+        assert self.db.get_decided_file_ids(self.sid) == set()
+
+    def test_get_all_duplicate_files_bulk(self):
+        """Bulk fetch returns all duplicate files grouped by pixel_hash."""
+        groups = self.db.get_all_duplicate_files_bulk(self.sid)
+        assert self.hash_a in groups
+        assert self.hash_u not in groups  # unique, not a duplicate
+        files = groups[self.hash_a]
+        assert len(files) == 2
+        file_ids = {f["id"] for f in files}
+        assert file_ids == {self.f1, self.f2}
+
+    def test_get_all_duplicate_files_bulk_returns_metadata(self):
+        """Each file dict has expected keys."""
+        groups = self.db.get_all_duplicate_files_bulk(self.sid)
+        f = groups[self.hash_a][0]
+        for key in ("id", "path", "size", "modified_at", "width", "height", "pixel_hash"):
+            assert key in f, f"Missing key: {key}"
+
+    def test_get_all_duplicate_files_bulk_empty_session(self, db: Database, session_factory):
+        """Empty session returns empty dict."""
+        sid = session_factory("Empty")
+        assert db.get_all_duplicate_files_bulk(sid) == {}
+
+    def test_scoped_clears_are_independent(self):
+        """Clearing one view's actions does not affect the other view."""
+        ts = _now()
+        self.db.set_file_actions_batch([
+            (self.sid, self.f1, "keep", "file", ts),
+            (self.sid, self.f2, "delete", "file", ts),
+            (self.sid, self.f_unique, "keep", "file", ts),
+        ])
+        # Clear duplicates, then check similarity members still have actions
+        self.db.clear_duplicate_actions(self.sid)
+        decided = self.db.get_decided_file_ids(self.sid)
+        # f_unique is only a similarity member → its action from initial batch should remain
+        assert self.f_unique in decided
+
+        # Re-set all actions
+        self.db.set_file_actions_batch([
+            (self.sid, self.f1, "keep", "file", ts),
+            (self.sid, self.f2, "delete", "file", ts),
+            (self.sid, self.f_unique, "keep", "file", ts),
+        ])
+        # Clear similarity, then check duplicate members still have actions
+        self.db.clear_similarity_actions(self.sid)
+        decided = self.db.get_decided_file_ids(self.sid)
+        assert self.f2 in decided  # f2 only in duplicate group

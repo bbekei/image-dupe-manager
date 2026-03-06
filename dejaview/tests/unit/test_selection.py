@@ -160,6 +160,35 @@ class TestApplyPreset:
         assert keep == 2
         assert delete == 2
 
+    def test_keep_oldest(self, db, session_factory):
+        sid = session_factory()
+        h = "g" * 32
+        f1 = _insert_file(db, sid, "/old.jpg", 1000, "2018-03-01", h)
+        f2 = _insert_file(db, sid, "/new.jpg", 1000, "2024-06-15", h)
+
+        keep, delete = apply_preset(db, sid, SelectionPreset.KEEP_OLDEST)
+
+        actions = {r["file_id"]: r["action"] for r in db.get_file_actions_for_session(sid)}
+        assert actions[f1] == "keep"
+        assert actions[f2] == "delete"
+
+    def test_keep_highest_resolution(self, db, session_factory):
+        sid = session_factory()
+        h = "h" * 32
+        f1 = _insert_file(db, sid, "/low.jpg", 1000, "2024-01-01", h)
+        f2 = _insert_file(db, sid, "/high.jpg", 1000, "2024-01-01", h)
+        # Set resolution: f1=640x480, f2=1920x1080
+        db.update_perceptual_hashes_batch([
+            (f1, "p" * 16, 640, 480),
+            (f2, "q" * 16, 1920, 1080),
+        ])
+
+        keep, delete = apply_preset(db, sid, SelectionPreset.KEEP_HIGHEST_RESOLUTION)
+
+        actions = {r["file_id"]: r["action"] for r in db.get_file_actions_for_session(sid)}
+        assert actions[f2] == "keep"
+        assert actions[f1] == "delete"
+
     def test_filtered_hashes(self, db, session_factory):
         """Only groups in the pixel_hashes list are processed."""
         sid = session_factory()

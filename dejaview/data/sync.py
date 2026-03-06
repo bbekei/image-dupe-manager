@@ -28,6 +28,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
+_MIME_GZIP = "application/gzip"
+
 if TYPE_CHECKING:
     from data.db import Database
 
@@ -254,11 +256,11 @@ class DriveSync:
         if status_callback:
             status_callback("uploading")
         media_body = self._make_media_upload_bytes(
-            compressed, mimetype='application/gzip'
+            compressed, mimetype=_MIME_GZIP
         )
         file_metadata = {
             'name': f'{username}.json.gz',
-            'mimeType': 'application/gzip',
+            'mimeType': _MIME_GZIP,
             'appProperties': {'sha256': blob_sha256},
         }
 
@@ -299,7 +301,7 @@ class DriveSync:
             self._status = "unavailable"
             return False
 
-    def _make_media_upload_bytes(self, data: bytes, mimetype: str = 'application/gzip'):
+    def _make_media_upload_bytes(self, data: bytes, mimetype: str = _MIME_GZIP):
         """Create a MediaIoBaseUpload from raw bytes."""
         from googleapiclient.http import MediaIoBaseUpload
         stream = io.BytesIO(data)

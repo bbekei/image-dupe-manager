@@ -31,6 +31,13 @@ from core.similarity_selection import (
     apply_similarity_preset,
     recommend_keeper,
 )
+from core.sort_chain import SortCriterion
+
+_EVT_SELECTION_PROGRESS = "selection:progress"
+_EVT_SELECTION_COMPLETE = "selection:complete"
+_EVT_SCAN_DISCOVERY = "scan:discovery_progress"
+_EVT_SCAN_STATUS = "scan:status"
+_EVT_EXEC_PROGRESS = "exec:progress"
 from core.trash import purge_expired, recover, soft_delete
 from data.db import Database
 from data.export import build_export_payload, import_payload
@@ -52,8 +59,8 @@ def _rows_to_list(rows) -> list[dict]:
 
 ALLOWED_EVENTS: frozenset[str] = frozenset({
     "scan:progress",
-    "scan:discovery_progress",
-    "scan:status",
+    _EVT_SCAN_DISCOVERY,
+    _EVT_SCAN_STATUS,
     "scan:hash_complete",
     "scan:hash_batch",
     "scan:directory_hashed",
@@ -61,9 +68,11 @@ ALLOWED_EVENTS: frozenset[str] = frozenset({
     "scan:similarity_progress",
     "scan:similarity_complete",
     "scan:error",
-    "exec:progress",
+    _EVT_EXEC_PROGRESS,
     "exec:complete",
     "exec:error",
+    _EVT_SELECTION_PROGRESS,
+    _EVT_SELECTION_COMPLETE,
 })
 
 
@@ -163,7 +172,7 @@ class DejaViewAPI:
 
         max_workers = self._db.get_max_scan_workers()
         perf_monitor = None
-        if os.environ.get("DEJAVIEW_PERF"):
+        if os.environ.get("DEJAVIEW_PERF") or self._db.get_perf_logging():
             from core.perf_monitor import PerformanceMonitor
             perf_monitor = PerformanceMonitor(
                 output_dir=self._app_dir, enabled=True
@@ -200,7 +209,7 @@ class DejaViewAPI:
             # Emit final discovery count when transitioning to hashing
             if self._scan_phase not in ("hashing", "similarity"):
                 self._emit(
-                    "scan:discovery_progress",
+                    _EVT_SCAN_DISCOVERY,
                     {"discovered": self._scan_discovered},
                 )
             self._scan_current = c
@@ -213,7 +222,7 @@ class DejaViewAPI:
             # Throttle event emission to avoid flooding the frontend
             if self._scan_discovered <= 5 or self._scan_discovered % 10 == 0:
                 self._emit(
-                    "scan:discovery_progress",
+                    _EVT_SCAN_DISCOVERY,
                     {"discovered": self._scan_discovered},
                 )
 
@@ -230,12 +239,12 @@ class DejaViewAPI:
         def on_status(status, message=""):
             self._scan_phase = status
             self._scan_message = message
-            self._emit("scan:status", {"status": status, "message": message})
+            self._emit(_EVT_SCAN_STATUS, {"status": status, "message": message})
 
         def on_info_message(message):
             # Informational text only — don't overwrite _scan_phase
             self._scan_message = message
-            self._emit("scan:status", {"status": "info", "message": message})
+            self._emit(_EVT_SCAN_STATUS, {"status": "info", "message": message})
 
         scanner.progress_updated.connect(on_progress, DC)
         scanner.file_discovered.connect(on_file_discovered, DC)
@@ -591,13 +600,47 @@ class DejaViewAPI:
     def apply_selection_preset(
         self, session_id: int, preset: str, group_ids: list[str] | None = None
     ) -> dict:
-        """Apply a smart selection preset to specified groups."""
+        """Apply a smart selection preset to specified groups.
+
+        Clears existing duplicate actions before applying (scoped clear).
+        """
         preset_enum = SelectionPreset[preset]
+        if group_ids is None:
+            self._db.clear_duplicate_actions(session_id)
         keep, delete = apply_preset(
             self._db, session_id, preset_enum,
             pixel_hashes=group_ids,
+            progress_callback=lambda c, t: self._emit(
+                _EVT_SELECTION_PROGRESS, {"current": c, "total": t}
+            ),
         )
-        return {"keep_count": keep, "delete_count": delete}
+        self._emit(_EVT_SELECTION_COMPLETE, {
+            "keep_count": keep, "delete_count": delete,
+            "active_preset": preset,
+        })
+        return {"keep_count": keep, "delete_count": delete, "active_preset": preset}
+
+    def apply_custom_selection(
+        self, session_id: int, criteria: list[dict]
+    ) -> dict:
+        """Apply a custom sort-chain to duplicate groups.
+
+        Args:
+            criteria: List of {"field": str, "ascending": bool} dicts.
+        """
+        chain = [SortCriterion(c["field"], c["ascending"]) for c in criteria]
+        self._db.clear_duplicate_actions(session_id)
+        keep, delete = apply_preset(
+            self._db, session_id, chain,
+            progress_callback=lambda c, t: self._emit(
+                _EVT_SELECTION_PROGRESS, {"current": c, "total": t}
+            ),
+        )
+        self._emit(_EVT_SELECTION_COMPLETE, {
+            "keep_count": keep, "delete_count": delete,
+            "active_preset": "custom",
+        })
+        return {"keep_count": keep, "delete_count": delete, "active_preset": "custom"}
 
     def get_plan_summary(self, session_id: int) -> dict:
         """Return all planned actions for review before execution."""
@@ -641,7 +684,7 @@ class DejaViewAPI:
         # Uses DirectConnection so handlers run in PlanExecutor's thread
         # (no Qt event loop in pywebview's main thread).
         executor.progress_updated.connect(
-            lambda c, t: self._emit("exec:progress", {
+            lambda c, t: self._emit(_EVT_EXEC_PROGRESS, {
                 "current": c, "total": t, "action": "cleanup", "file_path": "",
             }),
             DC,
@@ -660,13 +703,13 @@ class DejaViewAPI:
             DC,
         )
         executor.log_message.connect(
-            lambda msg: self._emit("exec:progress", {
+            lambda msg: self._emit(_EVT_EXEC_PROGRESS, {
                 "current": 0, "total": 0, "action": "log", "file_path": msg,
             }),
             DC,
         )
         executor.stage_changed.connect(
-            lambda stage: self._emit("exec:progress", {
+            lambda stage: self._emit(_EVT_EXEC_PROGRESS, {
                 "current": 0, "total": 0, "action": stage, "file_path": "",
             }),
             DC,
@@ -719,12 +762,46 @@ class DejaViewAPI:
         preset: str,
         group_ids: list[int] | None = None,
     ) -> dict:
-        """Apply selection preset to similarity groups."""
+        """Apply selection preset to similarity groups.
+
+        Clears existing similarity actions before applying (scoped clear).
+        """
         preset_enum = SimilarityPreset[preset]
+        if group_ids is None:
+            self._db.clear_similarity_actions(session_id)
         keep, delete = apply_similarity_preset(
-            self._db, session_id, preset_enum, group_ids=group_ids
+            self._db, session_id, preset_enum, group_ids=group_ids,
+            progress_callback=lambda c, t: self._emit(
+                _EVT_SELECTION_PROGRESS, {"current": c, "total": t}
+            ),
         )
-        return {"keep_count": keep, "delete_count": delete}
+        self._emit(_EVT_SELECTION_COMPLETE, {
+            "keep_count": keep, "delete_count": delete,
+            "active_preset": preset,
+        })
+        return {"keep_count": keep, "delete_count": delete, "active_preset": preset}
+
+    def apply_custom_similarity_selection(
+        self, session_id: int, criteria: list[dict]
+    ) -> dict:
+        """Apply a custom sort-chain to similarity groups.
+
+        Args:
+            criteria: List of {"field": str, "ascending": bool} dicts.
+        """
+        chain = [SortCriterion(c["field"], c["ascending"]) for c in criteria]
+        self._db.clear_similarity_actions(session_id)
+        keep, delete = apply_similarity_preset(
+            self._db, session_id, chain,
+            progress_callback=lambda c, t: self._emit(
+                _EVT_SELECTION_PROGRESS, {"current": c, "total": t}
+            ),
+        )
+        self._emit(_EVT_SELECTION_COMPLETE, {
+            "keep_count": keep, "delete_count": delete,
+            "active_preset": "custom",
+        })
+        return {"keep_count": keep, "delete_count": delete, "active_preset": "custom"}
 
     def recommend_keeper(self, files: list[dict]) -> dict:
         """Return the recommended file to keep and the reason."""

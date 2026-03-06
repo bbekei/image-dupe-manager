@@ -1,10 +1,11 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Images, Star, Check, ChevronDown, Trash2, EyeOff, Wand2 } from 'lucide-react'
+import { Images, Star, Check, ChevronDown, Trash2, EyeOff, Wand2, Settings2 } from 'lucide-react'
 import { ReactCompareSlider, ReactCompareSliderImage } from 'react-compare-slider'
-import { callBackend } from '../hooks/usePyBridge.ts'
+import { callBackend, useBackendEvent } from '../hooks/usePyBridge.ts'
 import { useScanStore } from '../stores/useScanStore.ts'
-import type { SimilarityGroupSummary, SimilarityGroupsPage, SimilarityGroup, FileInfo, FileAction, KeeperRecommendation, SelectionPreset } from '../types/api.ts'
+import { CriteriaBuilder } from '../components/CriteriaBuilder.tsx'
+import type { SimilarityGroupSummary, SimilarityGroupsPage, SimilarityGroup, FileInfo, FileAction, KeeperRecommendation, SelectionPreset, SortCriterion, SelectionResult } from '../types/api.ts'
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B'
@@ -34,6 +35,10 @@ export function SimilarityReview() {
   const [fileActions, setFileActions] = useState<Record<number, FileAction>>({})
   const [loading, setLoading] = useState(true)
   const [detailLoading, setDetailLoading] = useState(false)
+  const [activePreset, setActivePreset] = useState<string | null>(null)
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [selectionProgress, setSelectionProgress] = useState<{ current: number; total: number } | null>(null)
+  const [applyingPreset, setApplyingPreset] = useState(false)
 
   // Track which pages of summaries we've loaded
   const loadedPages = useRef(new Set<number>())
@@ -154,6 +159,7 @@ export function SimilarityReview() {
   }
 
   const handleFileAction = useCallback(async (fileId: number, action: FileAction) => {
+    setActivePreset(null)
     try {
       const result = await callBackend<{ actions: Record<string, FileAction> }>(
         'set_file_action', fileId, action, 'file',
@@ -186,20 +192,53 @@ export function SimilarityReview() {
 
   const [keepMenuOpenId, setKeepMenuOpenId] = useState<number | null>(null)
 
+  // Listen for selection progress/complete events
+  useBackendEvent('selection:progress', (e: CustomEvent) => {
+    setSelectionProgress({ current: e.detail.current, total: e.detail.total })
+  })
+  useBackendEvent('selection:complete', (e: CustomEvent) => {
+    setSelectionProgress(null)
+    setApplyingPreset(false)
+    setActivePreset(e.detail.active_preset)
+  })
+
+  const reloadAfterPreset = useCallback(async () => {
+    loadedPages.current.clear()
+    setGroupSummaries([])
+    await loadSummaryPage(Math.floor(selectedIdx / PAGE_SIZE))
+    const summary = groupSummaries[selectedIdx]
+    if (summary) loadDetail(summary.id)
+  }, [selectedIdx, groupSummaries, loadSummaryPage, loadDetail])
+
   const handlePreset = useCallback(async (preset: SelectionPreset) => {
     if (!sessionId) return
+    setApplyingPreset(true)
+    setActivePreset(preset)
     try {
-      await callBackend('apply_similarity_preset', sessionId, preset)
-      // Reload: reset summaries and re-fetch current page + detail
-      loadedPages.current.clear()
-      setGroupSummaries([])
-      await loadSummaryPage(Math.floor(selectedIdx / PAGE_SIZE))
-      const summary = groupSummaries[selectedIdx]
-      if (summary) loadDetail(summary.id)
+      await callBackend<SelectionResult>('apply_similarity_preset', sessionId, preset)
+      await reloadAfterPreset()
     } catch {
       // handle error
+    } finally {
+      setApplyingPreset(false)
+      setSelectionProgress(null)
     }
-  }, [sessionId, selectedIdx, groupSummaries, loadSummaryPage, loadDetail])
+  }, [sessionId, reloadAfterPreset])
+
+  const handleCustomChain = useCallback(async (criteria: SortCriterion[]) => {
+    if (!sessionId) return
+    setApplyingPreset(true)
+    setActivePreset('custom')
+    try {
+      await callBackend<SelectionResult>('apply_custom_similarity_selection', sessionId, criteria)
+      await reloadAfterPreset()
+    } catch {
+      // handle error
+    } finally {
+      setApplyingPreset(false)
+      setSelectionProgress(null)
+    }
+  }, [sessionId, reloadAfterPreset])
 
   if (loading) {
     return <div className="text-dv-text-muted p-8 text-center">{t('common.loading')}</div>
@@ -228,18 +267,58 @@ export function SimilarityReview() {
         </div>
         <div className="flex items-center gap-4">
           {/* Preset toolbar */}
-          <div className="flex flex-wrap gap-1">
-            {presets.map((preset) => (
+          <div className="space-y-2">
+            <div className="flex flex-wrap gap-1">
+              {presets.map((preset) => (
+                <button
+                  key={preset}
+                  onClick={() => handlePreset(preset)}
+                  disabled={applyingPreset}
+                  className={`flex items-center gap-1 px-2 py-1 text-xs rounded ${
+                    activePreset === preset
+                      ? 'bg-dv-primary text-white ring-2 ring-dv-primary/40'
+                      : 'bg-dv-surface hover:bg-dv-surface-hover text-dv-text-muted'
+                  } disabled:opacity-50`}
+                  title={t(`browse.presets.${preset}`)}
+                >
+                  <Wand2 size={12} />
+                  {t(`browse.presets.${preset}`)}
+                </button>
+              ))}
               <button
-                key={preset}
-                onClick={() => handlePreset(preset)}
-                className="flex items-center gap-1 px-2 py-1 text-xs bg-dv-surface hover:bg-dv-surface-hover rounded text-dv-text-muted"
-                title={t(`browse.presets.${preset}`)}
+                onClick={() => setShowAdvanced(!showAdvanced)}
+                className={`flex items-center gap-1 px-2 py-1 text-xs rounded ${
+                  showAdvanced || activePreset === 'custom'
+                    ? 'bg-dv-primary text-white'
+                    : 'bg-dv-surface hover:bg-dv-surface-hover text-dv-text-muted'
+                }`}
               >
-                <Wand2 size={12} />
-                {t(`browse.presets.${preset}`)}
+                <Settings2 size={12} />
+                {t('selection.advanced_toggle')}
               </button>
-            ))}
+            </div>
+
+            {/* Progress bar */}
+            {selectionProgress && (
+              <div className="flex items-center gap-2">
+                <div className="flex-1 h-1.5 bg-dv-bg rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-dv-primary rounded-full transition-all"
+                    style={{ width: `${selectionProgress.total > 0 ? (selectionProgress.current / selectionProgress.total) * 100 : 0}%` }}
+                  />
+                </div>
+                <span className="text-xs text-dv-text-muted">{t('selection.applying')}</span>
+              </div>
+            )}
+
+            {/* Advanced panel */}
+            {showAdvanced && (
+              <CriteriaBuilder
+                onApply={handleCustomChain}
+                disabled={applyingPreset}
+                progress={selectionProgress}
+              />
+            )}
           </div>
 
           {/* Group navigation */}

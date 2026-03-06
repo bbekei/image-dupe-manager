@@ -755,11 +755,12 @@ class Database:
     ) -> list[sqlite3.Row]:
         """Return all active files for a single pixel_hash cluster.
 
-        Returns rows with: id, path, size, modified_at, thumbnail_path.
+        Returns rows with: id, path, size, modified_at, thumbnail_path,
+        width, height.
         """
         return self.conn.execute(
             """
-            SELECT id, path, size, modified_at, thumbnail_path
+            SELECT id, path, size, modified_at, thumbnail_path, width, height
             FROM files
             WHERE session_id = ? AND pixel_hash = ? AND status = 'active'
             ORDER BY size DESC, modified_at DESC
@@ -1155,6 +1156,70 @@ class Database:
             (session_id,),
         )
         self.conn.commit()
+
+    def clear_duplicate_actions(self, session_id: int) -> None:
+        """Remove actions only for files in duplicate groups (2+ same pixel_hash)."""
+        self.conn.execute(
+            """
+            DELETE FROM file_actions
+            WHERE session_id = ? AND file_id IN (
+                SELECT f.id FROM files f
+                WHERE f.session_id = ?
+                  AND f.status = 'active'
+                  AND f.pixel_hash IN (
+                      SELECT pixel_hash FROM duplicate_groups
+                      WHERE session_id = ?
+                  )
+            )
+            """,
+            (session_id, session_id, session_id),
+        )
+        self.conn.commit()
+
+    def clear_similarity_actions(self, session_id: int) -> None:
+        """Remove actions only for files that are members of similarity groups."""
+        self.conn.execute(
+            """
+            DELETE FROM file_actions
+            WHERE session_id = ? AND file_id IN (
+                SELECT sgm.file_id
+                FROM similarity_group_members sgm
+                JOIN similarity_groups sg ON sg.id = sgm.group_id
+                WHERE sg.session_id = ?
+            )
+            """,
+            (session_id, session_id),
+        )
+        self.conn.commit()
+
+    def get_all_duplicate_files_bulk(
+        self, session_id: int
+    ) -> dict[str, list[dict]]:
+        """Return {pixel_hash: [file_dict, ...]} for all duplicate groups.
+
+        Single query replaces N per-group get_cluster_files() calls.
+        Each file_dict has: id, path, size, modified_at, width, height,
+        pixel_hash, thumbnail_path.
+        """
+        rows = self.conn.execute(
+            """
+            SELECT f.id, f.path, f.size, f.modified_at, f.width, f.height,
+                   f.pixel_hash, f.thumbnail_path
+            FROM files f
+            WHERE f.session_id = ? AND f.status = 'active'
+              AND f.pixel_hash IN (
+                  SELECT pixel_hash FROM duplicate_groups
+                  WHERE session_id = ?
+              )
+            ORDER BY f.pixel_hash, f.size DESC, f.modified_at DESC
+            """,
+            (session_id, session_id),
+        ).fetchall()
+        groups: dict[str, list[dict]] = {}
+        for r in rows:
+            d = dict(r)
+            groups.setdefault(d["pixel_hash"], []).append(d)
+        return groups
 
     # ------------------------------------------------------------------
     # Soft deletes (UX Redesign Phase 2 — nondestructive file removal)
