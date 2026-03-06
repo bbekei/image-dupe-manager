@@ -26,8 +26,11 @@ log = logging.getLogger(__name__)
 
 
 def _app_dir() -> Path:
-    """Return %APPDATA%\\DejaView, creating it if needed."""
-    base = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
+    """Return the platform-appropriate app data directory, creating it if needed."""
+    if sys.platform == "darwin":
+        base = Path.home() / "Library" / "Application Support"
+    else:
+        base = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
     app_dir = base / "DejaView"
     app_dir.mkdir(parents=True, exist_ok=True)
     return app_dir
