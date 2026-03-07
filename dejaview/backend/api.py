@@ -370,9 +370,10 @@ class DejaViewAPI:
         offset: int = 0,
         limit: int = 50,
         filters: dict | None = None,
-    ) -> list[dict]:
+    ) -> dict:
         """Paginated query returning duplicate groups with file metadata."""
         groups_rows = self._db.get_duplicate_groups(session_id)
+        total_count = len(groups_rows)
         result = []
         for i, g in enumerate(groups_rows):
             if i < offset:
@@ -386,7 +387,7 @@ class DejaViewAPI:
                 "file_count": g["file_count"],
                 "files": _rows_to_list(files),
             })
-        return result
+        return {"groups": result, "total_count": total_count}
 
     def get_group_detail(self, session_id: int, pixel_hash: str) -> list[dict]:
         """Return full metadata for all files in a specific duplicate group.

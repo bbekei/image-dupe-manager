@@ -529,12 +529,16 @@ class TestReturnShapes:
             assert key in result, f"get_plan_summary missing key: {key}"
         assert isinstance(result["actions"], list)
 
-    def test_get_duplicate_groups_returns_list(
+    def test_get_duplicate_groups_returns_page(
         self, api: DejaViewAPI, session_factory
     ):
         sid = session_factory()
         result = api.get_duplicate_groups(sid)
-        assert isinstance(result, list)
+        assert isinstance(result, dict)
+        assert "groups" in result
+        assert "total_count" in result
+        assert isinstance(result["groups"], list)
+        assert isinstance(result["total_count"], int)
 
     def test_get_bin_items_returns_list(
         self, api: DejaViewAPI, session_factory

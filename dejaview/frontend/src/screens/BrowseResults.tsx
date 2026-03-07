@@ -6,7 +6,7 @@ import { callBackend, useBackendEvent } from '../hooks/usePyBridge.ts'
 import { useReviewStore } from '../stores/useReviewStore.ts'
 import { useScanStore } from '../stores/useScanStore.ts'
 import { CriteriaBuilder } from '../components/CriteriaBuilder.tsx'
-import type { DuplicateGroup, FileInfo, FileAction, SelectionPreset, SortCriterion, SelectionResult } from '../types/api.ts'
+import type { DuplicateGroup, DuplicateGroupsPage, FileInfo, FileAction, SelectionPreset, SortCriterion, SelectionResult } from '../types/api.ts'
 
 const PAGE_SIZE = 50
 
@@ -261,6 +261,7 @@ export function BrowseResults() {
     selectedGroupHash,
     loading,
     setGroups,
+    appendGroups,
     setSelectedGroup,
     setLoading,
   } = useReviewStore()
@@ -270,25 +271,44 @@ export function BrowseResults() {
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [selectionProgress, setSelectionProgress] = useState<{ current: number; total: number } | null>(null)
   const [applyingPreset, setApplyingPreset] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
   const parentRef = useRef<HTMLDivElement>(null)
 
   const loadGroups = useCallback(async () => {
     if (!sessionId) return
     setLoading(true)
     try {
-      const result = await callBackend<DuplicateGroup[]>(
+      const result = await callBackend<DuplicateGroupsPage>(
         'get_duplicate_groups',
         sessionId,
         0,
         PAGE_SIZE,
       )
-      setGroups(result, result.length)
+      setGroups(result.groups, result.total_count)
     } catch {
       // handle error
     } finally {
       setLoading(false)
     }
   }, [sessionId, setGroups, setLoading])
+
+  const loadMore = useCallback(async () => {
+    if (!sessionId || loadingMore || groups.length >= totalGroups) return
+    setLoadingMore(true)
+    try {
+      const result = await callBackend<DuplicateGroupsPage>(
+        'get_duplicate_groups',
+        sessionId,
+        groups.length,
+        PAGE_SIZE,
+      )
+      appendGroups(result.groups)
+    } catch {
+      // handle error
+    } finally {
+      setLoadingMore(false)
+    }
+  }, [sessionId, loadingMore, groups.length, totalGroups, appendGroups])
 
   useEffect(() => { loadGroups() }, [loadGroups])
 
@@ -478,7 +498,16 @@ export function BrowseResults() {
           )}
         </div>
 
-        <div ref={parentRef} className="flex-1 overflow-y-auto">
+        <div
+          ref={parentRef}
+          className="flex-1 overflow-y-auto"
+          onScroll={(e) => {
+            const el = e.currentTarget
+            if (el.scrollHeight - el.scrollTop - el.clientHeight < 200) {
+              loadMore()
+            }
+          }}
+        >
           {loading ? (
             <div className="p-4 text-center text-dv-text-muted">{t('common.loading')}</div>
           ) : (
@@ -506,6 +535,17 @@ export function BrowseResults() {
                 )
               })}
             </div>
+          )}
+          {loadingMore && (
+            <div className="p-3 text-center text-xs text-dv-text-muted">{t('common.loading')}</div>
+          )}
+          {!loading && groups.length < totalGroups && !loadingMore && (
+            <button
+              onClick={loadMore}
+              className="w-full p-2 text-xs text-dv-text-muted hover:bg-dv-surface-hover"
+            >
+              {t('browse.load_more', { loaded: groups.length, total: totalGroups })}
+            </button>
           )}
         </div>
       </div>

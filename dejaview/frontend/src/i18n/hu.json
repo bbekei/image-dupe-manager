@@ -87,7 +87,8 @@
       "KEEP_HIGHEST_RESOLUTION": "Legnagyobb felbontás megtartása"
     },
     "master_copy": "Mesterpéldány",
-    "no_duplicates": "Nem találtunk duplikátumokat ebben a munkamenetben."
+    "no_duplicates": "Nem találtunk duplikátumokat ebben a munkamenetben.",
+    "load_more": "{{loaded}} / {{total}} csoport megjelenítve — görgessen vagy kattintson a továbbiak betöltéséhez"
   },
   "plan": {
     "title": "Terv áttekintése",
@@ -122,7 +123,10 @@
     "recommended_keeper": "Ajánlott: Tartsa meg ezt a fájlt",
     "reason": "Ok: {{reason}}",
     "no_groups": "Nem találtunk hasonló képeket. Engedélyezze a hasonlóság-felismerést a szkennelés során.",
-    "compare_hint": "Kattintson bármelyik képre az összehasonlításhoz"
+    "compare_hint": "Kattintson bármelyik képre az összehasonlításhoz",
+    "jump_to_group": "Kattintson egy adott csoportra ugráshoz",
+    "first_group": "Első csoport",
+    "last_group": "Utolsó csoport"
   },
   "selection": {
     "advanced_title": "Haladó kiválasztás",

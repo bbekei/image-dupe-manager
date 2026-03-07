@@ -145,8 +145,10 @@ class TestBrowseFlow:
     def test_get_duplicate_groups_returns_correct_groups(self, populated_session):
         api, db, sid, scan_dir, trash_root, fids = populated_session
 
-        groups = api.get_duplicate_groups(sid)
+        result = api.get_duplicate_groups(sid)
+        groups = result["groups"]
 
+        assert result["total_count"] == 2
         assert len(groups) == 2
         hashes = {g["pixel_hash"] for g in groups}
         assert hashes == {"hash_aaa", "hash_bbb"}
@@ -160,9 +162,10 @@ class TestBrowseFlow:
         page1 = api.get_duplicate_groups(sid, offset=0, limit=1)
         page2 = api.get_duplicate_groups(sid, offset=1, limit=1)
 
-        assert len(page1) == 1
-        assert len(page2) == 1
-        assert page1[0]["pixel_hash"] != page2[0]["pixel_hash"]
+        assert page1["total_count"] == 2
+        assert len(page1["groups"]) == 1
+        assert len(page2["groups"]) == 1
+        assert page1["groups"][0]["pixel_hash"] != page2["groups"][0]["pixel_hash"]
 
     def test_get_group_detail_returns_file_metadata(self, populated_session):
         api, db, sid, scan_dir, trash_root, fids = populated_session
@@ -572,7 +575,8 @@ class TestFullPipelineThroughAPI:
         assert summary["total_groups"] == 2
 
         # 2. Browse: load groups
-        groups = api.get_duplicate_groups(sid)
+        result = api.get_duplicate_groups(sid)
+        groups = result["groups"]
         assert len(groups) == 2
 
         # 3. Browse: inspect group A

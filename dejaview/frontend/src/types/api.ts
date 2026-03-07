@@ -48,6 +48,11 @@ export interface DuplicateGroup {
   files: FileInfo[]
 }
 
+export interface DuplicateGroupsPage {
+  groups: DuplicateGroup[]
+  total_count: number
+}
+
 export interface FilterCriteria {
   folder?: string
   date_from?: string
@@ -250,7 +255,7 @@ export interface PyWebViewAPI {
   get_scan_progress(): Promise<ScanProgress>
 
   // Duplicate Groups
-  get_duplicate_groups(session_id: number, offset: number, limit: number, filters?: FilterCriteria): Promise<DuplicateGroup[]>
+  get_duplicate_groups(session_id: number, offset: number, limit: number, filters?: FilterCriteria): Promise<DuplicateGroupsPage>
   get_group_detail(session_id: number, pixel_hash: string): Promise<FileInfo[]>
   set_file_action(file_id: number, action: FileAction, scope: ActionScope): Promise<{ actions: Record<string, FileAction> }>
   keep_and_delete_others(keep_file_id: number, group_file_ids: number[]): Promise<{ actions: Record<string, FileAction> }>

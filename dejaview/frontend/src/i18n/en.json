@@ -87,7 +87,8 @@
       "KEEP_HIGHEST_RESOLUTION": "Keep Highest Resolution"
     },
     "master_copy": "Master Copy",
-    "no_duplicates": "No duplicates found in this session."
+    "no_duplicates": "No duplicates found in this session.",
+    "load_more": "Showing {{loaded}} of {{total}} groups — click or scroll to load more"
   },
   "plan": {
     "title": "Plan Review",
@@ -122,7 +123,10 @@
     "recommended_keeper": "Recommended: Keep this file",
     "reason": "Reason: {{reason}}",
     "no_groups": "No similar images found. Enable similarity detection during scan.",
-    "compare_hint": "Click any image below to select it for comparison"
+    "compare_hint": "Click any image below to select it for comparison",
+    "jump_to_group": "Click to jump to a specific group",
+    "first_group": "First group",
+    "last_group": "Last group"
   },
   "selection": {
     "advanced_title": "Advanced Selection",

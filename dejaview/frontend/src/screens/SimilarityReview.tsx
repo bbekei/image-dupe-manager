@@ -39,6 +39,7 @@ export function SimilarityReview() {
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [selectionProgress, setSelectionProgress] = useState<{ current: number; total: number } | null>(null)
   const [applyingPreset, setApplyingPreset] = useState(false)
+  const [jumpInput, setJumpInput] = useState<string | null>(null)
 
   // Track which pages of summaries we've loaded
   const loadedPages = useRef(new Set<number>())
@@ -322,7 +323,15 @@ export function SimilarityReview() {
           </div>
 
           {/* Group navigation */}
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              onClick={() => setSelectedIdx(0)}
+              disabled={selectedIdx === 0}
+              className="px-2 py-1.5 bg-dv-surface hover:bg-dv-surface-hover border border-dv-border rounded-lg text-sm text-dv-text disabled:opacity-30"
+              title={t('similarity.first_group')}
+            >
+              &#x21E4;
+            </button>
             <button
               onClick={() => setSelectedIdx(Math.max(0, selectedIdx - 1))}
               disabled={selectedIdx === 0}
@@ -330,15 +339,49 @@ export function SimilarityReview() {
             >
               {t('common.back')}
             </button>
-            <span className="text-sm text-dv-text-muted px-2">
-              {selectedIdx + 1} / {totalGroups}
-            </span>
+            {jumpInput !== null ? (
+              <input
+                type="number"
+                min={1}
+                max={totalGroups}
+                autoFocus
+                className="w-16 px-2 py-1 text-sm text-center bg-dv-bg border border-dv-primary rounded text-dv-text"
+                value={jumpInput}
+                onChange={(e) => setJumpInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    const n = parseInt(jumpInput, 10)
+                    if (n >= 1 && n <= totalGroups) setSelectedIdx(n - 1)
+                    setJumpInput(null)
+                  } else if (e.key === 'Escape') {
+                    setJumpInput(null)
+                  }
+                }}
+                onBlur={() => setJumpInput(null)}
+              />
+            ) : (
+              <button
+                onClick={() => setJumpInput(String(selectedIdx + 1))}
+                className="text-sm text-dv-text-muted px-2 py-1 hover:bg-dv-surface-hover rounded cursor-pointer"
+                title={t('similarity.jump_to_group')}
+              >
+                {selectedIdx + 1} / {totalGroups}
+              </button>
+            )}
             <button
               onClick={() => setSelectedIdx(Math.min(totalGroups - 1, selectedIdx + 1))}
               disabled={selectedIdx === totalGroups - 1}
               className="px-3 py-1.5 bg-dv-surface hover:bg-dv-surface-hover border border-dv-border rounded-lg text-sm text-dv-text disabled:opacity-30"
             >
               {t('common.next')}
+            </button>
+            <button
+              onClick={() => setSelectedIdx(totalGroups - 1)}
+              disabled={selectedIdx === totalGroups - 1}
+              className="px-2 py-1.5 bg-dv-surface hover:bg-dv-surface-hover border border-dv-border rounded-lg text-sm text-dv-text disabled:opacity-30"
+              title={t('similarity.last_group')}
+            >
+              &#x21E5;
             </button>
           </div>
         </div>
