@@ -233,6 +233,29 @@ export interface ExecCompleteEvent {
   summary: string
 }
 
+// -- Migration --
+
+export interface BreakingChange {
+  version: number
+  description: string
+  reason_key: string
+}
+
+export interface MigrationStatus {
+  needed: boolean
+  from_version: number
+  to_version: number
+  breaking_changes: BreakingChange[]
+  backup_path: string
+  app_version: string
+}
+
+export interface MigrationConfirmResult {
+  ok: boolean
+  error?: string
+  validation_errors?: string[]
+}
+
 // -- pywebview API surface --
 
 export interface ScanProgress {
@@ -245,6 +268,11 @@ export interface ScanProgress {
 }
 
 export interface PyWebViewAPI {
+  // Version & Migration
+  get_app_version(): Promise<string>
+  get_migration_status(): Promise<MigrationStatus>
+  confirm_migration(): Promise<MigrationConfirmResult>
+
   // Scan & Session
   start_scan(folders: string[], session_name: string, enable_similarity: boolean): Promise<number>
   pause_scan(): Promise<void>

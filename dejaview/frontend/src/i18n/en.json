@@ -239,5 +239,16 @@
     "path": "Path",
     "resolution": "Resolution",
     "unknown": "Unknown"
+  },
+  "migration": {
+    "title": "Database Update Required",
+    "description": "Your database needs to be updated for this version of DejaView.",
+    "breaking_warning": "The following changes require a rescan of your image library:",
+    "backup_notice": "A backup of your database has been saved to: {{path}}",
+    "confirm": "Update Database",
+    "cancel": "Exit",
+    "success": "Database updated successfully.",
+    "error": "Database update failed: {{error}}",
+    "rescan_similarity": "Similarity data format changed. Existing similarity groups will be cleared."
   }
 }

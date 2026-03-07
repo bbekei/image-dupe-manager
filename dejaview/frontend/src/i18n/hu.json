@@ -239,5 +239,16 @@
     "path": "Útvonal",
     "resolution": "Felbontás",
     "unknown": "Ismeretlen"
+  },
+  "migration": {
+    "title": "Adatbázis frissítés szükséges",
+    "description": "Az adatbázist frissíteni kell a DejaView ezen verziójához.",
+    "breaking_warning": "A következő változtatások a képkönyvtár újraszkennelését igénylik:",
+    "backup_notice": "Az adatbázis biztonsági mentése ide került: {{path}}",
+    "confirm": "Adatbázis frissítése",
+    "cancel": "Kilépés",
+    "success": "Az adatbázis sikeresen frissítve.",
+    "error": "Az adatbázis frissítése sikertelen: {{error}}",
+    "rescan_similarity": "A hasonlósági adatok formátuma megváltozott. A meglévő hasonlósági csoportok törlésre kerülnek."
   }
 }

@@ -39,8 +39,9 @@ _EVT_SCAN_DISCOVERY = "scan:discovery_progress"
 _EVT_SCAN_STATUS = "scan:status"
 _EVT_EXEC_PROGRESS = "exec:progress"
 from core.trash import purge_expired, recover, soft_delete
-from data.db import Database
+from data.db import Database, MigrationResult
 from data.export import build_export_payload, import_payload
+from version import APP_VERSION
 
 log = logging.getLogger(__name__)
 
@@ -108,12 +109,14 @@ class DejaViewAPI:
         trash_root: Path,
         app_dir: Path,
         drive_sync=None,
+        migration_result: MigrationResult | None = None,
     ):
         self._db = db
         self._thumb_dir = thumb_dir
         self._trash_root = trash_root
         self._app_dir = app_dir
         self._drive_sync = drive_sync
+        self._migration_result = migration_result
         self._scanner = None
         self._executor = None
         self._window: Optional[webview.Window] = None
@@ -135,6 +138,46 @@ class DejaViewAPI:
     def _emit(self, event_name: str, detail: dict) -> None:
         if self._window:
             _emit_event(self._window, event_name, detail)
+
+    # ── Version & Migration ─────────────────────────────────────────
+
+    def get_app_version(self) -> str:
+        """Return the application version string."""
+        return APP_VERSION
+
+    def get_migration_status(self) -> dict:
+        """Return migration status for the frontend to act on."""
+        mr = self._migration_result
+        if mr is None:
+            return {"needed": False, "app_version": APP_VERSION}
+        return {
+            "needed": mr.needs_user_confirmation,
+            "from_version": mr.from_version,
+            "to_version": mr.to_version,
+            "breaking_changes": [
+                {
+                    "version": m.version,
+                    "description": m.description,
+                    "reason_key": m.breaking_reason,
+                }
+                for m in mr.breaking_migrations
+            ],
+            "backup_path": mr.backup_path,
+            "app_version": APP_VERSION,
+        }
+
+    def confirm_migration(self) -> dict:
+        """User confirmed breaking changes — run pending migrations now."""
+        try:
+            result = self._db.confirm_breaking_migrations()
+            self._migration_result = result
+            return {
+                "ok": True,
+                "validation_errors": result.validation_errors,
+            }
+        except Exception as exc:
+            log.error("confirm_migration failed: %s", exc)
+            return {"ok": False, "error": str(exc)}
 
     # ── Scan & Session Management ──────────────────────────────────
 

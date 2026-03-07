@@ -51,6 +51,10 @@ def api(db: Database, tmp_path: Path) -> DejaViewAPI:
 
 # This list mirrors PyWebViewAPI in frontend/src/types/api.ts.
 EXPECTED_METHODS = [
+    # Version & Migration
+    "get_app_version",
+    "get_migration_status",
+    "confirm_migration",
     # Scan & Session
     "start_scan",
     "pause_scan",

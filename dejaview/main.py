@@ -13,6 +13,8 @@ Responsibilities:
 import argparse
 import logging
 import os
+import shutil
+import sqlite3
 import sys
 import threading
 from pathlib import Path
@@ -20,7 +22,8 @@ from pathlib import Path
 import webview
 
 from backend.api import DejaViewAPI
-from data.db import Database
+from data.db import Database, LATEST_SCHEMA_VERSION, MigrationError
+from version import APP_VERSION
 
 log = logging.getLogger(__name__)
 
@@ -138,6 +141,38 @@ def _get_frontend_url(dev_mode: bool) -> str:
     return str(index_html)
 
 
+def _read_user_version(db_path: Path) -> int:
+    """Read PRAGMA user_version from an existing database without opening it fully."""
+    conn = sqlite3.connect(str(db_path))
+    try:
+        return conn.execute("PRAGMA user_version").fetchone()[0]
+    finally:
+        conn.close()
+
+
+def _backup_database(db_path: Path, current_version: int) -> Path:
+    """Copy library.db to library.db.v{N}.bak before migration.
+
+    Returns the backup path. Only keeps the most recent backup.
+    """
+    backup = db_path.with_suffix(f".v{current_version}.bak")
+    if not backup.exists():
+        shutil.copy2(str(db_path), str(backup))
+        log.info("Database backed up to %s", backup)
+    return backup
+
+
+def _cleanup_old_backups(db_path: Path, keep_version: int) -> None:
+    """Remove .bak files from previous migrations, keeping only the latest."""
+    for bak in db_path.parent.glob("library.db.v*.bak"):
+        if bak.suffix == ".bak" and f".v{keep_version}." not in bak.name:
+            try:
+                bak.unlink()
+                log.info("Removed old backup: %s", bak)
+            except OSError as exc:
+                log.warning("Could not remove old backup %s: %s", bak, exc)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="DejaView — duplicate image finder")
     parser.add_argument(
@@ -174,7 +209,37 @@ def main() -> None:
     trash_root = app_dir / ".dejaview_trash"
 
     db = Database(db_path)
-    db.open()
+
+    # Pre-migration backup (before db.open() runs migrations)
+    backup_path = ""
+    if db_path.exists():
+        current_version = _read_user_version(db_path)
+        if current_version < LATEST_SCHEMA_VERSION:
+            backup_path = str(_backup_database(db_path, current_version))
+
+    log.info("DejaView %s starting (schema target: v%d)", APP_VERSION, LATEST_SCHEMA_VERSION)
+
+    try:
+        migration_result = db.open()
+    except MigrationError as exc:
+        log.error("Database migration failed: %s", exc)
+        raise SystemExit(str(exc)) from exc
+
+    migration_result.backup_path = backup_path
+
+    if migration_result.migrated:
+        log.info(
+            "Database migrated v%d → v%d",
+            migration_result.from_version,
+            migration_result.to_version,
+        )
+        _cleanup_old_backups(db_path, migration_result.from_version)
+
+    if migration_result.validation_errors:
+        log.warning(
+            "Post-migration validation issues: %s",
+            migration_result.validation_errors,
+        )
 
     _startup_thumbnail_cleanup(db)
     _startup_trash_purge(trash_root)
@@ -188,6 +253,7 @@ def main() -> None:
         trash_root=trash_root,
         app_dir=app_dir,
         drive_sync=drive_sync,
+        migration_result=migration_result,
     )
 
     # Determine frontend URL

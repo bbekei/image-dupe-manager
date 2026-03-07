@@ -1,5 +1,6 @@
 import { HashRouter, Routes, Route } from 'react-router-dom'
 import { Layout } from './components/Layout.tsx'
+import { MigrationGate } from './components/MigrationGate.tsx'
 import { Dashboard } from './screens/Dashboard.tsx'
 import { BrowseResults } from './screens/BrowseResults.tsx'
 import { PlanReview } from './screens/PlanReview.tsx'
@@ -13,21 +14,23 @@ import { Help } from './screens/Help.tsx'
 
 export default function App() {
   return (
-    <HashRouter>
-      <Routes>
-        <Route element={<Layout />}>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/browse" element={<BrowseResults />} />
-          <Route path="/plan" element={<PlanReview />} />
-          <Route path="/execute" element={<Execution />} />
-          <Route path="/similarity" element={<SimilarityReview />} />
-          <Route path="/bin" element={<DuplicatesBin />} />
-          <Route path="/family" element={<Family />} />
-          <Route path="/requests" element={<Requests />} />
-          <Route path="/settings" element={<Settings />} />
-          <Route path="/help" element={<Help />} />
-        </Route>
-      </Routes>
-    </HashRouter>
+    <MigrationGate>
+      <HashRouter>
+        <Routes>
+          <Route element={<Layout />}>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/browse" element={<BrowseResults />} />
+            <Route path="/plan" element={<PlanReview />} />
+            <Route path="/execute" element={<Execution />} />
+            <Route path="/similarity" element={<SimilarityReview />} />
+            <Route path="/bin" element={<DuplicatesBin />} />
+            <Route path="/family" element={<Family />} />
+            <Route path="/requests" element={<Requests />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="/help" element={<Help />} />
+          </Route>
+        </Routes>
+      </HashRouter>
+    </MigrationGate>
   )
 }

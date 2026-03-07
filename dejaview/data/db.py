@@ -10,10 +10,16 @@ Database stored at %APPDATA%\\DejaView\\library.db (caller supplies path).
 WAL mode is enabled on open for concurrent UI reads during scan writes.
 """
 
+from __future__ import annotations
+
+import logging
 import re
 import sqlite3
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Validation helper (plan §Security — pixel_hash format enforcement)
@@ -39,11 +45,12 @@ PRAGMA mmap_size=268435456;
 PRAGMA foreign_keys=ON;
 
 CREATE TABLE IF NOT EXISTS sessions (
-    id          INTEGER PRIMARY KEY,
-    name        TEXT,
-    created_at  TEXT,
-    status      TEXT DEFAULT 'in_progress'
-        CHECK (status IN ('in_progress', 'paused', 'complete', 'stopped'))
+    id                  INTEGER PRIMARY KEY,
+    name                TEXT,
+    created_at          TEXT,
+    status              TEXT DEFAULT 'in_progress'
+        CHECK (status IN ('in_progress', 'paused', 'complete', 'stopped')),
+    similarity_enabled  INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS session_folders (
@@ -64,7 +71,10 @@ CREATE TABLE IF NOT EXISTS files (
     thumbnail_path TEXT,
     status         TEXT NOT NULL DEFAULT 'active'
         CHECK (status IN ('active', 'deleted', 'renamed')),
-    scanned_at     TEXT,
+    scanned_at       TEXT,
+    perceptual_hash  TEXT,
+    width            INTEGER,
+    height           INTEGER,
     UNIQUE (session_id, path)
 );
 
@@ -124,6 +134,7 @@ CREATE INDEX IF NOT EXISTS idx_files_path       ON files(path);
 CREATE INDEX IF NOT EXISTS idx_files_status     ON files(status);
 CREATE INDEX IF NOT EXISTS idx_files_session_hash_status
     ON files(session_id, pixel_hash, status);
+CREATE INDEX IF NOT EXISTS idx_files_phash      ON files(perceptual_hash);
 CREATE INDEX IF NOT EXISTS idx_remote_files_hash ON remote_files(pixel_hash);
 
 CREATE TABLE IF NOT EXISTS file_actions (
@@ -171,7 +182,149 @@ CREATE TABLE IF NOT EXISTS requests (
 
 CREATE INDEX IF NOT EXISTS idx_requests_session ON requests(session_id);
 CREATE INDEX IF NOT EXISTS idx_requests_status  ON requests(status);
+
+CREATE TABLE IF NOT EXISTS similarity_groups (
+    id                     INTEGER PRIMARY KEY,
+    session_id             INTEGER NOT NULL
+        REFERENCES sessions(id) ON DELETE CASCADE,
+    created_at             TEXT NOT NULL,
+    status                 TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'reviewed', 'actioned')),
+    member_count           INTEGER NOT NULL DEFAULT 0,
+    representative_file_id INTEGER
+        REFERENCES files(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_simgroups_session
+    ON similarity_groups(session_id);
+
+CREATE TABLE IF NOT EXISTS similarity_group_members (
+    id        INTEGER PRIMARY KEY,
+    group_id  INTEGER NOT NULL
+        REFERENCES similarity_groups(id) ON DELETE CASCADE,
+    file_id   INTEGER NOT NULL
+        REFERENCES files(id) ON DELETE CASCADE,
+    distance  INTEGER NOT NULL DEFAULT 0,
+    UNIQUE (group_id, file_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_simgroupmembers_group
+    ON similarity_group_members(group_id);
+CREATE INDEX IF NOT EXISTS idx_simgroupmembers_file
+    ON similarity_group_members(file_id);
 """
+
+
+# ---------------------------------------------------------------------------
+# Migration infrastructure
+# ---------------------------------------------------------------------------
+
+
+_PRAGMA_USER_VERSION = "PRAGMA user_version"
+
+
+class MigrationError(Exception):
+    """Raised when a schema migration fails."""
+
+
+@dataclass(frozen=True)
+class Migration:
+    """A single schema migration step."""
+    version: int
+    description: str
+    sql: str | None = None
+    migrate_fn: Callable[[sqlite3.Connection], None] | None = None
+    breaking: bool = False
+    breaking_reason: str = ""
+
+
+@dataclass
+class MigrationResult:
+    """Outcome of a migration attempt, returned by Database.open()."""
+    migrated: bool = False
+    from_version: int = 0
+    to_version: int = 0
+    breaking_migrations: list[Migration] = field(default_factory=list)
+    needs_user_confirmation: bool = False
+    backup_path: str = ""
+    validation_errors: list[str] = field(default_factory=list)
+
+
+# -- Migration functions (called by the registry) --------------------------
+
+def _migrate_v1(conn: sqlite3.Connection) -> None:
+    """Baseline: stamp version for existing databases. No schema changes."""
+    # All existing tables/columns already match v1 via _DDL + prior ad-hoc
+    # migrations that shipped with 1.0.0.  This is a no-op.
+
+
+_MIGRATIONS: list[Migration] = [
+    Migration(version=1, description="Baseline schema (v1.0.0)",
+              migrate_fn=_migrate_v1),
+    # Future migrations go here (append only, never reorder/remove):
+    # Migration(version=2, description="...", sql="ALTER TABLE ..."),
+]
+
+LATEST_SCHEMA_VERSION: int = _MIGRATIONS[-1].version if _MIGRATIONS else 0
+
+# -- Expected schema for post-migration validation -------------------------
+
+_EXPECTED_SCHEMA: dict = {
+    "tables": {
+        "sessions": [
+            "id", "name", "created_at", "status", "similarity_enabled",
+        ],
+        "session_folders": ["session_id", "folder_path"],
+        "files": [
+            "id", "session_id", "path", "size", "modified_at", "pixel_hash",
+            "hash_algorithm", "thumbnail_path", "status", "scanned_at",
+            "perceptual_hash", "width", "height",
+        ],
+        "file_actions": [
+            "id", "session_id", "file_id", "action", "scope",
+            "decided_at", "executed_at",
+        ],
+        "soft_deletes": [
+            "id", "session_id", "file_id", "original_path", "trash_path",
+            "deleted_at", "expires_at", "recovered_at",
+        ],
+        "app_config": [
+            "id", "language", "theme", "max_scan_workers", "perf_logging",
+        ],
+        "sync_config": [
+            "id", "local_username", "gdrive_folder_id", "gdrive_file_id",
+            "sync_enabled", "export_privacy", "pending_export",
+            "last_exported_at", "last_imported_at", "scan_delay_ms",
+            "last_upload_sha256",
+        ],
+        "remote_peers": ["id", "username", "last_seen_at", "file_mtime"],
+        "remote_files": [
+            "id", "peer_id", "remote_id", "filename", "path", "size",
+            "modified_at", "pixel_hash",
+        ],
+        "requests": [
+            "id", "session_id", "pixel_hash", "target_peer", "status",
+            "requested_at", "responded_at", "fulfilled_at",
+        ],
+        "similarity_groups": [
+            "id", "session_id", "created_at", "status", "member_count",
+            "representative_file_id",
+        ],
+        "similarity_group_members": [
+            "id", "group_id", "file_id", "distance",
+        ],
+    },
+    "views": ["duplicate_groups"],
+    "indexes": [
+        "idx_files_session", "idx_files_hash", "idx_files_path",
+        "idx_files_status", "idx_files_session_hash_status",
+        "idx_remote_files_hash", "idx_file_actions_session",
+        "idx_file_actions_file", "idx_soft_deletes_session",
+        "idx_requests_session", "idx_requests_status", "idx_files_phash",
+        "idx_simgroups_session", "idx_simgroupmembers_group",
+        "idx_simgroupmembers_file",
+    ],
+}
 
 
 class Database:
@@ -185,205 +338,159 @@ class Database:
     # Lifecycle
     # ------------------------------------------------------------------
 
-    def open(self) -> None:
-        """Open (or create) the database and apply DDL."""
+    def open(self) -> MigrationResult:
+        """Open (or create) the database, apply DDL, and run migrations.
+
+        Returns a MigrationResult indicating what happened.  If there are
+        breaking migrations pending, MigrationResult.needs_user_confirmation
+        is True and no migrations have been applied yet — the caller must
+        present the breaking changes to the user and call
+        confirm_breaking_migrations() to proceed.
+        """
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(str(self._path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
-        # Apply DDL statements one by one (executescript commits implicitly,
-        # but we need WAL set before anything else runs).
+        # Apply DDL (CREATE IF NOT EXISTS — idempotent for new and existing DBs).
         self._conn.executescript(_DDL)
-        self._migrate()
+        return self._run_migrations()
 
-    def _migrate(self) -> None:
-        """Apply incremental schema migrations for existing databases."""
-        c = self.conn
-        # R3: add hash_algorithm column to files (existing rows default to sha256)
-        cols = {r[1] for r in c.execute("PRAGMA table_info(files)").fetchall()}
-        if "hash_algorithm" not in cols:
-            c.execute(
-                "ALTER TABLE files ADD COLUMN hash_algorithm TEXT NOT NULL DEFAULT 'sha256'"
-            )
-            # Recreate the view so it includes hash_algorithm in GROUP BY
-            c.execute("DROP VIEW IF EXISTS duplicate_groups")
-            c.execute(
-                """
-                CREATE VIEW duplicate_groups AS
-                    SELECT session_id, pixel_hash, hash_algorithm,
-                           COUNT(*) AS file_count
-                    FROM files
-                    WHERE pixel_hash IS NOT NULL AND status = 'active'
-                    GROUP BY session_id, pixel_hash, hash_algorithm
-                    HAVING COUNT(*) > 1
-                """
-            )
-            c.commit()
+    # ------------------------------------------------------------------
+    # Versioned migration system
+    # ------------------------------------------------------------------
 
-        # R3: add max_scan_workers column to app_config
-        cols = {r[1] for r in c.execute("PRAGMA table_info(app_config)").fetchall()}
-        if "max_scan_workers" not in cols:
-            c.execute(
-                "ALTER TABLE app_config ADD COLUMN max_scan_workers"
-                " INTEGER NOT NULL DEFAULT 0"
-            )
-            c.commit()
+    def _run_migrations(self) -> MigrationResult:
+        """Detect schema version, run pending migrations, return result."""
+        conn = self.conn
+        current = conn.execute(_PRAGMA_USER_VERSION).fetchone()[0]
 
-        # Telemetry: add perf_logging column to app_config
-        cols = {r[1] for r in c.execute("PRAGMA table_info(app_config)").fetchall()}
-        if "perf_logging" not in cols:
-            c.execute(
-                "ALTER TABLE app_config ADD COLUMN perf_logging"
-                " INTEGER NOT NULL DEFAULT 0"
+        # Downgrade protection
+        if current > LATEST_SCHEMA_VERSION:
+            raise MigrationError(
+                f"This database was created with a newer version of DejaView "
+                f"(schema v{current}, app expects v{LATEST_SCHEMA_VERSION}). "
+                f"Please update the application."
             )
-            c.commit()
 
-        # Pluggable Views: add file_actions table
-        tables = {
-            r[0]
-            for r in c.execute(
+        if current >= LATEST_SCHEMA_VERSION:
+            return MigrationResult(
+                migrated=False,
+                from_version=current,
+                to_version=current,
+            )
+
+        pending = [m for m in _MIGRATIONS if m.version > current]
+        breaking = [m for m in pending if m.breaking]
+
+        if breaking:
+            # Don't run yet — caller must confirm first
+            logger.info(
+                "Breaking migrations detected (v%d → v%d): %s",
+                current, LATEST_SCHEMA_VERSION,
+                ", ".join(m.description for m in breaking),
+            )
+            return MigrationResult(
+                migrated=False,
+                from_version=current,
+                to_version=LATEST_SCHEMA_VERSION,
+                breaking_migrations=breaking,
+                needs_user_confirmation=True,
+            )
+
+        # Run all pending non-breaking migrations
+        self._execute_migrations(pending)
+        errors = self._validate_schema()
+        return MigrationResult(
+            migrated=True,
+            from_version=current,
+            to_version=LATEST_SCHEMA_VERSION,
+            validation_errors=errors,
+        )
+
+    def _execute_migrations(self, migrations: list[Migration]) -> None:
+        """Apply a list of migrations sequentially with per-step commit."""
+        conn = self.conn
+        for m in migrations:
+            logger.info(
+                "Applying migration v%d: %s", m.version, m.description,
+            )
+            try:
+                if m.sql:
+                    conn.executescript(m.sql)
+                if m.migrate_fn:
+                    m.migrate_fn(conn)
+                conn.execute(f"PRAGMA user_version = {m.version}")
+                conn.commit()
+            except Exception as exc:
+                conn.rollback()
+                raise MigrationError(
+                    f"Migration to v{m.version} failed ({m.description}): "
+                    f"{exc}"
+                ) from exc
+        logger.info("All migrations applied successfully.")
+
+    def confirm_breaking_migrations(self) -> MigrationResult:
+        """Run pending migrations after user confirmed breaking changes."""
+        conn = self.conn
+        current = conn.execute(_PRAGMA_USER_VERSION).fetchone()[0]
+        pending = [m for m in _MIGRATIONS if m.version > current]
+        self._execute_migrations(pending)
+        errors = self._validate_schema()
+        return MigrationResult(
+            migrated=True,
+            from_version=current,
+            to_version=LATEST_SCHEMA_VERSION,
+            validation_errors=errors,
+        )
+
+    def _validate_schema(self) -> list[str]:
+        """Verify DB structure matches expectations. Returns discrepancies."""
+        errors: list[str] = []
+        errors.extend(self._validate_tables_and_columns())
+        errors.extend(self._validate_named_objects("view", _EXPECTED_SCHEMA["views"]))
+        errors.extend(self._validate_named_objects("index", _EXPECTED_SCHEMA["indexes"]))
+
+        if errors:
+            for err in errors:
+                logger.warning("Schema validation: %s", err)
+        else:
+            logger.info("Schema validation passed.")
+        return errors
+
+    def _validate_tables_and_columns(self) -> list[str]:
+        """Check all expected tables exist with expected columns."""
+        errors: list[str] = []
+        conn = self.conn
+        existing = {
+            r[0] for r in conn.execute(
                 "SELECT name FROM sqlite_master WHERE type='table'"
             ).fetchall()
         }
-        if "file_actions" not in tables:
-            c.executescript(
-                """
-                CREATE TABLE IF NOT EXISTS file_actions (
-                    id          INTEGER PRIMARY KEY,
-                    session_id  INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-                    file_id     INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
-                    action      TEXT NOT NULL
-                        CHECK (action IN ('keep', 'delete', 'ignore')),
-                    scope       TEXT NOT NULL DEFAULT 'file'
-                        CHECK (scope IN ('file', 'folder')),
-                    decided_at  TEXT,
-                    executed_at TEXT,
-                    UNIQUE (session_id, file_id)
-                );
-                CREATE INDEX IF NOT EXISTS idx_file_actions_session
-                    ON file_actions(session_id);
-                CREATE INDEX IF NOT EXISTS idx_file_actions_file
-                    ON file_actions(file_id);
-                """
-            )
+        for table, expected_cols in _EXPECTED_SCHEMA["tables"].items():
+            if table not in existing:
+                errors.append(f"Missing table: {table}")
+                continue
+            actual_cols = {
+                r[1] for r in conn.execute(
+                    f"PRAGMA table_info({table})"  # noqa: S608
+                ).fetchall()
+            }
+            for col in expected_cols:
+                if col not in actual_cols:
+                    errors.append(f"Missing column: {table}.{col}")
+        return errors
 
-        # UX Redesign Phase 2: add soft_deletes table
-        if "soft_deletes" not in tables:
-            c.executescript(
-                """
-                CREATE TABLE IF NOT EXISTS soft_deletes (
-                    id            INTEGER PRIMARY KEY,
-                    session_id    INTEGER NOT NULL REFERENCES sessions(id),
-                    file_id       INTEGER NOT NULL REFERENCES files(id),
-                    original_path TEXT NOT NULL,
-                    trash_path    TEXT NOT NULL,
-                    deleted_at    TEXT NOT NULL,
-                    expires_at    TEXT NOT NULL,
-                    recovered_at  TEXT,
-                    UNIQUE (session_id, file_id)
-                );
-                CREATE INDEX IF NOT EXISTS idx_soft_deletes_session
-                    ON soft_deletes(session_id);
-                """
-            )
-
-        # UX Redesign Phase 4: add requests table
-        if "requests" not in tables:
-            c.executescript(
-                """
-                CREATE TABLE IF NOT EXISTS requests (
-                    id           INTEGER PRIMARY KEY,
-                    session_id   INTEGER NOT NULL REFERENCES sessions(id)
-                                     ON DELETE CASCADE,
-                    pixel_hash   TEXT NOT NULL,
-                    target_peer  TEXT NOT NULL,
-                    status       TEXT NOT NULL DEFAULT 'pending'
-                        CHECK (status IN (
-                            'pending','approved','denied','fulfilled','cancelled'
-                        )),
-                    requested_at TEXT NOT NULL,
-                    responded_at TEXT,
-                    fulfilled_at TEXT,
-                    UNIQUE (session_id, pixel_hash, target_peer)
-                );
-                CREATE INDEX IF NOT EXISTS idx_requests_session
-                    ON requests(session_id);
-                CREATE INDEX IF NOT EXISTS idx_requests_status
-                    ON requests(status);
-                """
-            )
-
-        # Similar Image Detection: add perceptual_hash, width, height to files
-        cols = {r[1] for r in c.execute("PRAGMA table_info(files)").fetchall()}
-        if "perceptual_hash" not in cols:
-            c.execute("ALTER TABLE files ADD COLUMN perceptual_hash TEXT")
-            c.execute("ALTER TABLE files ADD COLUMN width INTEGER")
-            c.execute("ALTER TABLE files ADD COLUMN height INTEGER")
-            c.execute(
-                "CREATE INDEX IF NOT EXISTS idx_files_phash "
-                "ON files(perceptual_hash)"
-            )
-            c.commit()
-
-        # Similar Image Detection: add similarity_enabled to sessions
-        session_cols = {
-            r[1] for r in c.execute("PRAGMA table_info(sessions)").fetchall()
-        }
-        if "similarity_enabled" not in session_cols:
-            c.execute(
-                "ALTER TABLE sessions ADD COLUMN similarity_enabled "
-                "INTEGER NOT NULL DEFAULT 0"
-            )
-            c.commit()
-
-        # Similar Image Detection: add similarity_groups + members tables
-        tables = {
-            r[0]
-            for r in c.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
+    def _validate_named_objects(self, kind: str, expected: list[str]) -> list[str]:
+        """Check that all expected views/indexes exist."""
+        existing = {
+            r[0] for r in self.conn.execute(
+                "SELECT name FROM sqlite_master WHERE type=?", (kind,)
             ).fetchall()
         }
-        if "similarity_groups" not in tables:
-            c.executescript(
-                """
-                CREATE TABLE IF NOT EXISTS similarity_groups (
-                    id                     INTEGER PRIMARY KEY,
-                    session_id             INTEGER NOT NULL
-                        REFERENCES sessions(id) ON DELETE CASCADE,
-                    created_at             TEXT NOT NULL,
-                    status                 TEXT NOT NULL DEFAULT 'pending'
-                        CHECK (status IN ('pending', 'reviewed', 'actioned')),
-                    member_count           INTEGER NOT NULL DEFAULT 0,
-                    representative_file_id INTEGER
-                        REFERENCES files(id)
-                );
-                CREATE INDEX IF NOT EXISTS idx_simgroups_session
-                    ON similarity_groups(session_id);
+        return [f"Missing {kind}: {name}" for name in expected if name not in existing]
 
-                CREATE TABLE IF NOT EXISTS similarity_group_members (
-                    id        INTEGER PRIMARY KEY,
-                    group_id  INTEGER NOT NULL
-                        REFERENCES similarity_groups(id) ON DELETE CASCADE,
-                    file_id   INTEGER NOT NULL
-                        REFERENCES files(id) ON DELETE CASCADE,
-                    distance  INTEGER NOT NULL DEFAULT 0,
-                    UNIQUE (group_id, file_id)
-                );
-                CREATE INDEX IF NOT EXISTS idx_simgroupmembers_group
-                    ON similarity_group_members(group_id);
-                CREATE INDEX IF NOT EXISTS idx_simgroupmembers_file
-                    ON similarity_group_members(file_id);
-                """
-            )
-
-        # Data Compression: add last_upload_sha256 to sync_config
-        sync_cols = {
-            r[1] for r in c.execute("PRAGMA table_info(sync_config)").fetchall()
-        }
-        if "last_upload_sha256" not in sync_cols:
-            c.execute(
-                "ALTER TABLE sync_config ADD COLUMN last_upload_sha256 TEXT"
-            )
-            c.commit()
+    def get_schema_version(self) -> int:
+        """Return the current PRAGMA user_version."""
+        return self.conn.execute(_PRAGMA_USER_VERSION).fetchone()[0]
 
     def close(self) -> None:
         """Commit any pending work and close the connection."""
