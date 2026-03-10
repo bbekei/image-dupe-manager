@@ -1,0 +1,59 @@
+name: Build DejaView
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: DejaView-Windows
+          - os: macos-latest
+            artifact: DejaView-macOS
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Python dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Write client_secrets.json
+        run: echo '${{ secrets.GOOGLE_CLIENT_SECRETS }}' > dejaview/resources/client_secrets.json
+        shell: bash
+
+      - name: Build React frontend
+        working-directory: dejaview/frontend
+        run: |
+          npm install
+          npm run build
+
+      - name: Build with PyInstaller
+        working-directory: dejaview
+        run: pyinstaller dejaview.spec --noconfirm
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dejaview/dist/DejaView/
