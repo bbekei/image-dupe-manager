@@ -158,8 +158,10 @@
     "restore": "Visszaállítás",
     "permanent_delete": "Végleges törlés",
     "purge_expired": "Lejártak törlése",
+    "empty_bin": "Lomtár ürítése",
     "confirm_purge": "Véglegesen törli az összes lejárt elemet? Ez nem vonható vissza.",
     "confirm_delete": "Véglegesen töröl {{count}} elemet? Ez nem vonható vissza.",
+    "confirm_empty_bin": "Véglegesen töröl mind a {{count}} elemet? Ez nem vonható vissza.",
     "empty": "A Duplikátum Lomtár üres."
   },
   "family": {

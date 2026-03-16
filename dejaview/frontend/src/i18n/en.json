@@ -158,8 +158,10 @@
     "restore": "Restore",
     "permanent_delete": "Permanently Delete",
     "purge_expired": "Purge Expired",
+    "empty_bin": "Empty Bin",
     "confirm_purge": "Permanently delete all expired items? This cannot be undone.",
     "confirm_delete": "Permanently delete {{count}} items? This cannot be undone.",
+    "confirm_empty_bin": "Permanently delete all {{count}} items? This cannot be undone.",
     "empty": "Duplicates Bin is empty."
   },
   "family": {

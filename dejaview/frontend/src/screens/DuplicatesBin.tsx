@@ -14,6 +14,7 @@ export function DuplicatesBin() {
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [confirmPurge, setConfirmPurge] = useState(false)
+  const [confirmEmptyBin, setConfirmEmptyBin] = useState(false)
 
   const loadItems = useCallback(async () => {
     if (!sessionId) return
@@ -43,6 +44,17 @@ export function DuplicatesBin() {
     if (selected.size === 0) return
     try {
       await callBackend('permanent_delete', Array.from(selected))
+      setSelected(new Set())
+      loadItems()
+    } catch {
+      // handle error
+    }
+  }
+
+  const handleEmptyBin = async () => {
+    setConfirmEmptyBin(false)
+    try {
+      await callBackend('permanent_delete', items.map((i) => i.id))
       setSelected(new Set())
       loadItems()
     } catch {
@@ -90,6 +102,15 @@ export function DuplicatesBin() {
             >
               <Trash2 size={14} />
               {t('bin.permanent_delete')} ({selected.size})
+            </button>
+          )}
+          {items.length > 0 && (
+            <button
+              onClick={() => setConfirmEmptyBin(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-dv-danger hover:bg-red-600 text-white rounded-lg text-sm transition-colors"
+            >
+              <Trash2 size={14} />
+              {t('bin.empty_bin')}
             </button>
           )}
           <button
@@ -152,6 +173,37 @@ export function DuplicatesBin() {
           })}
         </div>
       )}
+
+      {/* Empty bin confirmation */}
+      <Dialog.Root open={confirmEmptyBin} onOpenChange={setConfirmEmptyBin}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 bg-black/50" />
+          <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-dv-surface rounded-xl border border-dv-border p-6 w-105">
+            <div className="flex items-center gap-3 mb-4">
+              <AlertTriangle size={24} className="text-dv-warning" />
+              <Dialog.Title className="text-lg font-semibold text-dv-text">
+                {t('bin.empty_bin')}
+              </Dialog.Title>
+            </div>
+            <Dialog.Description className="text-sm text-dv-text-muted mb-6">
+              {t('bin.confirm_empty_bin', { count: items.length })}
+            </Dialog.Description>
+            <div className="flex justify-end gap-3">
+              <Dialog.Close asChild>
+                <button className="px-4 py-2 bg-dv-surface hover:bg-dv-surface-hover text-dv-text border border-dv-border rounded-lg">
+                  {t('common.cancel')}
+                </button>
+              </Dialog.Close>
+              <button
+                onClick={handleEmptyBin}
+                className="px-4 py-2 bg-dv-danger hover:bg-red-600 text-white rounded-lg"
+              >
+                {t('common.confirm')}
+              </button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
 
       {/* Purge confirmation */}
       <Dialog.Root open={confirmPurge} onOpenChange={setConfirmPurge}>

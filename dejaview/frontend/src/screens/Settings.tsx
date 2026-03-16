@@ -6,6 +6,7 @@ import { callBackend } from '../hooks/usePyBridge.ts'
 import { useSettingsStore } from '../stores/useSettingsStore.ts'
 import type { AppConfig, SyncConfig, RemotePeer } from '../types/api.ts'
 import i18n from '../i18n/index.ts'
+import { resolveLanguage } from '../i18n/resolveLanguage.ts'
 
 function extractFolderId(input: string): string {
   const trimmed = input.trim()
@@ -40,6 +41,7 @@ export function Settings() {
     try {
       const result = await callBackend<AppConfig>('get_app_config')
       setConfig(result)
+      i18n.changeLanguage(resolveLanguage(result.language))
     } catch {
       // handle error
     } finally {
@@ -79,7 +81,7 @@ export function Settings() {
     try {
       await callBackend('set_app_config', key, value)
       if (key === 'language') {
-        i18n.changeLanguage(value as string)
+        i18n.changeLanguage(resolveLanguage(value as string))
       }
       toast.success(t('settings.saved'))
     } catch {

@@ -1,7 +1,6 @@
 {
-  "permissions": {
-    "additionalDirectories": [
-      "c:\\Users\\bekei\\My Python stuff\\image-dupe-manager\\dejaview\\{core,data,ui,resources"
-    ]
+  "env": {
+      "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
   }
 }
+
