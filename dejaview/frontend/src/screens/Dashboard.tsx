@@ -192,7 +192,7 @@ function ScanProgressPanel() {
 export function Dashboard() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { setSessionId, phase, setStatus, reset } = useScanStore()
+  const { setSessionId, phase, reset } = useScanStore()
   const [sessions, setSessions] = useState<Session[]>([])
   const [summary, setSummary] = useState<ScanSummary | null>(null)
   const [loading, setLoading] = useState(true)
