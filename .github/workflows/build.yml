@@ -9,51 +9,72 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
-    strategy:
-      matrix:
-        include:
-          - os: windows-latest
-            artifact: DejaView-Windows
-          - os: macos-latest
-            artifact: DejaView-macOS
-
-    runs-on: ${{ matrix.os }}
+  build-sidecar:
+    runs-on: windows-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python 3.12
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.11'
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Install Python dependencies
+      - name: Install dependencies
         run: |
-          pip install -r dejaview/requirements.txt
           pip install pyinstaller
+          pip install -r dejaview/requirements.txt
 
       - name: Write client_secrets.json
         run: echo '${{ secrets.GOOGLE_CLIENT_SECRETS }}' > dejaview/resources/client_secrets.json
         shell: bash
 
-      - name: Build React frontend
-        working-directory: dejaview/frontend
-        run: |
-          npm install
-          npm run build
-
-      - name: Build with PyInstaller
+      - name: Build sidecar with PyInstaller
         working-directory: dejaview
-        run: pyinstaller dejaview.spec --noconfirm
+        run: pyinstaller sidecar/sidecar.spec --noconfirm
 
-      - name: Upload artifact
+      - name: Validate sidecar binary
+        shell: pwsh
+        run: |
+          $exe = "dejaview/dist/dejaview-sidecar.exe"
+          if (!(Test-Path $exe)) {
+            Write-Error "dejaview-sidecar.exe not found at $exe"
+            exit 1
+          }
+          $size = (Get-Item $exe).Length / 1MB
+          Write-Host "dejaview-sidecar.exe size: $([math]::Round($size, 1)) MB"
+          if ($size -lt 10 -or $size -gt 150) {
+            Write-Error "Unexpected artifact size: $([math]::Round($size, 1)) MB"
+            exit 1
+          }
+          # Verify PE header (MZ magic bytes)
+          $bytes = [System.IO.File]::ReadAllBytes($exe)[0..1]
+          if ($bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) {
+            Write-Error "Not a valid PE binary (missing MZ header)"
+            exit 1
+          }
+          Write-Host "Valid Windows PE binary confirmed."
+
+      - name: Upload sidecar artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: dejaview/dist/DejaView/
+          name: dejaview-sidecar-windows
+          path: dejaview/dist/dejaview-sidecar.exe
+
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r dejaview/requirements.txt
+
+      - name: Run tests
+        working-directory: dejaview
+        run: python -m pytest tests/unit tests/integration --tb=short

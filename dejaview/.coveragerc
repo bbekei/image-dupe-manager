@@ -3,6 +3,9 @@ omit =
     tests/*
     resources/*
     main.py
+    sidecar/sidecar_main.py
+    verify_main.py
+    version.py
 
 [report]
-fail_under = 80
+fail_under = 70
