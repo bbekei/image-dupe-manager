@@ -7,13 +7,17 @@ from PyInstaller.building.build_main import Analysis, PYZ, EXE
 
 block_cipher = None
 
+# Resolve paths relative to the spec file's parent (sidecar/) and project root (dejaview/)
+_spec_dir = Path(SPECPATH)
+_project_dir = _spec_dir.parent
+
 a = Analysis(
-    ['sidecar/sidecar_main.py'],
-    pathex=[str(Path.cwd())],
+    [str(_spec_dir / 'sidecar_main.py')],
+    pathex=[str(_project_dir)],
     binaries=[],
     datas=[
-        ('resources/', 'resources/'),
-        ('version.py', '.'),
+        (str(_project_dir / 'resources'), 'resources'),
+        (str(_project_dir / 'version.py'), '.'),
     ],
     hiddenimports=[
         'backend.api',

@@ -73,7 +73,9 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install -r dejaview/requirements.txt
+        run: |
+          pip install -r dejaview/requirements.txt
+          pip install pytest pytest-cov
 
       - name: Run tests
         working-directory: dejaview
