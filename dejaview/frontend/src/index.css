@@ -30,6 +30,21 @@
   --color-dv-sidebar-light: #f1f5f9;
 }
 
+:root {
+  color-scheme: dark;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --color-dv-bg: var(--color-dv-bg-light);
+  --color-dv-surface: var(--color-dv-surface-light);
+  --color-dv-surface-hover: var(--color-dv-surface-hover-light);
+  --color-dv-border: var(--color-dv-border-light);
+  --color-dv-text: var(--color-dv-text-light);
+  --color-dv-text-muted: var(--color-dv-text-muted-light);
+  --color-dv-sidebar: var(--color-dv-sidebar-light);
+}
+
 body {
   margin: 0;
   font-family: system-ui, -apple-system, sans-serif;

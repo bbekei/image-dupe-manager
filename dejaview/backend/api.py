@@ -20,9 +20,6 @@ import os
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
-
-import webview
 
 from core.selection import SelectionPreset, apply_preset
 from core.similarity import build_similarity_groups
@@ -62,12 +59,12 @@ ALLOWED_EVENTS: frozenset[str] = frozenset({
     "scan:progress",
     _EVT_SCAN_DISCOVERY,
     _EVT_SCAN_STATUS,
-    "scan:hash_complete",
-    "scan:hash_batch",
-    "scan:directory_hashed",
+    # scan:hash_complete omitted — not consumed by any frontend listener
+    # scan:hash_batch omitted — not consumed by any frontend listener
+    # scan:directory_hashed omitted — not consumed by any frontend listener
     "scan:duplicate_found",
     "scan:similarity_progress",
-    "scan:similarity_complete",
+    # scan:similarity_complete omitted — not consumed by any frontend listener
     "scan:error",
     _EVT_EXEC_PROGRESS,
     "exec:complete",
@@ -75,28 +72,6 @@ ALLOWED_EVENTS: frozenset[str] = frozenset({
     _EVT_SELECTION_PROGRESS,
     _EVT_SELECTION_COMPLETE,
 })
-
-
-def _emit_event(window: webview.Window, event_name: str, detail: dict) -> None:
-    """Dispatch a CustomEvent to the React frontend via evaluate_js.
-
-    Only events in ALLOWED_EVENTS are dispatched. Detail payloads are
-    serialised with ``ensure_ascii=True`` so that JS line-terminator
-    characters (U+2028 / U+2029) are escaped — they are valid in JSON
-    but act as newlines inside a JavaScript string literal.
-    """
-    if event_name not in ALLOWED_EVENTS:
-        log.warning("Blocked attempt to emit unknown event: %s", event_name)
-        return
-    detail_json = json.dumps(detail, ensure_ascii=True)
-    js = (
-        f'window.dispatchEvent(new CustomEvent("{event_name}", '
-        f'{{detail: {detail_json}}}));'
-    )
-    try:
-        window.evaluate_js(js)
-    except Exception as exc:
-        log.debug("Failed to emit event %s: %s", event_name, exc)
 
 
 class DejaViewAPI:
@@ -119,7 +94,8 @@ class DejaViewAPI:
         self._migration_result = migration_result
         self._scanner = None
         self._executor = None
-        self._window: Optional[webview.Window] = None
+        self._window = None
+        self._emit_callback = None
 
         # Scan progress state (updated by signal handlers, read by polling)
         self._scan_phase = "idle"
@@ -129,15 +105,15 @@ class DejaViewAPI:
         self._scan_duplicates = 0
         self._scan_message = ""
 
-    def set_window(self, window: webview.Window) -> None:
-        """Called after window creation to enable event forwarding."""
-        self._window = window
+    def set_emit_callback(self, cb) -> None:
+        """Register a callback for event forwarding: cb(event_name, detail)."""
+        self._emit_callback = cb
 
     # ── Helper: emit events to frontend ────────────────────────────
 
     def _emit(self, event_name: str, detail: dict) -> None:
-        if self._window:
-            _emit_event(self._window, event_name, detail)
+        if self._emit_callback:
+            self._emit_callback(event_name, detail)
 
     # ── Version & Migration ─────────────────────────────────────────
 
@@ -196,8 +172,6 @@ class DejaViewAPI:
         self, folders: list[str], session_name: str, enable_similarity: bool
     ) -> int:
         """Start a new multi-pass scan. Returns session_id."""
-        from PyQt6.QtCore import QCoreApplication
-
         # Reset progress state
         self._scan_phase = "started"
         self._scan_current = 0
@@ -207,7 +181,7 @@ class DejaViewAPI:
         self._scan_message = ""
 
         now = datetime.now(timezone.utc).isoformat()
-        session_id = self._db.create_session(session_name, now)
+        session_id = self._db.create_session(session_name, now, similarity_enabled=enable_similarity)
         for folder in folders:
             self._db.add_session_folder(session_id, folder)
 
@@ -238,15 +212,7 @@ class DejaViewAPI:
         return session_id
 
     def _connect_scanner_signals(self, scanner) -> None:
-        """Wire Scanner Qt signals to in-memory progress state + CustomEvent dispatches.
-
-        Uses DirectConnection so handlers run in the Scanner's thread directly,
-        bypassing Qt's event-loop-based signal delivery. This is critical because
-        pywebview's thread (where connections are made) has no Qt event loop.
-        """
-        from PyQt6.QtCore import Qt
-
-        DC = Qt.ConnectionType.DirectConnection
+        """Wire Scanner signals to in-memory progress state + event forwarding."""
 
         def on_progress(c, t):
             # Emit final discovery count when transitioning to hashing
@@ -289,36 +255,22 @@ class DejaViewAPI:
             self._scan_message = message
             self._emit(_EVT_SCAN_STATUS, {"status": "info", "message": message})
 
-        scanner.progress_updated.connect(on_progress, DC)
-        scanner.file_discovered.connect(on_file_discovered, DC)
-        scanner.hash_complete.connect(
-            lambda fid, h: self._emit("scan:hash_complete", {"file_id": fid, "pixel_hash": h}),
-            DC,
-        )
-        scanner.hash_complete_batch.connect(
-            lambda batch: self._emit("scan:hash_batch", {"count": len(batch), "duplicates_found": 0}),
-            DC,
-        )
-        scanner.directory_hashed.connect(
-            lambda d: self._emit("scan:directory_hashed", {"directory": d, "file_count": 0}),
-            DC,
-        )
-        scanner.duplicate_found.connect(on_duplicate_found, DC)
-        scanner.similarity_progress.connect(on_similarity_progress, DC)
-        scanner.similarity_grouping_complete.connect(
-            lambda gc: self._emit("scan:similarity_complete", {"group_count": gc}),
-            DC,
-        )
-        scanner.scan_started.connect(lambda: on_status("started", "Scan started"), DC)
-        scanner.scan_paused.connect(lambda: on_status("paused", "Scan paused"), DC)
-        scanner.scan_resumed.connect(lambda: on_status("resumed", "Scan resumed"), DC)
-        scanner.scan_stopped.connect(lambda: on_status("stopped", "Scan stopped"), DC)
-        scanner.scan_complete.connect(lambda: on_status("complete", "Scan complete"), DC)
+        scanner.progress_updated.connect(on_progress)
+        scanner.file_discovered.connect(on_file_discovered)
+        # hash_complete, hash_complete_batch, directory_hashed omitted —
+        # unconsumed events (Architect default decision, 2026-03-16)
+        scanner.duplicate_found.connect(on_duplicate_found)
+        scanner.similarity_progress.connect(on_similarity_progress)
+        # similarity_grouping_complete omitted — unconsumed event
+        scanner.scan_started.connect(lambda: on_status("started", "Scan started"))
+        scanner.scan_paused.connect(lambda: on_status("paused", "Scan paused"))
+        scanner.scan_resumed.connect(lambda: on_status("resumed", "Scan resumed"))
+        scanner.scan_stopped.connect(lambda: on_status("stopped", "Scan stopped"))
+        scanner.scan_complete.connect(lambda: on_status("complete", "Scan complete"))
         scanner.scan_error.connect(
             lambda p, m: self._emit("scan:error", {"path": p, "message": m}),
-            DC,
         )
-        scanner.status_message.connect(on_info_message, DC)
+        scanner.status_message.connect(on_info_message)
 
     def pause_scan(self) -> None:
         if self._scanner:
@@ -326,10 +278,13 @@ class DejaViewAPI:
 
     def resume_scan(self, session_id: int) -> None:
         """Resume a paused scan."""
-        if self._scanner and self._scanner.isRunning():
+        if self._scanner and self._scanner.is_alive():
             return
 
         from core.scanner import Scanner
+
+        session = self._db.get_session(session_id)
+        similarity_enabled = bool(session["similarity_enabled"]) if session else False
 
         max_workers = self._db.get_max_scan_workers()
         scanner = Scanner(
@@ -337,6 +292,7 @@ class DejaViewAPI:
             session_id=session_id,
             thumb_dir=self._thumb_dir,
             max_workers=max_workers,
+            similarity_enabled=similarity_enabled,
         )
         scanner.set_resuming(True)
         self._scanner = scanner
@@ -345,7 +301,15 @@ class DejaViewAPI:
 
     def stop_scan(self) -> None:
         if self._scanner:
-            self._scanner.stop()
+            if self._scanner.is_alive():
+                self._scanner.stop()
+            else:
+                # Scanner thread has already exited (e.g., scan is paused).
+                # Set stopped state directly since no thread will emit the signal.
+                session_id = self._scanner._session_id
+                self._db.update_session_status(session_id, "stopped")
+                self._scan_phase = "stopped"
+                self._emit("scan:status", {"status": "stopped", "message": "Scan stopped"})
 
     def get_sessions(self) -> list[dict]:
         """Return all scan sessions."""
@@ -710,11 +674,7 @@ class DejaViewAPI:
 
     def execute_plan(self, session_id: int) -> None:
         """Execute all planned file actions (soft-delete, sync). Emits progress events."""
-        from PyQt6.QtCore import Qt
-
         from core.executor import PlanExecutor
-
-        DC = Qt.ConnectionType.DirectConnection
 
         executor = PlanExecutor(
             db=self._db,
@@ -724,39 +684,31 @@ class DejaViewAPI:
         )
         self._executor = executor
 
-        # Connect executor signals to event forwarding
-        # Uses DirectConnection so handlers run in PlanExecutor's thread
-        # (no Qt event loop in pywebview's main thread).
         executor.progress_updated.connect(
             lambda c, t: self._emit(_EVT_EXEC_PROGRESS, {
                 "current": c, "total": t, "action": "cleanup", "file_path": "",
             }),
-            DC,
         )
         executor.execution_complete.connect(
             lambda s, e: self._emit("exec:complete", {
                 "success": s, "errors": e,
                 "summary": f"{s} succeeded, {e} failed",
             }),
-            DC,
         )
         executor.execution_error.connect(
             lambda path, msg: self._emit("exec:error", {
                 "message": msg, "file_path": path,
             }),
-            DC,
         )
         executor.log_message.connect(
             lambda msg: self._emit(_EVT_EXEC_PROGRESS, {
-                "current": 0, "total": 0, "action": "log", "file_path": msg,
+                "action": "log", "file_path": msg,
             }),
-            DC,
         )
         executor.stage_changed.connect(
             lambda stage: self._emit(_EVT_EXEC_PROGRESS, {
-                "current": 0, "total": 0, "action": stage, "file_path": "",
+                "action": stage, "file_path": "",
             }),
-            DC,
         )
 
         executor.start()
@@ -787,13 +739,24 @@ class DejaViewAPI:
         return {"groups": groups, "total_count": total}
 
     def get_similarity_group_detail(self, group_id: int) -> dict:
-        """Return full member data with thumbnails for a single group."""
+        """Return full member data with thumbnails for a single group.
+
+        Each member dict includes an ``action`` key (``'keep'``, ``'delete'``,
+        ``'ignore'``, or ``None`` if undecided), mirroring ``get_group_detail``.
+        """
         members = self._db.get_similarity_group_members(group_id)
         member_list = _rows_to_list(members)
+        if member_list:
+            session_id = member_list[0]["session_id"]
+            file_ids = [m["id"] for m in member_list]
+            actions = self._get_group_actions(session_id, file_ids)
+        else:
+            actions = {}
         for m in member_list:
             m["thumbnail_data"] = self._read_thumbnail_base64(
                 m.get("thumbnail_path")
             )
+            m["action"] = actions.get(m["id"])
         return {
             "id": group_id,
             "member_count": len(member_list),
@@ -855,9 +818,14 @@ class DejaViewAPI:
     # ── Duplicates Bin (Soft Delete) ───────────────────────────────
 
     def get_bin_items(self, session_id: int) -> list[dict]:
-        """Return all soft-deleted items."""
+        """Return all soft-deleted items with thumbnail data."""
         rows = self._db.get_active_soft_deletes(session_id)
-        return _rows_to_list(rows)
+        result = _rows_to_list(rows)
+        for item in result:
+            file_row = self._db.get_file(item["file_id"]) if item.get("file_id") else None
+            thumb_path = file_row["thumbnail_path"] if file_row else None
+            item["thumbnail_data"] = self._read_thumbnail_base64(thumb_path)
+        return result
 
     def restore_from_bin(self, soft_delete_id: int) -> None:
         """Restore a soft-deleted file to its original location."""
@@ -916,14 +884,7 @@ class DejaViewAPI:
         within a reasonable size before parsing.
         """
         if not file_path:
-            # Use pywebview file dialog
-            result = self._window.create_file_dialog(
-                webview.OPEN_DIALOG,
-                file_types=("JSON Files (*.json)",),
-            )
-            if not result:
-                return {"imported": 0, "treasures": 0}
-            file_path = result[0]
+            return {"imported": 0, "treasures": 0, "error": "no_file_provided"}
 
         resolved = Path(file_path).resolve(strict=False)
         if resolved.suffix.lower() != ".json":
@@ -1110,9 +1071,4 @@ class DejaViewAPI:
 
     def select_folders(self) -> list[str]:
         """Open a native folder selection dialog."""
-        result = self._window.create_file_dialog(
-            webview.FOLDER_DIALOG,
-        )
-        if result:
-            return list(result)
-        return []
+        raise NotImplementedError("select_folders: to be implemented with tauri-plugin-dialog in Step 5")

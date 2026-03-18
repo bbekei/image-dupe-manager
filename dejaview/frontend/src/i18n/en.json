@@ -162,7 +162,8 @@
     "confirm_purge": "Permanently delete all expired items? This cannot be undone.",
     "confirm_delete": "Permanently delete {{count}} items? This cannot be undone.",
     "confirm_empty_bin": "Permanently delete all {{count}} items? This cannot be undone.",
-    "empty": "Duplicates Bin is empty."
+    "empty": "Duplicates Bin is empty.",
+    "toggle_thumbs": "Thumbnails"
   },
   "family": {
     "title": "Family Library",

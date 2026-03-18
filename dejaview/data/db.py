@@ -509,11 +509,11 @@ class Database:
     # Sessions
     # ------------------------------------------------------------------
 
-    def create_session(self, name: str, created_at: str) -> int:
+    def create_session(self, name: str, created_at: str, similarity_enabled: bool = False) -> int:
         """Insert a new scan session and return its id."""
         cur = self.conn.execute(
-            "INSERT INTO sessions (name, created_at, status) VALUES (?, ?, 'in_progress')",
-            (name, created_at),
+            "INSERT INTO sessions (name, created_at, status, similarity_enabled) VALUES (?, ?, 'in_progress', ?)",
+            (name, created_at, 1 if similarity_enabled else 0),
         )
         self.conn.commit()
         return cur.lastrowid  # type: ignore[return-value]

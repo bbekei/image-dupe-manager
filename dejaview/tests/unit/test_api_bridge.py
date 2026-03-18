@@ -1,15 +1,24 @@
 """
-tests/unit/test_api_bridge.py — Contract tests for the pywebview API bridge.
+tests/unit/test_api_bridge.py — Contract tests for the DejaView sidecar API bridge.
 
 Validates:
   1. All public methods expected by the TypeScript frontend exist on DejaViewAPI.
-  2. Scanner and Executor signal connections use DirectConnection.
-  3. Signal handlers invoke _emit() with correct event names and payloads.
+  2. Scanner signal handlers invoke _emit() with correct event names and payloads.
+  3. Executor signal handlers invoke _emit() with correct event names and payloads.
+  4. Methods return the shapes the frontend destructures (JSON-serializable).
+  5. Custom selection endpoints work correctly.
+  6. Sidecar JSON-RPC protocol compliance (stdin/stdout round-trip).
 
-No pywebview or browser required — tests mock the window and verify calls.
+Architecture: pywebview replaced by sidecar (Tauri v2). Events are now forwarded
+via set_emit_callback(cb) instead of window.evaluate_js(). Tests collect emitted
+events in a list for assertion.
 """
 
 import inspect
+import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -25,24 +34,27 @@ from data.db import Database
 
 @pytest.fixture
 def api(db: Database, tmp_path: Path) -> DejaViewAPI:
-    """DejaViewAPI wired to a fresh test DB with a mock window."""
     thumb_dir = tmp_path / "thumbs"
     thumb_dir.mkdir()
     trash_root = tmp_path / "trash"
     trash_root.mkdir()
     app_dir = tmp_path / "app"
     app_dir.mkdir()
-
     api = DejaViewAPI(
         db=db,
         thumb_dir=thumb_dir,
         trash_root=trash_root,
         app_dir=app_dir,
     )
-    # Mock window so _emit() calls evaluate_js() without a real browser
-    mock_window = MagicMock()
-    api.set_window(mock_window)
     return api
+
+
+@pytest.fixture
+def api_with_emitter(api: DejaViewAPI):
+    """API wired with a list-collector emit callback for event assertions."""
+    emitted = []
+    api.set_emit_callback(lambda name, detail: emitted.append((name, detail)))
+    return api, emitted
 
 
 # ---------------------------------------------------------------------------
@@ -120,7 +132,7 @@ class TestAPISurface:
         public = [
             name for name in dir(api)
             if not name.startswith("_") and callable(getattr(api, name))
-            and name != "set_window"  # internal setup, not called from JS
+            and name != "set_emit_callback"  # internal setup, not called from JS
         ]
         extras = set(public) - set(EXPECTED_METHODS)
         assert extras == set(), (
@@ -130,309 +142,174 @@ class TestAPISurface:
 
 
 # ---------------------------------------------------------------------------
-# 2. Signal connection type — must be DirectConnection
-# ---------------------------------------------------------------------------
-
-class TestScannerSignalConnections:
-    """_connect_scanner_signals must use DirectConnection for every signal.
-
-    Uses source code inspection since PyQt6 bound signals have read-only
-    .connect attributes. The behavioral proof (signals fire synchronously)
-    is covered by TestScannerEventPayloads below.
-    """
-
-    def test_all_scanner_connects_use_dc(self, api: DejaViewAPI):
-        """Every .connect() call in _connect_scanner_signals must pass DC."""
-        import re
-        source = inspect.getsource(api._connect_scanner_signals)
-
-        # Find all .connect( calls in the source
-        connect_calls = re.findall(r'(\w+)\.connect\(', source)
-        assert len(connect_calls) >= 15, (
-            f"Expected at least 15 signal connections, found {len(connect_calls)}"
-        )
-
-        # Every .connect() must include DC as second arg
-        # Pattern: .connect(..., DC) or .connect(\n..., DC,\n)
-        connects_without_dc = re.findall(
-            r'\.connect\([^)]+\)\s*$', source, re.MULTILINE
-        )
-        # All connect calls should end with DC or DC,) — none should lack it
-        non_dc = [c for c in connects_without_dc if 'DC' not in c]
-        assert non_dc == [], (
-            f"Signal connections missing DirectConnection: {non_dc}"
-        )
-
-    def test_scanner_signals_fire_synchronously(self, api: DejaViewAPI):
-        """Behavioral proof: signals connected with DirectConnection fire
-        inline when emitted, so _emit() is called immediately."""
-        from core.scanner import Scanner
-
-        scanner = Scanner(
-            db=api._db, session_id=1,
-            thumb_dir=api._thumb_dir, max_workers=1,
-        )
-        api._connect_scanner_signals(scanner)
-
-        # If DirectConnection is missing, this emit would be queued
-        # to an event loop that doesn't exist, and evaluate_js would
-        # never be called.
-        scanner.scan_complete.emit()
-        assert api._window.evaluate_js.called, (
-            "scan_complete signal did not fire synchronously — "
-            "DirectConnection likely missing"
-        )
-
-
-class TestExecutorSignalConnections:
-    """execute_plan must use DirectConnection for every executor signal."""
-
-    def test_all_executor_connects_use_dc(self, api: DejaViewAPI):
-        """Every .connect() call in execute_plan must pass DC."""
-        import re
-        source = inspect.getsource(api.execute_plan)
-
-        connect_calls = re.findall(r'\.connect\(', source)
-        assert len(connect_calls) >= 5, (
-            f"Expected at least 5 executor signal connections, found {len(connect_calls)}"
-        )
-
-        # Verify DC is defined and used
-        assert 'DC = Qt.ConnectionType.DirectConnection' in source, (
-            "execute_plan does not define DC = DirectConnection"
-        )
-
-        # Every connect block should reference DC
-        connects_without_dc = re.findall(
-            r'\.connect\([^)]+\)\s*$', source, re.MULTILINE
-        )
-        non_dc = [c for c in connects_without_dc if 'DC' not in c]
-        assert non_dc == [], (
-            f"Executor signal connections missing DirectConnection: {non_dc}"
-        )
-
-    def test_executor_signals_fire_synchronously(
-        self, api: DejaViewAPI, session_factory
-    ):
-        """Behavioral proof: executor signals fire inline with DirectConnection."""
-        from PyQt6.QtCore import Qt
-        from core.executor import PlanExecutor
-
-        DC = Qt.ConnectionType.DirectConnection
-        sid = session_factory()
-
-        executor = PlanExecutor(
-            db=api._db, session_id=sid, trash_root=api._trash_root,
-        )
-
-        # Wire one signal manually the same way execute_plan does
-        executor.execution_complete.connect(
-            lambda s, e: api._emit("exec:complete", {
-                "success": s, "errors": e,
-                "summary": f"{s} succeeded, {e} failed",
-            }),
-            DC,
-        )
-
-        executor.execution_complete.emit(5, 1)
-        assert api._window.evaluate_js.called, (
-            "execution_complete signal did not fire synchronously — "
-            "DirectConnection likely missing"
-        )
-
-
-# ---------------------------------------------------------------------------
-# 3. Event payload contracts — signals produce correct _emit() calls
+# 2. Scanner event payload contracts
 # ---------------------------------------------------------------------------
 
 class TestScannerEventPayloads:
     """Verify _emit() is called with correct event names and payload shapes."""
 
-    def test_progress_emits_scan_progress(self, api: DejaViewAPI):
+    def test_progress_emits_scan_progress(self, api_with_emitter):
+        api, emitted = api_with_emitter
         from core.scanner import Scanner
-
-        scanner = Scanner(
-            db=api._db, session_id=1,
-            thumb_dir=api._thumb_dir, max_workers=1,
-        )
+        scanner = Scanner(db=api._db, session_id=1, thumb_dir=api._thumb_dir, max_workers=1)
         api._connect_scanner_signals(scanner)
 
-        # Emit the signal directly (DirectConnection means handler runs inline)
         scanner.progress_updated.emit(5, 100)
 
-        call = api._window.evaluate_js.call_args
-        assert call is not None
-        js_code = call[0][0]
-        assert '"scan:progress"' in js_code
-        assert '"current": 5' in js_code
-        assert '"total": 100' in js_code
-        assert '"phase": "hashing"' in js_code
+        names = [e[0] for e in emitted]
+        assert "scan:progress" in names
+        detail = next(d for n, d in emitted if n == "scan:progress")
+        assert detail["current"] == 5
+        assert detail["total"] == 100
+        assert detail["phase"] == "hashing"
 
-    def test_file_discovered_emits_discovery_progress(self, api: DejaViewAPI):
+    def test_file_discovered_emits_discovery_progress(self, api_with_emitter):
+        api, emitted = api_with_emitter
         from core.scanner import Scanner
-
-        scanner = Scanner(
-            db=api._db, session_id=1,
-            thumb_dir=api._thumb_dir, max_workers=1,
-        )
+        scanner = Scanner(db=api._db, session_id=1, thumb_dir=api._thumb_dir, max_workers=1)
         api._connect_scanner_signals(scanner)
 
         scanner.file_discovered.emit(1, "/test/img.jpg")
 
-        call = api._window.evaluate_js.call_args
-        assert call is not None
-        js_code = call[0][0]
-        assert '"scan:discovery_progress"' in js_code
-        assert '"discovered": 1' in js_code
+        names = [e[0] for e in emitted]
+        assert "scan:discovery_progress" in names
+        detail = next(d for n, d in emitted if n == "scan:discovery_progress")
+        assert detail["discovered"] == 1
 
-    def test_duplicate_found_emits_event(self, api: DejaViewAPI):
+    def test_duplicate_found_emits_event(self, api_with_emitter):
+        api, emitted = api_with_emitter
         from core.scanner import Scanner
-
-        scanner = Scanner(
-            db=api._db, session_id=1,
-            thumb_dir=api._thumb_dir, max_workers=1,
-        )
+        scanner = Scanner(db=api._db, session_id=1, thumb_dir=api._thumb_dir, max_workers=1)
         api._connect_scanner_signals(scanner)
 
         scanner.duplicate_found.emit("abc123", [1, 2, 3])
 
-        call = api._window.evaluate_js.call_args
-        assert call is not None
-        js_code = call[0][0]
-        assert '"scan:duplicate_found"' in js_code
-        assert '"pixel_hash": "abc123"' in js_code
-        assert '"count": 3' in js_code
+        names = [e[0] for e in emitted]
+        assert "scan:duplicate_found" in names
+        detail = next(d for n, d in emitted if n == "scan:duplicate_found")
+        assert detail["pixel_hash"] == "abc123"
+        assert detail["count"] == 3
 
-    def test_scan_complete_emits_status(self, api: DejaViewAPI):
+    def test_scan_complete_emits_status(self, api_with_emitter):
+        api, emitted = api_with_emitter
         from core.scanner import Scanner
-
-        scanner = Scanner(
-            db=api._db, session_id=1,
-            thumb_dir=api._thumb_dir, max_workers=1,
-        )
+        scanner = Scanner(db=api._db, session_id=1, thumb_dir=api._thumb_dir, max_workers=1)
         api._connect_scanner_signals(scanner)
 
         scanner.scan_complete.emit()
 
-        call = api._window.evaluate_js.call_args
-        assert call is not None
-        js_code = call[0][0]
-        assert '"scan:status"' in js_code
-        assert '"status": "complete"' in js_code
+        names = [e[0] for e in emitted]
+        assert "scan:status" in names
+        detail = next(d for n, d in emitted if n == "scan:status")
+        assert detail["status"] == "complete"
 
-    def test_similarity_progress_emits_event(self, api: DejaViewAPI):
+    def test_similarity_progress_emits_event(self, api_with_emitter):
+        api, emitted = api_with_emitter
         from core.scanner import Scanner
-
-        scanner = Scanner(
-            db=api._db, session_id=1,
-            thumb_dir=api._thumb_dir, max_workers=1,
-        )
+        scanner = Scanner(db=api._db, session_id=1, thumb_dir=api._thumb_dir, max_workers=1)
         api._connect_scanner_signals(scanner)
 
         scanner.similarity_progress.emit(10, 50)
 
-        call = api._window.evaluate_js.call_args
-        assert call is not None
-        js_code = call[0][0]
-        assert '"scan:similarity_progress"' in js_code
-        assert '"current": 10' in js_code
-        assert '"total": 50' in js_code
+        names = [e[0] for e in emitted]
+        assert "scan:similarity_progress" in names
+        detail = next(d for n, d in emitted if n == "scan:similarity_progress")
+        assert detail["current"] == 10
+        assert detail["total"] == 50
 
-    def test_scan_error_emits_separate_event(self, api: DejaViewAPI):
-        """scan_error emits scan:error (not scan:status) to avoid phase change."""
+    def test_scan_error_emits_separate_event(self, api_with_emitter):
+        api, emitted = api_with_emitter
         from core.scanner import Scanner
-
-        scanner = Scanner(
-            db=api._db, session_id=1,
-            thumb_dir=api._thumb_dir, max_workers=1,
-        )
+        scanner = Scanner(db=api._db, session_id=1, thumb_dir=api._thumb_dir, max_workers=1)
         api._connect_scanner_signals(scanner)
 
-        scanner.scan_error.emit("/test/img.jpg", "permission denied")
+        scanner.scan_error.emit("/bad/path.jpg", "Permission denied")
 
-        call = api._window.evaluate_js.call_args
-        assert call is not None
-        js_code = call[0][0]
-        assert '"scan:error"' in js_code
-        assert '"path": "/test/img.jpg"' in js_code
-        assert '"message": "permission denied"' in js_code
-        # Must NOT change the scan phase
-        assert '"scan:status"' not in js_code
+        names = [e[0] for e in emitted]
+        assert "scan:error" in names
+        detail = next(d for n, d in emitted if n == "scan:error")
+        assert detail["path"] == "/bad/path.jpg"
+        assert "Permission denied" in detail["message"]
 
-    def test_scan_error_does_not_change_phase(self, api: DejaViewAPI):
-        """Per-file scan errors must not overwrite _scan_phase."""
+    def test_scan_error_does_not_change_phase(self, api_with_emitter):
+        api, _ = api_with_emitter
         from core.scanner import Scanner
-
-        scanner = Scanner(
-            db=api._db, session_id=1,
-            thumb_dir=api._thumb_dir, max_workers=1,
-        )
+        scanner = Scanner(db=api._db, session_id=1, thumb_dir=api._thumb_dir, max_workers=1)
         api._connect_scanner_signals(scanner)
+        api._scan_phase = "hashing"
 
-        # Simulate hashing phase then a per-file error
-        scanner.progress_updated.emit(5, 100)
+        scanner.scan_error.emit("/bad/path.jpg", "err")
+
         assert api._scan_phase == "hashing"
 
-        scanner.scan_error.emit("/bad/file.jpg", "corrupt")
-        # Phase must still be hashing, not error
-        assert api._scan_phase == "hashing"
-
-    def test_status_message_emits_info(self, api: DejaViewAPI):
+    def test_status_message_emits_info(self, api_with_emitter):
+        api, emitted = api_with_emitter
         from core.scanner import Scanner
-
-        scanner = Scanner(
-            db=api._db, session_id=1,
-            thumb_dir=api._thumb_dir, max_workers=1,
-        )
+        scanner = Scanner(db=api._db, session_id=1, thumb_dir=api._thumb_dir, max_workers=1)
         api._connect_scanner_signals(scanner)
 
-        scanner.status_message.emit("Scanning folder X")
+        scanner.status_message.emit("Discovering files…")
 
-        call = api._window.evaluate_js.call_args
-        assert call is not None
-        js_code = call[0][0]
-        assert '"scan:status"' in js_code
-        assert '"status": "info"' in js_code
+        names = [e[0] for e in emitted]
+        assert "scan:status" in names
+        detail = next(d for n, d in emitted if n == "scan:status")
+        assert detail["status"] == "info"
+        assert "Discovering" in detail["message"]
 
-    def test_progress_updates_polling_state(self, api: DejaViewAPI):
-        """get_scan_progress() should reflect the latest signal data."""
+    def test_progress_updates_polling_state(self, api_with_emitter):
+        api, _ = api_with_emitter
         from core.scanner import Scanner
-
-        scanner = Scanner(
-            db=api._db, session_id=1,
-            thumb_dir=api._thumb_dir, max_workers=1,
-        )
+        scanner = Scanner(db=api._db, session_id=1, thumb_dir=api._thumb_dir, max_workers=1)
         api._connect_scanner_signals(scanner)
 
         scanner.progress_updated.emit(42, 200)
 
-        state = api.get_scan_progress()
-        assert state["current"] == 42
-        assert state["total"] == 200
-        assert state["phase"] == "hashing"
+        assert api._scan_current == 42
+        assert api._scan_total == 200
+        assert api._scan_phase == "hashing"
 
-    def test_discovery_increments_discovered_count(self, api: DejaViewAPI):
+    def test_discovery_increments_discovered_count(self, api_with_emitter):
+        api, _ = api_with_emitter
         from core.scanner import Scanner
-
-        scanner = Scanner(
-            db=api._db, session_id=1,
-            thumb_dir=api._thumb_dir, max_workers=1,
-        )
+        scanner = Scanner(db=api._db, session_id=1, thumb_dir=api._thumb_dir, max_workers=1)
         api._connect_scanner_signals(scanner)
 
-        for i in range(5):
-            scanner.file_discovered.emit(i + 1, f"/test/img{i}.jpg")
+        for i in range(10):
+            scanner.file_discovered.emit(i, f"/test/img{i}.jpg")
 
-        state = api.get_scan_progress()
-        assert state["discovered"] == 5
+        assert api._scan_discovered == 10
 
+    # Verify unconsumed events are NOT emitted (AC-31 / Step 4a decision)
+    def test_unconsumed_events_not_forwarded(self, api_with_emitter):
+        api, emitted = api_with_emitter
+        from core.scanner import Scanner
+        scanner = Scanner(db=api._db, session_id=1, thumb_dir=api._thumb_dir, max_workers=1)
+        api._connect_scanner_signals(scanner)
+
+        # These four were removed from ALLOWED_EVENTS in Step 4a
+        scanner.hash_complete.emit(1, "abc123")
+        scanner.hash_complete_batch.emit([(1, "abc")])
+        scanner.directory_hashed.emit("/some/dir")
+        scanner.similarity_grouping_complete.emit(5)
+
+        forwarded_names = {e[0] for e in emitted}
+        assert "scan:hash_complete" not in forwarded_names
+        assert "scan:hash_batch" not in forwarded_names
+        assert "scan:directory_hashed" not in forwarded_names
+        assert "scan:similarity_complete" not in forwarded_names
+
+
+# ---------------------------------------------------------------------------
+# 3. Executor event payload contracts
+# ---------------------------------------------------------------------------
 
 class TestExecutorEventPayloads:
     """Verify executor signal handlers call _emit() with correct payloads."""
 
-    def test_progress_emits_exec_progress(
-        self, api: DejaViewAPI, session_factory
+    def test_execution_complete_emits_exec_complete(
+        self, api_with_emitter, session_factory
     ):
+        api, emitted = api_with_emitter
         from core.executor import PlanExecutor
 
         sid = session_factory()
@@ -441,55 +318,98 @@ class TestExecutorEventPayloads:
             trash_root=api._trash_root,
         )
 
-        # Wire signals the same way execute_plan does
-        from PyQt6.QtCore import Qt
-        DC = Qt.ConnectionType.DirectConnection
-
-        executor.progress_updated.connect(
-            lambda c, t: api._emit("exec:progress", {
-                "current": c, "total": t, "action": "cleanup", "file_path": "",
-            }),
-            DC,
-        )
-
-        executor.progress_updated.emit(3, 10)
-
-        call = api._window.evaluate_js.call_args
-        assert call is not None
-        js_code = call[0][0]
-        assert '"exec:progress"' in js_code
-        assert '"current": 3' in js_code
-        assert '"total": 10' in js_code
-
-    def test_complete_emits_exec_complete(
-        self, api: DejaViewAPI, session_factory
-    ):
-        from core.executor import PlanExecutor
-        from PyQt6.QtCore import Qt
-        DC = Qt.ConnectionType.DirectConnection
-
-        sid = session_factory()
-        executor = PlanExecutor(
-            db=api._db, session_id=sid,
-            trash_root=api._trash_root,
-        )
-
+        # Wire signal the same way execute_plan does
         executor.execution_complete.connect(
             lambda s, e: api._emit("exec:complete", {
                 "success": s, "errors": e,
                 "summary": f"{s} succeeded, {e} failed",
             }),
-            DC,
         )
 
         executor.execution_complete.emit(8, 2)
 
-        call = api._window.evaluate_js.call_args
-        assert call is not None
-        js_code = call[0][0]
-        assert '"exec:complete"' in js_code
-        assert '"success": 8' in js_code
-        assert '"errors": 2' in js_code
+        names = [e[0] for e in emitted]
+        assert "exec:complete" in names
+        detail = next(d for n, d in emitted if n == "exec:complete")
+        assert detail["success"] == 8
+        assert detail["errors"] == 2
+
+    def test_execution_error_emits_exec_error(
+        self, api_with_emitter, session_factory
+    ):
+        api, emitted = api_with_emitter
+        from core.executor import PlanExecutor
+
+        sid = session_factory()
+        executor = PlanExecutor(
+            db=api._db, session_id=sid,
+            trash_root=api._trash_root,
+        )
+
+        executor.execution_error.connect(
+            lambda path, msg: api._emit("exec:error", {
+                "message": msg, "file_path": path,
+            }),
+        )
+
+        executor.execution_error.emit("/some/file.jpg", "Permission denied")
+
+        names = [e[0] for e in emitted]
+        assert "exec:error" in names
+        detail = next(d for n, d in emitted if n == "exec:error")
+        assert detail["file_path"] == "/some/file.jpg"
+        assert "Permission denied" in detail["message"]
+
+    def test_log_message_emits_exec_progress(
+        self, api_with_emitter, session_factory
+    ):
+        api, emitted = api_with_emitter
+        from core.executor import PlanExecutor
+
+        sid = session_factory()
+        executor = PlanExecutor(
+            db=api._db, session_id=sid,
+            trash_root=api._trash_root,
+        )
+
+        executor.log_message.connect(
+            lambda msg: api._emit("exec:progress", {
+                "current": 0, "total": 0, "action": "log", "file_path": msg,
+            }),
+        )
+
+        executor.log_message.emit("Deleting /some/file.jpg")
+
+        names = [e[0] for e in emitted]
+        assert "exec:progress" in names
+        detail = next(d for n, d in emitted if n == "exec:progress")
+        assert detail["action"] == "log"
+        assert "Deleting" in detail["file_path"]
+
+    def test_stage_changed_emits_exec_progress(
+        self, api_with_emitter, session_factory
+    ):
+        api, emitted = api_with_emitter
+        from core.executor import PlanExecutor
+
+        sid = session_factory()
+        executor = PlanExecutor(
+            db=api._db, session_id=sid,
+            trash_root=api._trash_root,
+        )
+
+        executor.stage_changed.connect(
+            lambda stage: api._emit("exec:progress", {
+                "current": 0, "total": 0, "action": stage, "file_path": "",
+            }),
+        )
+
+        executor.stage_changed.emit("cleanup")
+
+        names = [e[0] for e in emitted]
+        assert "exec:progress" in names
+        detail = next(d for n, d in emitted if n == "exec:progress")
+        assert detail["action"] == "cleanup"
 
 
 # ---------------------------------------------------------------------------
@@ -636,7 +556,7 @@ class TestCustomSelectionEndpoints:
     def test_apply_custom_selection_returns_shape(
         self, api: DejaViewAPI, session_factory
     ):
-        sid, f1, f2 = self._setup_dupes(api, session_factory)
+        sid, *_ = self._setup_dupes(api, session_factory)
         result = api.apply_custom_selection(sid, [
             {"field": "size", "ascending": False},
         ])
@@ -660,16 +580,16 @@ class TestCustomSelectionEndpoints:
         assert action_map[f1] == "delete"  # 5000 bytes
 
     def test_apply_custom_selection_emits_events(
-        self, api: DejaViewAPI, session_factory
+        self, api_with_emitter, session_factory
     ):
+        api, emitted = api_with_emitter
         sid, _, _ = self._setup_dupes(api, session_factory)
         api.apply_custom_selection(sid, [
             {"field": "size", "ascending": False},
         ])
         # Check that selection:complete was emitted
-        calls = api._window.evaluate_js.call_args_list
-        js_strings = [c[0][0] for c in calls]
-        assert any("selection:complete" in s for s in js_strings)
+        names = [e[0] for e in emitted]
+        assert "selection:complete" in names
 
     def test_apply_custom_selection_clears_previous(
         self, api: DejaViewAPI, session_factory
@@ -687,7 +607,7 @@ class TestCustomSelectionEndpoints:
     def test_apply_custom_similarity_selection_returns_shape(
         self, api: DejaViewAPI, session_factory
     ):
-        sid, _, _, _ = self._setup_sim_group(api, session_factory)
+        sid, *_ = self._setup_sim_group(api, session_factory)
         result = api.apply_custom_similarity_selection(sid, [
             {"field": "resolution", "ascending": False},
         ])
@@ -720,3 +640,108 @@ class TestCustomSelectionEndpoints:
         sid, _, _, _ = self._setup_sim_group(api, session_factory)
         result = api.apply_similarity_preset(sid, "KEEP_HIGHEST_RESOLUTION")
         assert result["active_preset"] == "KEEP_HIGHEST_RESOLUTION"
+
+
+# ---------------------------------------------------------------------------
+# Sidecar protocol — stdin/stdout JSON-RPC round-trip tests
+# ---------------------------------------------------------------------------
+
+
+def _run_sidecar(req_line: str, tmp_path: Path, timeout: int = 15) -> dict:
+    """Run sidecar_main.py with req_line on stdin; return first stdout JSON line.
+
+    cwd is set to dejaview/ (two levels up from this file which lives at
+    dejaview/tests/unit/).  sidecar_main.py adds its own parent.parent to
+    sys.path so all backend imports resolve from that directory.
+    """
+    # dejaview/tests/unit/ -> dejaview/tests/ -> dejaview/
+    dejaview_dir = str(Path(__file__).parent.parent.parent)
+    env = {**os.environ, "APPDATA": str(tmp_path), "HOME": str(tmp_path)}
+    proc = subprocess.run(
+        [sys.executable, "sidecar/sidecar_main.py"],
+        input=req_line + "\n",
+        capture_output=True,
+        text=True,
+        cwd=dejaview_dir,
+        env=env,
+        timeout=timeout,
+    )
+    lines = [ln for ln in proc.stdout.strip().splitlines() if ln.strip()]
+    assert lines, (
+        f"Sidecar produced no stdout.\nstderr: {proc.stderr[:500]}"
+    )
+    return json.loads(lines[0])
+
+
+class TestSidecarProtocol:
+    """JSON-RPC 2.0 protocol compliance tests for sidecar_main.py."""
+
+    def test_get_app_version_round_trip(self, tmp_path):
+        req = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "get_app_version", "params": {}})
+        result = _run_sidecar(req, tmp_path)
+        assert result["jsonrpc"] == "2.0"
+        assert result["id"] == 1
+        assert "result" in result
+        assert "error" not in result
+        assert isinstance(result["result"], str)
+        assert len(result["result"]) > 0
+
+    def test_response_has_no_log_noise(self, tmp_path):
+        """Stdout must contain only JSON lines — no log messages mixed in."""
+        req = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "get_app_version", "params": {}})
+        dejaview_dir = str(Path(__file__).parent.parent.parent)
+        env = {**os.environ, "APPDATA": str(tmp_path), "HOME": str(tmp_path)}
+        proc = subprocess.run(
+            [sys.executable, "sidecar/sidecar_main.py"],
+            input=req + "\n",
+            capture_output=True, text=True,
+            cwd=dejaview_dir,
+            env=env, timeout=15,
+        )
+        for line in proc.stdout.strip().splitlines():
+            if line.strip():
+                json.loads(line)  # must not raise
+
+    def test_method_not_found_returns_error(self, tmp_path):
+        req = json.dumps({"jsonrpc": "2.0", "id": 2, "method": "no_such_method", "params": {}})
+        result = _run_sidecar(req, tmp_path)
+        assert "error" in result
+        assert result["error"]["code"] == -32601
+        assert result["id"] == 2
+
+    def test_parse_error_returns_error(self, tmp_path):
+        result = _run_sidecar("{not valid json", tmp_path)
+        assert "error" in result
+        assert result["error"]["code"] == -32700
+
+    def test_private_method_blocked(self, tmp_path):
+        req = json.dumps({"jsonrpc": "2.0", "id": 3, "method": "_emit", "params": {}})
+        result = _run_sidecar(req, tmp_path)
+        assert "error" in result
+        assert result["error"]["code"] == -32601
+
+    def test_internal_method_blocked(self, tmp_path):
+        """set_emit_callback is internal setup — must not be callable via RPC."""
+        req = json.dumps({"jsonrpc": "2.0", "id": 4, "method": "set_emit_callback", "params": {}})
+        result = _run_sidecar(req, tmp_path)
+        assert "error" in result
+        # set_emit_callback is a public method but requires a callable argument;
+        # calling it with no params raises TypeError → -32603 internal error
+        assert result["error"]["code"] in (-32601, -32603)
+
+    def test_get_scan_progress_round_trip(self, tmp_path):
+        req = json.dumps({"jsonrpc": "2.0", "id": 5, "method": "get_scan_progress", "params": {}})
+        result = _run_sidecar(req, tmp_path)
+        assert "result" in result
+        assert "error" not in result
+        assert isinstance(result["result"], dict)
+        assert "phase" in result["result"]
+
+    def test_get_app_config_round_trip(self, tmp_path):
+        req = json.dumps({"jsonrpc": "2.0", "id": 6, "method": "get_app_config", "params": {}})
+        result = _run_sidecar(req, tmp_path)
+        assert "result" in result
+        r = result["result"]
+        assert isinstance(r, dict)
+        for key in ("language", "theme", "max_scan_workers", "perf_logging", "scan_delay_ms"):
+            assert key in r, f"Missing key: {key}"

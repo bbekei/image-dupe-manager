@@ -1,8 +1,11 @@
 import { Outlet } from 'react-router-dom'
 import { Sidebar } from './Sidebar.tsx'
 import { Toaster } from 'sonner'
+import { useSettingsStore } from '../stores/useSettingsStore.ts'
 
 export function Layout() {
+  const theme = useSettingsStore((s) => s.config?.theme)
+
   return (
     <div className="flex w-full h-full">
       <Sidebar />
@@ -11,7 +14,7 @@ export function Layout() {
       </main>
       <Toaster
         position="bottom-right"
-        theme="dark"
+        theme={theme === 'light' ? 'light' : 'dark'}
         toastOptions={{
           style: {
             background: 'var(--color-dv-surface)',

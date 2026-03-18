@@ -7,6 +7,7 @@ import { useSettingsStore } from '../stores/useSettingsStore.ts'
 import type { AppConfig, SyncConfig, RemotePeer } from '../types/api.ts'
 import i18n from '../i18n/index.ts'
 import { resolveLanguage } from '../i18n/resolveLanguage.ts'
+import { applyTheme } from '../App.tsx'
 
 function extractFolderId(input: string): string {
   const trimmed = input.trim()
@@ -79,9 +80,12 @@ export function Settings() {
   const handleChange = async (key: keyof AppConfig, value: string | number | boolean) => {
     updateConfig(key, value)
     try {
-      await callBackend('set_app_config', key, value)
+      await callBackend('set_app_config', { key, value })
       if (key === 'language') {
         i18n.changeLanguage(resolveLanguage(value as string))
+      }
+      if (key === 'theme') {
+        applyTheme(value as string)
       }
       toast.success(t('settings.saved'))
     } catch {
@@ -110,7 +114,7 @@ export function Settings() {
     setSavingSync(true)
     try {
       const result = await callBackend<{ ok: boolean; error?: string }>(
-        'save_sync_config', syncUsername, syncFolderId, syncPrivacy
+        'save_sync_config', { username: syncUsername, folder_id: syncFolderId, privacy: syncPrivacy },
       )
       if (result.ok) {
         toast.success(t('settings.sync_saved'))
@@ -129,7 +133,7 @@ export function Settings() {
 
   const handleRemovePeer = async (username: string) => {
     try {
-      await callBackend('remove_peer', username)
+      await callBackend('remove_peer', { username })
       loadPeers()
     } catch {
       toast.error(t('common.error'))

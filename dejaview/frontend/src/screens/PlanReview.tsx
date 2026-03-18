@@ -26,7 +26,7 @@ export function PlanReview() {
     if (!sessionId) return
     setLoading(true)
     try {
-      const plan = await callBackend<PlanSummary>('get_plan_summary', sessionId)
+      const plan = await callBackend<PlanSummary>('get_plan_summary', { session_id: sessionId })
       setSummary(plan)
     } catch {
       // handle error
@@ -41,7 +41,7 @@ export function PlanReview() {
     if (!sessionId) return
     setConfirmOpen(false)
     try {
-      await callBackend('execute_plan', sessionId)
+      await callBackend('execute_plan', { session_id: sessionId })
       navigate('/execute')
     } catch {
       // handle error
@@ -51,7 +51,7 @@ export function PlanReview() {
   const handleClearAll = async () => {
     if (!sessionId) return
     try {
-      await callBackend('clear_all_actions', sessionId)
+      await callBackend('clear_all_actions', { session_id: sessionId })
       loadPlan()
     } catch {
       // handle error
@@ -141,7 +141,8 @@ export function PlanReview() {
       <div className="flex gap-3">
         <button
           onClick={() => setConfirmOpen(true)}
-          className="flex items-center gap-2 px-6 py-2.5 bg-dv-primary hover:bg-dv-primary-hover text-white rounded-lg transition-colors font-medium"
+          disabled={summary.delete_count === 0}
+          className="flex items-center gap-2 px-6 py-2.5 bg-dv-primary hover:bg-dv-primary-hover text-white rounded-lg transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {t('plan.execute')}
         </button>

@@ -16,7 +16,7 @@ export function Requests() {
     if (!sessionId) return
     setLoading(true)
     try {
-      const result = await callBackend<ShareRequest[]>('get_requests', sessionId)
+      const result = await callBackend<ShareRequest[]>('get_requests', { session_id: sessionId })
       setRequests(result)
     } catch {
       // handle error
@@ -29,7 +29,7 @@ export function Requests() {
 
   const handleRespond = async (requestId: number, response: string) => {
     try {
-      await callBackend('respond_to_request', requestId, response)
+      await callBackend('respond_to_request', { request_id: requestId, response })
       loadRequests()
     } catch {
       // handle error

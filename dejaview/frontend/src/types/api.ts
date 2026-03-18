@@ -131,6 +131,7 @@ export interface BinItem {
   deleted_at: string
   expires_at: string
   recovered_at: string | null
+  thumbnail_data?: string
 }
 
 // -- Family Sharing --
@@ -256,7 +257,7 @@ export interface MigrationConfirmResult {
   validation_errors?: string[]
 }
 
-// -- pywebview API surface --
+// -- Backend API surface --
 
 export interface ScanProgress {
   phase: string
@@ -265,76 +266,4 @@ export interface ScanProgress {
   discovered: number
   duplicates: number
   message: string
-}
-
-export interface PyWebViewAPI {
-  // Version & Migration
-  get_app_version(): Promise<string>
-  get_migration_status(): Promise<MigrationStatus>
-  confirm_migration(): Promise<MigrationConfirmResult>
-
-  // Scan & Session
-  start_scan(folders: string[], session_name: string, enable_similarity: boolean): Promise<number>
-  pause_scan(): Promise<void>
-  resume_scan(session_id: number): Promise<void>
-  stop_scan(): Promise<void>
-  get_sessions(): Promise<Session[]>
-  get_scan_summary(session_id: number): Promise<ScanSummary>
-  get_scan_progress(): Promise<ScanProgress>
-
-  // Duplicate Groups
-  get_duplicate_groups(session_id: number, offset: number, limit: number, filters?: FilterCriteria): Promise<DuplicateGroupsPage>
-  get_group_detail(session_id: number, pixel_hash: string): Promise<FileInfo[]>
-  set_file_action(file_id: number, action: FileAction, scope: ActionScope): Promise<{ actions: Record<string, FileAction> }>
-  keep_and_delete_others(keep_file_id: number, group_file_ids: number[]): Promise<{ actions: Record<string, FileAction> }>
-  apply_folder_action(session_id: number, folder_path: string, action: FileAction): Promise<{ affected: number }>
-  apply_selection_preset(session_id: number, preset: SelectionPreset, group_ids?: string[]): Promise<SelectionResult>
-  apply_custom_selection(session_id: number, criteria: SortCriterion[]): Promise<SelectionResult>
-  get_plan_summary(session_id: number): Promise<PlanSummary>
-  execute_plan(session_id: number): Promise<void>
-  clear_all_actions(session_id: number): Promise<void>
-
-  // Similarity
-  get_similarity_groups(session_id: number, offset: number, limit: number): Promise<SimilarityGroupsPage>
-  get_similarity_group_detail(group_id: number): Promise<SimilarityGroup>
-  apply_similarity_preset(session_id: number, preset: SelectionPreset, group_ids?: number[]): Promise<SelectionResult>
-  apply_custom_similarity_selection(session_id: number, criteria: SortCriterion[]): Promise<SelectionResult>
-  recommend_keeper(files: FileInfo[]): Promise<KeeperRecommendation>
-
-  // Bin
-  get_bin_items(session_id: number): Promise<BinItem[]>
-  restore_from_bin(soft_delete_id: number): Promise<void>
-  permanent_delete(soft_delete_ids: number[]): Promise<void>
-  purge_expired(): Promise<number>
-
-  // Sync Config
-  get_sync_config(): Promise<SyncConfig>
-  save_sync_config(username: string, folder_id: string, privacy: string): Promise<{ ok: boolean; error?: string }>
-  authenticate_drive(): Promise<{ ok: boolean; error?: string }>
-  remove_peer(username: string): Promise<void>
-
-  // Family Sharing
-  export_hashes(session_id: number): Promise<string>
-  import_hashes(file_path: string): Promise<{ imported: number; username?: string; error?: string }>
-  sync_drive(): Promise<{ status: string; errors: Record<string, string> }>
-  get_remote_peers(): Promise<RemotePeer[]>
-  get_requests(session_id: number): Promise<ShareRequest[]>
-  respond_to_request(request_id: number, response: string): Promise<void>
-
-  // Thumbnails & Config
-  get_thumbnail_url(thumb_path: string): Promise<string>
-  get_app_config(): Promise<AppConfig>
-  set_app_config(key: string, value: string | number | boolean): Promise<void>
-
-  // File dialogs
-  select_folders(): Promise<string[]>
-}
-
-// Extend Window with pywebview
-declare global {
-  interface Window {
-    pywebview?: {
-      api: PyWebViewAPI
-    }
-  }
 }

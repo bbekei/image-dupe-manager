@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Trash2, RotateCcw, AlertTriangle } from 'lucide-react'
+import { Trash2, RotateCcw, AlertTriangle, Images } from 'lucide-react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { differenceInDays } from 'date-fns'
 import { callBackend } from '../hooks/usePyBridge.ts'
@@ -15,12 +15,13 @@ export function DuplicatesBin() {
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [confirmPurge, setConfirmPurge] = useState(false)
   const [confirmEmptyBin, setConfirmEmptyBin] = useState(false)
+  const [showThumbs, setShowThumbs] = useState(false)
 
   const loadItems = useCallback(async () => {
     if (!sessionId) return
     setLoading(true)
     try {
-      const result = await callBackend<BinItem[]>('get_bin_items', sessionId)
+      const result = await callBackend<BinItem[]>('get_bin_items', { session_id: sessionId })
       setItems(result)
     } catch {
       // handle error
@@ -33,7 +34,7 @@ export function DuplicatesBin() {
 
   const handleRestore = async (id: number) => {
     try {
-      await callBackend('restore_from_bin', id)
+      await callBackend('restore_from_bin', { soft_delete_id: id })
       loadItems()
     } catch {
       // handle error
@@ -43,7 +44,7 @@ export function DuplicatesBin() {
   const handlePermanentDelete = async () => {
     if (selected.size === 0) return
     try {
-      await callBackend('permanent_delete', Array.from(selected))
+      await callBackend('permanent_delete', { soft_delete_ids: Array.from(selected) })
       setSelected(new Set())
       loadItems()
     } catch {
@@ -54,7 +55,7 @@ export function DuplicatesBin() {
   const handleEmptyBin = async () => {
     setConfirmEmptyBin(false)
     try {
-      await callBackend('permanent_delete', items.map((i) => i.id))
+      await callBackend('permanent_delete', { soft_delete_ids: items.map((i) => i.id) })
       setSelected(new Set())
       loadItems()
     } catch {
@@ -95,6 +96,18 @@ export function DuplicatesBin() {
           </p>
         </div>
         <div className="flex gap-2">
+          <button
+            onClick={() => setShowThumbs((v) => !v)}
+            className={`flex items-center gap-2 px-4 py-2 border rounded-lg text-sm transition-colors ${
+              showThumbs
+                ? 'bg-dv-primary border-dv-primary text-white'
+                : 'bg-dv-surface hover:bg-dv-surface-hover text-dv-text border-dv-border'
+            }`}
+            title={t('bin.toggle_thumbs')}
+          >
+            <Images size={14} />
+            {t('bin.toggle_thumbs')}
+          </button>
           {selected.size > 0 && (
             <button
               onClick={handlePermanentDelete}
@@ -146,6 +159,21 @@ export function DuplicatesBin() {
                   onChange={() => toggleSelect(item.id)}
                   className="shrink-0"
                 />
+                {showThumbs && (
+                  <div className="shrink-0 w-12 h-12 rounded overflow-hidden bg-dv-bg border border-dv-border">
+                    {item.thumbnail_data ? (
+                      <img
+                        src={item.thumbnail_data}
+                        alt=""
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <Images size={16} className="text-dv-text-muted" />
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div className="flex-1 min-w-0">
                   <div className="text-sm text-dv-text truncate" title={item.original_path}>
                     {item.original_path.split(/[/\\]/).pop()}

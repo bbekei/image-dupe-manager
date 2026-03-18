@@ -67,8 +67,8 @@ function ScanProgressPanel() {
     onError: (path, message) => addScanError(path, message),
   })
 
-  useBackendEvent<{ discovered: number }>('scan:discovery_progress', (e) => {
-    setDiscovered(e.detail.discovered)
+  useBackendEvent<{ discovered: number }>('scan:discovery_progress', (payload) => {
+    setDiscovered(payload.discovered)
   })
 
   const handlePause = async () => {
@@ -80,7 +80,7 @@ function ScanProgressPanel() {
   }
 
   const handleResume = async () => {
-    if (sessionId) await callBackend('resume_scan', sessionId)
+    if (sessionId) await callBackend('resume_scan', { session_id: sessionId })
   }
 
   if (phase === 'idle') return null
@@ -97,23 +97,23 @@ function ScanProgressPanel() {
           <h3 className="font-semibold text-dv-text">{t('scan.title')}</h3>
         </div>
         <div className="flex items-center gap-2">
+          {isActive && phase !== 'paused' && (
+            <button
+              onClick={handlePause}
+              className="p-1.5 rounded bg-dv-surface-hover hover:bg-dv-border text-dv-text-muted"
+              title={t('scan.pause')}
+            >
+              <Pause size={16} />
+            </button>
+          )}
           {isActive && (
-            <>
-              <button
-                onClick={handlePause}
-                className="p-1.5 rounded bg-dv-surface-hover hover:bg-dv-border text-dv-text-muted"
-                title={t('scan.pause')}
-              >
-                <Pause size={16} />
-              </button>
-              <button
-                onClick={handleStop}
-                className="p-1.5 rounded bg-dv-surface-hover hover:bg-dv-border text-dv-text-muted"
-                title={t('scan.stop')}
-              >
-                <Square size={16} />
-              </button>
-            </>
+            <button
+              onClick={handleStop}
+              className="p-1.5 rounded bg-dv-surface-hover hover:bg-dv-border text-dv-text-muted"
+              title={t('scan.stop')}
+            >
+              <Square size={16} />
+            </button>
           )}
           {phase === 'paused' && (
             <button
@@ -192,7 +192,7 @@ function ScanProgressPanel() {
 export function Dashboard() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { setSessionId, phase, setStatus } = useScanStore()
+  const { setSessionId, phase, setStatus, reset } = useScanStore()
   const [sessions, setSessions] = useState<Session[]>([])
   const [summary, setSummary] = useState<ScanSummary | null>(null)
   const [loading, setLoading] = useState(true)
@@ -203,11 +203,11 @@ export function Dashboard() {
       setSessions(sessions)
       if (sessions.length > 0) {
         const latest = sessions[0]
-        const sum = await callBackend<ScanSummary>('get_scan_summary', latest.id)
+        const sum = await callBackend<ScanSummary>('get_scan_summary', { session_id: latest.id })
         setSummary(sum)
       }
     } catch {
-      // pywebview not available (dev mode)
+      // backend not available (dev mode)
     } finally {
       setLoading(false)
     }
@@ -226,20 +226,24 @@ export function Dashboard() {
 
   const handleStartScan = async () => {
     try {
-      const folders = await callBackend<string[]>('select_folders')
-      if (folders && folders.length > 0) {
-        // Set phase to discovery immediately so progress panel appears
-        setStatus('started', '')
-        const sessionId = await callBackend<number>(
-          'start_scan',
-          folders,
-          `Scan ${new Date().toLocaleDateString()}`,
-          enableSimilarity,
-        )
+      // select_and_start_scan opens the folder picker and immediately starts
+      // the scan in a single Rust command, avoiding a second IPC hop after
+      // the dialog closes (unreliable in some GTK environments).
+      const sessionId = await callBackend<number | null>(
+        'select_and_start_scan',
+        {
+          session_name: `Scan ${new Date().toLocaleDateString()}`,
+          enable_similarity: enableSimilarity,
+        },
+      )
+      if (sessionId != null) {
+        // Sidecar emits scan:status 'started' → store updates phase to
+        // 'discovery' automatically; just record the session ID here.
         setSessionId(sessionId)
       }
+      // null means user cancelled — nothing to do
     } catch {
-      // User cancelled folder selection
+      reset()
     }
   }
 

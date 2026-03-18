@@ -17,10 +17,12 @@ export function Execution() {
   const logEndRef = useRef<HTMLDivElement>(null)
 
   useBackendEvent('exec:progress', (e: CustomEvent) => {
-    setCurrent(e.detail.current)
-    setTotal(e.detail.total)
-    setStage(e.detail.action ?? stage)
-    setLogs((prev) => [...prev, `${e.detail.action}: ${e.detail.file_path}`])
+    if (e.detail.current != null) setCurrent(e.detail.current)
+    if (e.detail.total != null) setTotal(e.detail.total)
+    if (e.detail.action && e.detail.action !== 'log') setStage(e.detail.action)
+    if (e.detail.file_path) {
+      setLogs((prev) => [...prev, e.detail.file_path])
+    }
   })
 
   useBackendEvent('exec:complete', (e: CustomEvent) => {

@@ -54,7 +54,10 @@ def _extract_path_depth(f: dict) -> int | float:
 
 def _extract_filename_length(f: dict) -> int | float:
     path = f.get("path") or ""
-    return len(os.path.basename(path))
+    # Split on both '/' and '\' to handle Unix and Windows paths correctly
+    # regardless of the host OS (os.path.basename only splits on the host separator).
+    basename = path.replace("\\", "/").split("/")[-1]
+    return len(basename)
 
 
 FIELD_EXTRACTORS: dict[str, callable] = {

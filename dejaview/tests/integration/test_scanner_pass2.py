@@ -7,6 +7,7 @@ Tests the size-filter pre-screening, duplicate detection signals, thumbnail stor
 and progress signal monotonicity.
 """
 
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -46,7 +47,7 @@ def session_id(db, scan_dir):
 # ── Tests ─────────────────────────────────────────────────────────────────────
 
 def test_only_size_duplicate_candidates_are_hashed(
-    qtbot, db, scan_dir, session_id, thumb_dir
+    db, scan_dir, session_id, thumb_dir
 ):
     # Plan §Integration Tests: test_only_size_duplicate_candidates_are_hashed
     # Two same-size JPEGs (64×64) are size-pair candidates → hashed in Pass 2.
@@ -63,8 +64,10 @@ def test_only_size_duplicate_candidates_are_hashed(
     assert c.stat().st_size != d.stat().st_size
 
     scanner = Scanner(db=db, session_id=session_id, thumb_dir=thumb_dir)
-    with qtbot.waitSignal(scanner.scan_complete, timeout=10_000):
-        scanner.start()
+    done = threading.Event()
+    scanner.scan_complete.connect(lambda: done.set())
+    scanner.start()
+    assert done.wait(timeout=10.0), "Scan did not complete within timeout"
 
     files = db.get_files_for_session(session_id)
     hashed = {f["path"] for f in files if f["pixel_hash"] is not None}
@@ -77,7 +80,7 @@ def test_only_size_duplicate_candidates_are_hashed(
 
 
 def test_badge_signal_emitted_for_confirmed_duplicate(
-    qtbot, db, scan_dir, session_id, thumb_dir
+    db, scan_dir, session_id, thumb_dir
 ):
     # Plan §Integration Tests: test_badge_signal_emitted_for_confirmed_duplicate
     # Two files with identical pixel content → same pixel_hash → duplicate_found signal.
@@ -90,8 +93,10 @@ def test_badge_signal_emitted_for_confirmed_duplicate(
     scanner = Scanner(db=db, session_id=session_id, thumb_dir=thumb_dir)
     scanner.duplicate_found.connect(lambda ph, ids: duplicate_groups.append(list(ids)))
 
-    with qtbot.waitSignal(scanner.scan_complete, timeout=10_000):
-        scanner.start()
+    done = threading.Event()
+    scanner.scan_complete.connect(lambda: done.set())
+    scanner.start()
+    assert done.wait(timeout=10.0), "Scan did not complete within timeout"
 
     # At least one duplicate_found signal must have been emitted.
     assert len(duplicate_groups) >= 1
@@ -104,7 +109,7 @@ def test_badge_signal_emitted_for_confirmed_duplicate(
 
 
 def test_unique_file_never_emits_duplicate_signal(
-    qtbot, db, scan_dir, session_id, thumb_dir
+    db, scan_dir, session_id, thumb_dir
 ):
     # Plan §Integration Tests: test_unique_file_never_emits_duplicate_signal
     # Three files with different dimensions → three different file sizes → no size-pair
@@ -117,13 +122,15 @@ def test_unique_file_never_emits_duplicate_signal(
     scanner = Scanner(db=db, session_id=session_id, thumb_dir=thumb_dir)
     scanner.duplicate_found.connect(lambda ph, ids: duplicates_seen.extend(ids))
 
-    with qtbot.waitSignal(scanner.scan_complete, timeout=10_000):
-        scanner.start()
+    done = threading.Event()
+    scanner.scan_complete.connect(lambda: done.set())
+    scanner.start()
+    assert done.wait(timeout=10.0), "Scan did not complete within timeout"
 
     assert duplicates_seen == []
 
 
-def test_thumbnail_path_stored_in_db(qtbot, db, scan_dir, session_id, thumb_dir):
+def test_thumbnail_path_stored_in_db(db, scan_dir, session_id, thumb_dir):
     # Plan §Integration Tests: test_thumbnail_path_stored_in_db
     # After a successful hash, thumbnail_path must be non-NULL and the file must exist.
     a = _jpg(scan_dir / "a.jpg")
@@ -131,8 +138,10 @@ def test_thumbnail_path_stored_in_db(qtbot, db, scan_dir, session_id, thumb_dir)
     assert a.stat().st_size == b.stat().st_size
 
     scanner = Scanner(db=db, session_id=session_id, thumb_dir=thumb_dir)
-    with qtbot.waitSignal(scanner.scan_complete, timeout=10_000):
-        scanner.start()
+    done = threading.Event()
+    scanner.scan_complete.connect(lambda: done.set())
+    scanner.start()
+    assert done.wait(timeout=10.0), "Scan did not complete within timeout"
 
     files = db.get_files_for_session(session_id)
     hashed = [f for f in files if f["pixel_hash"] is not None]
@@ -143,7 +152,7 @@ def test_thumbnail_path_stored_in_db(qtbot, db, scan_dir, session_id, thumb_dir)
 
 
 def test_progress_signals_advance_monotonically(
-    qtbot, db, scan_dir, session_id, thumb_dir
+    db, scan_dir, session_id, thumb_dir
 ):
     # Plan §Integration Tests: test_progress_signals_advance_monotonically
     # Three same-size JPEGs → all three are size-pair candidates → all hashed.
@@ -155,8 +164,10 @@ def test_progress_signals_advance_monotonically(
     scanner = Scanner(db=db, session_id=session_id, thumb_dir=thumb_dir)
     scanner.progress_updated.connect(lambda c, t: progress.append((c, t)))
 
-    with qtbot.waitSignal(scanner.scan_complete, timeout=10_000):
-        scanner.start()
+    done = threading.Event()
+    scanner.scan_complete.connect(lambda: done.set())
+    scanner.start()
+    assert done.wait(timeout=10.0), "Scan did not complete within timeout"
 
     assert len(progress) >= 1
     currents = [p[0] for p in progress]
@@ -168,7 +179,7 @@ def test_progress_signals_advance_monotonically(
 # ── Directory-batched hashing tests ──────────────────────────────────────────
 
 def test_directory_hashed_signal_emitted_per_directory(
-    qtbot, db, scan_dir, session_id, thumb_dir
+    db, scan_dir, session_id, thumb_dir
 ):
     """directory_hashed fires once per directory that contains candidates."""
     sub_a = scan_dir / "sub_a"
@@ -186,14 +197,16 @@ def test_directory_hashed_signal_emitted_per_directory(
     scanner = Scanner(db=db, session_id=session_id, thumb_dir=thumb_dir)
     scanner.directories_hashed.connect(lambda ds: dirs_hashed.extend(ds))
 
-    with qtbot.waitSignal(scanner.scan_complete, timeout=10_000):
-        scanner.start()
+    done = threading.Event()
+    scanner.scan_complete.connect(lambda: done.set())
+    scanner.start()
+    assert done.wait(timeout=10.0), "Scan did not complete within timeout"
 
     assert set(dirs_hashed) == {str(sub_a), str(sub_b)}
 
 
 def test_directories_processed_leaf_first(
-    qtbot, db, scan_dir, session_id, thumb_dir
+    db, scan_dir, session_id, thumb_dir
 ):
     """Both parent and child directories are hashed; leaf-first submission
     order is preserved but completion order is nondeterministic with the
@@ -214,8 +227,10 @@ def test_directories_processed_leaf_first(
     scanner = Scanner(db=db, session_id=session_id, thumb_dir=thumb_dir)
     scanner.directories_hashed.connect(lambda ds: dirs_hashed.extend(ds))
 
-    with qtbot.waitSignal(scanner.scan_complete, timeout=10_000):
-        scanner.start()
+    done = threading.Event()
+    scanner.scan_complete.connect(lambda: done.set())
+    scanner.start()
+    assert done.wait(timeout=10.0), "Scan did not complete within timeout"
 
     assert len(dirs_hashed) == 2
     # Both directories must be hashed (order is nondeterministic).
@@ -223,7 +238,7 @@ def test_directories_processed_leaf_first(
 
 
 def test_progress_remains_global_across_directory_batches(
-    qtbot, db, scan_dir, session_id, thumb_dir
+    db, scan_dir, session_id, thumb_dir
 ):
     """Progress current/total stays global across directory batches."""
     sub_a = scan_dir / "a"
@@ -240,8 +255,10 @@ def test_progress_remains_global_across_directory_batches(
     scanner = Scanner(db=db, session_id=session_id, thumb_dir=thumb_dir)
     scanner.progress_updated.connect(lambda c, t: progress.append((c, t)))
 
-    with qtbot.waitSignal(scanner.scan_complete, timeout=10_000):
-        scanner.start()
+    done = threading.Event()
+    scanner.scan_complete.connect(lambda: done.set())
+    scanner.start()
+    assert done.wait(timeout=10.0), "Scan did not complete within timeout"
 
     # Total should be consistent (4 candidates).
     totals = {t for _, t in progress}
@@ -254,7 +271,7 @@ def test_progress_remains_global_across_directory_batches(
 
 
 def test_pipeline_hashes_multiple_directories_concurrently(
-    qtbot, db, scan_dir, session_id, thumb_dir
+    db, scan_dir, session_id, thumb_dir
 ):
     """Pipeline submits files from multiple directories simultaneously;
     all directories are hashed and scan completes correctly."""
@@ -270,8 +287,10 @@ def test_pipeline_hashes_multiple_directories_concurrently(
     scanner = Scanner(db=db, session_id=session_id, thumb_dir=thumb_dir)
     scanner.directories_hashed.connect(lambda ds: dirs_hashed.extend(ds))
 
-    with qtbot.waitSignal(scanner.scan_complete, timeout=10_000):
-        scanner.start()
+    done = threading.Event()
+    scanner.scan_complete.connect(lambda: done.set())
+    scanner.start()
+    assert done.wait(timeout=10.0), "Scan did not complete within timeout"
 
     # All 4 directories must receive a directories_hashed signal.
     assert set(dirs_hashed) == {str(d) for d in dirs}
@@ -281,7 +300,7 @@ def test_pipeline_hashes_multiple_directories_concurrently(
 
 
 def test_deferred_queue_drains_without_infinite_loop(
-    qtbot, db, scan_dir, session_id, thumb_dir
+    db, scan_dir, session_id, thumb_dir
 ):
     """Regression test for RCA3: when more directories exist than
     max_inflight_dirs, the deferred queue must drain completely and the
@@ -305,8 +324,10 @@ def test_deferred_queue_drains_without_infinite_loop(
     )
     scanner.progress_updated.connect(lambda c, t: progress.append((c, t)))
 
-    with qtbot.waitSignal(scanner.scan_complete, timeout=10_000):
-        scanner.start()
+    done = threading.Event()
+    scanner.scan_complete.connect(lambda: done.set())
+    scanner.start()
+    assert done.wait(timeout=10.0), "Scan did not complete within timeout"
 
     # Scan must terminate (reaching here proves no infinite loop).
     # Final current must equal total — no overshoot.

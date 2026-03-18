@@ -1,6 +1,5 @@
 # Runtime dependencies
 Pillow
-PyQt6
 pywebview
 pystray
 xxhash

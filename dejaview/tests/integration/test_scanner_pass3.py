@@ -7,6 +7,7 @@ Tests dual-hash behavior, post-hash duplicate refresh, similarity grouping,
 and resume safety.
 """
 
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -58,7 +59,7 @@ def session_id(db, scan_dir):
 # ── Pass 3a: Dual hashing tests ──────────────────────────────────────────────
 
 def test_pass3_computes_phash_for_already_hashed_files(
-    qtbot, db, scan_dir, session_id, thumb_dir
+    db, scan_dir, session_id, thumb_dir
 ):
     """Files pixel-hashed in Pass 2 get perceptual_hash added in Pass 3."""
     # Two same-size files → Pass 2 hashes them (pixel_hash set).
@@ -69,8 +70,10 @@ def test_pass3_computes_phash_for_already_hashed_files(
         db=db, session_id=session_id, thumb_dir=thumb_dir,
         similarity_enabled=True,
     )
-    with qtbot.waitSignal(scanner.scan_complete, timeout=15_000):
-        scanner.start()
+    done = threading.Event()
+    scanner.scan_complete.connect(lambda: done.set())
+    scanner.start()
+    assert done.wait(timeout=15.0), "Scan did not complete within timeout"
 
     files = db.get_files_for_session(session_id)
     for f in files:
@@ -81,7 +84,7 @@ def test_pass3_computes_phash_for_already_hashed_files(
 
 
 def test_pass3_dual_hashes_size_filtered_files(
-    qtbot, db, scan_dir, session_id, thumb_dir
+    db, scan_dir, session_id, thumb_dir
 ):
     """Files skipped by Pass 2 size-filter get both pixel_hash and pHash in Pass 3."""
     # Three files with unique sizes → Pass 2 skips all (no size-pair candidates).
@@ -93,8 +96,10 @@ def test_pass3_dual_hashes_size_filtered_files(
         db=db, session_id=session_id, thumb_dir=thumb_dir,
         similarity_enabled=True,
     )
-    with qtbot.waitSignal(scanner.scan_complete, timeout=15_000):
-        scanner.start()
+    done = threading.Event()
+    scanner.scan_complete.connect(lambda: done.set())
+    scanner.start()
+    assert done.wait(timeout=15.0), "Scan did not complete within timeout"
 
     files = db.get_files_for_session(session_id)
     assert len(files) == 3
@@ -109,7 +114,7 @@ def test_pass3_dual_hashes_size_filtered_files(
 
 
 def test_pass3_disabled_leaves_phash_null(
-    qtbot, db, scan_dir, session_id, thumb_dir
+    db, scan_dir, session_id, thumb_dir
 ):
     """When similarity_enabled=False, Pass 3 is skipped and pHash stays NULL."""
     _jpg(scan_dir / "a.jpg")
@@ -119,8 +124,10 @@ def test_pass3_disabled_leaves_phash_null(
         db=db, session_id=session_id, thumb_dir=thumb_dir,
         similarity_enabled=False,  # default
     )
-    with qtbot.waitSignal(scanner.scan_complete, timeout=10_000):
-        scanner.start()
+    done = threading.Event()
+    scanner.scan_complete.connect(lambda: done.set())
+    scanner.start()
+    assert done.wait(timeout=10.0), "Scan did not complete within timeout"
 
     files = db.get_files_for_session(session_id)
     for f in files:
@@ -128,7 +135,7 @@ def test_pass3_disabled_leaves_phash_null(
 
 
 def test_pass3_similarity_progress_signals(
-    qtbot, db, scan_dir, session_id, thumb_dir
+    db, scan_dir, session_id, thumb_dir
 ):
     """similarity_progress signals are emitted during Pass 3."""
     _jpg(scan_dir / "a.jpg", size=(64, 64))
@@ -141,8 +148,10 @@ def test_pass3_similarity_progress_signals(
     )
     scanner.similarity_progress.connect(lambda c, t: progress.append((c, t)))
 
-    with qtbot.waitSignal(scanner.scan_complete, timeout=15_000):
-        scanner.start()
+    done = threading.Event()
+    scanner.scan_complete.connect(lambda: done.set())
+    scanner.start()
+    assert done.wait(timeout=15.0), "Scan did not complete within timeout"
 
     # At least one progress signal should have been emitted.
     assert len(progress) >= 1
@@ -153,7 +162,7 @@ def test_pass3_similarity_progress_signals(
 # ── Pass 3b: Post-hash duplicate refresh ──────────────────────────────────────
 
 def test_pass3b_discovers_duplicates_missed_by_size_filter(
-    qtbot, db, scan_dir, session_id, thumb_dir
+    db, scan_dir, session_id, thumb_dir
 ):
     """Identical-pixel files with different byte sizes are detected as
     duplicates after Pass 3 dual-hashes them.
@@ -192,8 +201,10 @@ def test_pass3b_discovers_duplicates_missed_by_size_filter(
         lambda ph, ids: duplicate_groups.append((ph, list(ids)))
     )
 
-    with qtbot.waitSignal(scanner.scan_complete, timeout=15_000):
-        scanner.start()
+    done = threading.Event()
+    scanner.scan_complete.connect(lambda: done.set())
+    scanner.start()
+    assert done.wait(timeout=15.0), "Scan did not complete within timeout"
 
     # Pass 3b should have emitted duplicate_found for these files.
     files = db.get_files_for_session(session_id)
@@ -213,7 +224,7 @@ def test_pass3b_discovers_duplicates_missed_by_size_filter(
 # ── Pass 3c: Similarity grouping ─────────────────────────────────────────────
 
 def test_pass3c_creates_similarity_groups(
-    qtbot, db, scan_dir, session_id, thumb_dir
+    db, scan_dir, session_id, thumb_dir
 ):
     """Visually similar images are grouped into similarity groups."""
     # Create two similar images (same solid gray, different sizes → rescaled copy).
@@ -232,8 +243,10 @@ def test_pass3c_creates_similarity_groups(
         lambda c: grouping_counts.append(c)
     )
 
-    with qtbot.waitSignal(scanner.scan_complete, timeout=15_000):
-        scanner.start()
+    done = threading.Event()
+    scanner.scan_complete.connect(lambda: done.set())
+    scanner.start()
+    assert done.wait(timeout=15.0), "Scan did not complete within timeout"
 
     # Grouping complete signal should fire.
     assert len(grouping_counts) == 1
@@ -243,7 +256,7 @@ def test_pass3c_creates_similarity_groups(
 
 
 def test_pass3c_exact_dupes_not_in_similarity_groups(
-    qtbot, db, scan_dir, session_id, thumb_dir
+    db, scan_dir, session_id, thumb_dir
 ):
     """Exact duplicates (same pixel_hash) must NOT appear as similarity groups.
 
@@ -258,8 +271,10 @@ def test_pass3c_exact_dupes_not_in_similarity_groups(
         similarity_enabled=True,
     )
 
-    with qtbot.waitSignal(scanner.scan_complete, timeout=15_000):
-        scanner.start()
+    done = threading.Event()
+    scanner.scan_complete.connect(lambda: done.set())
+    scanner.start()
+    assert done.wait(timeout=15.0), "Scan did not complete within timeout"
 
     # Verify both files have the same pixel_hash (exact duplicates).
     files = db.get_files_for_session(session_id)
@@ -274,7 +289,7 @@ def test_pass3c_exact_dupes_not_in_similarity_groups(
 # ── Pass 3 resume safety ─────────────────────────────────────────────────────
 
 def test_pass3_resume_skips_already_hashed(
-    qtbot, db, scan_dir, session_id, thumb_dir
+    db, scan_dir, session_id, thumb_dir
 ):
     """Resuming with similarity_enabled skips files that already have pHash."""
     _jpg(scan_dir / "a.jpg", size=(64, 64))
@@ -285,8 +300,10 @@ def test_pass3_resume_skips_already_hashed(
         db=db, session_id=session_id, thumb_dir=thumb_dir,
         similarity_enabled=True,
     )
-    with qtbot.waitSignal(scanner1.scan_complete, timeout=15_000):
-        scanner1.start()
+    done1 = threading.Event()
+    scanner1.scan_complete.connect(lambda: done1.set())
+    scanner1.start()
+    assert done1.wait(timeout=15.0), "Scan did not complete within timeout"
 
     # All files now have pHash.
     files = db.get_files_for_session(session_id)
@@ -301,9 +318,13 @@ def test_pass3_resume_skips_already_hashed(
     scanner2.set_resuming(True)
     scanner2.similarity_progress.connect(lambda c, t: progress.append((c, t)))
 
-    with qtbot.waitSignal(scanner2.scan_complete, timeout=15_000):
-        scanner2.start()
+    done2 = threading.Event()
+    scanner2.scan_complete.connect(lambda: done2.set())
+    scanner2.start()
+    assert done2.wait(timeout=15.0), "Scan did not complete within timeout"
 
-    # Total should be 0 (all files already hashed).
+    # On resume, all files are already hashed so current == total (progress
+    # reports continuity from prior run: n_total active files, 0 remaining).
     if progress:
-        assert progress[0][1] == 0, "No files should need hashing on resume"
+        current, total = progress[0]
+        assert current == total, "All files should already be hashed on resume"

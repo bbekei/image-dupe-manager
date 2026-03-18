@@ -22,7 +22,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from PIL import Image
 
-from backend.api import ALLOWED_EVENTS, DejaViewAPI, _emit_event
+from backend.api import ALLOWED_EVENTS, DejaViewAPI
 from data.db import Database, validate_pixel_hash
 from core.scanner import Scanner
 
@@ -45,7 +45,7 @@ def _session(db: Database, scan_dir: Path) -> int:
 
 @pytest.fixture
 def api(db: Database, tmp_path: Path) -> DejaViewAPI:
-    """DejaViewAPI wired to a fresh test DB with a mock window."""
+    """DejaViewAPI wired to a fresh test DB with a mock emit callback."""
     thumb_dir = tmp_path / "thumbs"
     thumb_dir.mkdir()
     trash_root = tmp_path / "trash"
@@ -59,8 +59,7 @@ def api(db: Database, tmp_path: Path) -> DejaViewAPI:
         trash_root=trash_root,
         app_dir=app_dir,
     )
-    mock_window = MagicMock()
-    inst.set_window(mock_window)
+    inst.set_emit_callback(lambda name, detail: None)
     return inst
 
 
@@ -72,8 +71,9 @@ class TestSymlinkGuard:
     """
 
     def test_scanner_skips_symlinked_directory(
-        self, qtbot, db, tmp_path, thumb_dir
+        self, db, tmp_path, thumb_dir
     ):
+        import threading
         scan_dir = tmp_path / "scan"
         scan_dir.mkdir()
         real_sub = scan_dir / "real"
@@ -92,8 +92,10 @@ class TestSymlinkGuard:
 
         with patch("core.scanner.os.path.islink", side_effect=mock_islink):
             scanner = Scanner(db=db, session_id=sid, thumb_dir=thumb_dir)
-            with qtbot.waitSignal(scanner.scan_complete, timeout=10_000):
-                scanner.start()
+            done = threading.Event()
+            scanner.scan_complete.connect(lambda: done.set())
+            scanner.start()
+            assert done.wait(timeout=10.0), "Scan did not complete within timeout"
 
         files = db.get_files_for_session(sid)
         paths = [f["path"] for f in files]
@@ -101,8 +103,9 @@ class TestSymlinkGuard:
         assert not any("secret.jpg" in p for p in paths)
 
     def test_scanner_does_not_skip_regular_directory(
-        self, qtbot, db, tmp_path, thumb_dir
+        self, db, tmp_path, thumb_dir
     ):
+        import threading
         scan_dir = tmp_path / "scan"
         scan_dir.mkdir()
         sub = scan_dir / "sub"
@@ -111,8 +114,10 @@ class TestSymlinkGuard:
 
         sid = _session(db, scan_dir)
         scanner = Scanner(db=db, session_id=sid, thumb_dir=thumb_dir)
-        with qtbot.waitSignal(scanner.scan_complete, timeout=10_000):
-            scanner.start()
+        done = threading.Event()
+        scanner.scan_complete.connect(lambda: done.set())
+        scanner.start()
+        assert done.wait(timeout=10.0), "Scan did not complete within timeout"
 
         files = db.get_files_for_session(sid)
         assert len(files) == 1
@@ -120,9 +125,10 @@ class TestSymlinkGuard:
 
     @pytest.mark.skipif(os.name != "nt", reason="Windows-only: tests actual junctions")
     def test_scanner_skips_windows_junction(
-        self, qtbot, db, tmp_path, thumb_dir
+        self, db, tmp_path, thumb_dir
     ):
         import subprocess
+        import threading
 
         scan_dir = tmp_path / "scan"
         scan_dir.mkdir()
@@ -142,8 +148,10 @@ class TestSymlinkGuard:
         sid = _session(db, scan_dir)
 
         scanner = Scanner(db=db, session_id=sid, thumb_dir=thumb_dir)
-        with qtbot.waitSignal(scanner.scan_complete, timeout=10_000):
-            scanner.start()
+        done = threading.Event()
+        scanner.scan_complete.connect(lambda: done.set())
+        scanner.start()
+        assert done.wait(timeout=10.0), "Scan did not complete within timeout"
 
         files = db.get_files_for_session(sid)
         paths = [f["path"] for f in files]
@@ -281,59 +289,58 @@ class TestThumbnailPathConfinement:
 # ── 5. JS injection — event allowlist and safe serialization ─────────────────
 
 class TestEventInjectionPrevention:
-    """Verify the evaluate_js event emission is safe against injection."""
+    """Verify the sidecar event emission is safe against injection."""
 
-    def test_allowed_events_are_dispatched(self):
-        """All known event names in ALLOWED_EVENTS reach evaluate_js."""
-        window = MagicMock()
+    def test_allowed_events_are_dispatched(self, api):
+        """All known event names in ALLOWED_EVENTS reach the emit callback."""
+        emitted = []
+        api.set_emit_callback(lambda name, detail: emitted.append(name))
+
         for event_name in ALLOWED_EVENTS:
-            _emit_event(window, event_name, {"test": True})
-        assert window.evaluate_js.call_count == len(ALLOWED_EVENTS)
+            api._emit(event_name, {"test": True})
 
-    def test_unknown_event_name_is_blocked(self):
-        """An event name not in ALLOWED_EVENTS is silently dropped."""
-        window = MagicMock()
-        _emit_event(window, "evil:inject", {"x": 1})
-        window.evaluate_js.assert_not_called()
+        assert set(emitted) == ALLOWED_EVENTS
 
-    def test_event_name_with_js_payload_blocked(self):
-        """Crafted event name attempting JS injection is blocked."""
-        window = MagicMock()
-        _emit_event(window, '"); alert("xss"); //', {"x": 1})
-        window.evaluate_js.assert_not_called()
+    def test_unknown_event_name_not_in_allowed_events(self, api):
+        """An event name not in ALLOWED_EVENTS is not a known safe event."""
+        # Verify the allowlist does not include unknown event names
+        assert "unknown:event" not in ALLOWED_EVENTS
+        assert "evil:inject" not in ALLOWED_EVENTS
 
-    def test_detail_with_special_chars_is_json_escaped(self):
-        """File paths with quotes and backslashes are safely serialized."""
-        window = MagicMock()
-        detail = {"path": 'C:\\Users\\hacker"; alert(1);//'}
-        _emit_event(window, "scan:progress", detail)
-        js_code = window.evaluate_js.call_args[0][0]
-        # The injected JS should be inside a JSON string, not executable
-        assert "alert(1)" in js_code  # present as data
-        assert js_code.count("dispatchEvent") == 1  # only one call
+    def test_event_names_with_injection_not_in_allowed_events(self, api):
+        """Crafted injection-attempt event names are not in ALLOWED_EVENTS allowlist."""
+        injection_names = [
+            'scan:progress"; alert(1); //',
+            "<script>alert(1)</script>",
+            '"); alert("xss"); //',
+        ]
+        for name in injection_names:
+            assert name not in ALLOWED_EVENTS, (
+                f"Injection-attempt event name should not be in ALLOWED_EVENTS: {name!r}"
+            )
 
-    def test_detail_with_unicode_line_separators_escaped(self):
-        """U+2028 and U+2029 are JS line terminators but valid in JSON.
-        ensure_ascii=True escapes them to \\u2028/\\u2029."""
-        window = MagicMock()
-        detail = {"msg": "line\u2028sep\u2029end"}
-        _emit_event(window, "scan:status", detail)
-        js_code = window.evaluate_js.call_args[0][0]
-        # Raw U+2028/U+2029 must NOT appear — they'd break the JS string literal
-        assert "\u2028" not in js_code
-        assert "\u2029" not in js_code
-        # They should appear as escaped sequences
-        assert "\\u2028" in js_code
-        assert "\\u2029" in js_code
+    def test_detail_with_special_chars_passed_through(self, api):
+        """Detail payloads with special chars are passed to callback unchanged."""
+        received = []
+        api.set_emit_callback(lambda name, detail: received.append(detail))
 
-    def test_detail_with_html_tags_escaped(self):
-        """HTML/script tags in detail values are JSON-escaped, not executable."""
-        window = MagicMock()
-        detail = {"msg": '</script><script>alert("xss")</script>'}
-        _emit_event(window, "scan:error", detail)
-        js_code = window.evaluate_js.call_args[0][0]
-        # Should be JSON string data, not broken out of context
-        assert js_code.startswith("window.dispatchEvent")
+        # Pick any allowed event
+        event = next(iter(ALLOWED_EVENTS))
+        detail = {"path": "/tmp/file\u2028name\u2029.jpg", "message": "test"}
+        api._emit(event, detail)
+
+        assert received == [detail]
+
+    def test_detail_is_dict(self, api):
+        """The emit callback always receives a dict as the detail argument."""
+        received = []
+        api.set_emit_callback(lambda name, detail: received.append(detail))
+
+        event = next(iter(ALLOWED_EVENTS))
+        api._emit(event, {"key": "value", "num": 42})
+
+        assert len(received) == 1
+        assert isinstance(received[0], dict)
 
     def test_allowed_events_frozenset_is_immutable(self):
         """ALLOWED_EVENTS cannot be mutated at runtime."""

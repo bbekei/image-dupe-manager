@@ -15,6 +15,7 @@ Strategy for pause/stop tests:
     remain when the flag is checked.
 """
 
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -77,21 +78,23 @@ def session_id(db, scan_dir):
 # ── Tests ─────────────────────────────────────────────────────────────────────
 
 def test_session_status_set_to_complete_when_scan_finishes_normally(
-    qtbot, db, scan_dir, session_id, thumb_dir
+    db, scan_dir, session_id, thumb_dir
 ):
     # Plan: test_session_status_set_to_complete_when_scan_finishes_normally
     for i in range(3):
         _jpg(scan_dir / f"img{i}.jpg")
 
     scanner = Scanner(db=db, session_id=session_id, thumb_dir=thumb_dir)
-    with qtbot.waitSignal(scanner.scan_complete, timeout=10_000):
-        scanner.start()
+    done = threading.Event()
+    scanner.scan_complete.connect(lambda: done.set())
+    scanner.start()
+    assert done.wait(timeout=10.0), "Scan did not complete within timeout"
 
     assert db.get_session(session_id)["status"] == "complete"
 
 
 def test_stop_sets_session_status_to_stopped(
-    qtbot, db, scan_dir, session_id, thumb_dir
+    db, scan_dir, session_id, thumb_dir
 ):
     # Plan: test_stop_sets_session_status_to_stopped
     paths = [_jpg(scan_dir / f"img{i}.jpg") for i in range(5)]
@@ -106,8 +109,10 @@ def test_stop_sets_session_status_to_stopped(
         completed = []
         scanner.scan_complete.connect(lambda: completed.append(True))
 
-        with qtbot.waitSignal(scanner.scan_stopped, timeout=10_000):
-            scanner.start()
+        stopped = threading.Event()
+        scanner.scan_stopped.connect(lambda: stopped.set())
+        scanner.start()
+        assert stopped.wait(timeout=10.0), "Scan did not stop within timeout"
 
     assert db.get_session(session_id)["status"] == "stopped"
     # Stop and complete are mutually exclusive — scan_complete must NOT fire.
@@ -115,7 +120,7 @@ def test_stop_sets_session_status_to_stopped(
 
 
 def test_partial_results_remain_after_stop(
-    qtbot, db, scan_dir, session_id, thumb_dir
+    db, scan_dir, session_id, thumb_dir
 ):
     # Plan: test_partial_results_remain_after_stop
     paths = [_jpg(scan_dir / f"img{i}.jpg") for i in range(5)]
@@ -126,8 +131,10 @@ def test_partial_results_remain_after_stop(
         scanner.set_resuming(True)
         scanner.hash_complete.connect(lambda *_: scanner.stop())
 
-        with qtbot.waitSignal(scanner.scan_stopped, timeout=10_000):
-            scanner.start()
+        stopped = threading.Event()
+        scanner.scan_stopped.connect(lambda: stopped.set())
+        scanner.start()
+        assert stopped.wait(timeout=10.0), "Scan did not stop within timeout"
 
     # At least the file that triggered stop() must have a pixel_hash.
     hashed = [
@@ -138,7 +145,7 @@ def test_partial_results_remain_after_stop(
 
 
 def test_pause_sets_session_status_to_paused(
-    qtbot, db, scan_dir, session_id, thumb_dir
+    db, scan_dir, session_id, thumb_dir
 ):
     # Plan: test_pause_sets_session_status_to_paused
     paths = [_jpg(scan_dir / f"img{i}.jpg") for i in range(5)]
@@ -149,18 +156,20 @@ def test_pause_sets_session_status_to_paused(
         scanner.set_resuming(True)
         scanner.hash_complete.connect(lambda *_: scanner.pause())
 
-        with qtbot.waitSignal(scanner.scan_paused, timeout=10_000):
-            scanner.start()
+        paused = threading.Event()
+        scanner.scan_paused.connect(lambda: paused.set())
+        scanner.start()
+        assert paused.wait(timeout=10.0), "Scan did not pause within timeout"
 
     status = db.get_session(session_id)["status"]
     assert status == "paused"
 
 
 def test_pause_stops_thread_after_current_file_completes(
-    qtbot, db, scan_dir, session_id, thumb_dir
+    db, scan_dir, session_id, thumb_dir
 ):
     # Plan: test_pause_stops_thread_after_current_file_completes
-    # After scan_paused / scan_complete is emitted, the QThread must have exited.
+    # After scan_paused is emitted, the thread must have exited (is_alive() == False).
     paths = [_jpg(scan_dir / f"img{i}.jpg") for i in range(5)]
     _insert_files(db, session_id, paths)
 
@@ -169,16 +178,18 @@ def test_pause_stops_thread_after_current_file_completes(
         scanner.set_resuming(True)
         scanner.hash_complete.connect(lambda *_: scanner.pause())
 
-        with qtbot.waitSignal(scanner.scan_paused, timeout=10_000):
-            scanner.start()
+        paused = threading.Event()
+        scanner.scan_paused.connect(lambda: paused.set())
+        scanner.start()
+        assert paused.wait(timeout=10.0), "Scan did not pause within timeout"
 
-    # The signal is emitted from within run(); give the QThread time to exit.
-    scanner.wait(2000)
-    assert not scanner.isRunning()
+    # The signal is emitted from within run(); give the thread time to exit.
+    scanner.join(timeout=2.0)
+    assert not scanner.is_alive()
 
 
 def test_resume_skips_already_hashed_files(
-    qtbot, db, scan_dir, session_id, thumb_dir
+    db, scan_dir, session_id, thumb_dir
 ):
     # Plan: test_resume_skips_already_hashed_files
     # 4 same-size images; 2 are pre-hashed. On resume only the 2 NULL-hash files
@@ -202,8 +213,10 @@ def test_resume_skips_already_hashed_files(
     with patch("core.scanner.hash_file", side_effect=tracking_hash):
         scanner = Scanner(db=db, session_id=session_id, thumb_dir=thumb_dir)
         scanner.set_resuming(True)
-        with qtbot.waitSignal(scanner.scan_complete, timeout=10_000):
-            scanner.start()
+        done = threading.Event()
+        scanner.scan_complete.connect(lambda: done.set())
+        scanner.start()
+        assert done.wait(timeout=10.0), "Scan did not complete within timeout"
 
     # Only paths[2] and paths[3] should have been hashed.
     assert len(hash_calls) == 2
@@ -214,7 +227,7 @@ def test_resume_skips_already_hashed_files(
 
 
 def test_resume_skips_pass1_if_files_already_discovered(
-    qtbot, db, scan_dir, session_id, thumb_dir
+    db, scan_dir, session_id, thumb_dir
 ):
     # Plan: test_resume_skips_pass1_if_files_already_discovered
     # When is_resuming=True, the scanner must not emit file_discovered (Pass 1 skipped).
@@ -227,14 +240,16 @@ def test_resume_skips_pass1_if_files_already_discovered(
     scanner.set_resuming(True)
     scanner.file_discovered.connect(lambda fid, p: discovered.append(fid))
 
-    with qtbot.waitSignal(scanner.scan_complete, timeout=10_000):
-        scanner.start()
+    done = threading.Event()
+    scanner.scan_complete.connect(lambda: done.set())
+    scanner.start()
+    assert done.wait(timeout=10.0), "Scan did not complete within timeout"
 
     assert discovered == [], "Pass 1 must be skipped entirely on resume"
 
 
 def test_crash_recovery_rehashes_null_hash_files(
-    qtbot, db, scan_dir, session_id, thumb_dir
+    db, scan_dir, session_id, thumb_dir
 ):
     # Plan: test_crash_recovery_rehashes_null_hash_files
     # Simulate a mid-scan crash: 4 files in DB, only 2 have pixel_hash (crash left 2 NULL).
@@ -251,8 +266,10 @@ def test_crash_recovery_rehashes_null_hash_files(
 
     scanner = Scanner(db=db, session_id=session_id, thumb_dir=thumb_dir)
     scanner.set_resuming(True)
-    with qtbot.waitSignal(scanner.scan_complete, timeout=10_000):
-        scanner.start()
+    done = threading.Event()
+    scanner.scan_complete.connect(lambda: done.set())
+    scanner.start()
+    assert done.wait(timeout=10.0), "Scan did not complete within timeout"
 
     for f in db.get_files_for_session(session_id):
         if f["id"] in null_ids:

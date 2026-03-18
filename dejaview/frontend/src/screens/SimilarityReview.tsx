@@ -49,7 +49,7 @@ export function SimilarityReview() {
     loadedPages.current.add(page)
     const offset = page * PAGE_SIZE
     const result = await callBackend<SimilarityGroupsPage>(
-      'get_similarity_groups', sessionId, offset, PAGE_SIZE,
+      'get_similarity_groups', { session_id: sessionId, offset, limit: PAGE_SIZE },
     )
     setTotalGroups(result.total_count)
     setGroupSummaries((prev) => {
@@ -81,7 +81,7 @@ export function SimilarityReview() {
     setDetailLoading(true)
     try {
       const detail = await callBackend<SimilarityGroup>(
-        'get_similarity_group_detail', groupId,
+        'get_similarity_group_detail', { group_id: groupId },
       )
       setCurrentDetail(detail)
       // Populate actions from backend-supplied action field
@@ -133,7 +133,7 @@ export function SimilarityReview() {
 
   useEffect(() => {
     if (!currentDetail?.members?.length) return
-    callBackend<KeeperRecommendation>('recommend_keeper', currentDetail.members)
+    callBackend<KeeperRecommendation>('recommend_keeper', { files: currentDetail.members })
       .then(setRecommendation)
       .catch(() => setRecommendation(null))
   }, [currentDetail])
@@ -163,7 +163,7 @@ export function SimilarityReview() {
     setActivePreset(null)
     try {
       const result = await callBackend<{ actions: Record<string, FileAction> }>(
-        'set_file_action', fileId, action, 'file',
+        'set_file_action', { file_id: fileId, action, scope: 'file' },
       )
       const updated: Record<number, FileAction> = { ...fileActions }
       for (const [id, act] of Object.entries(result.actions)) {
@@ -179,7 +179,7 @@ export function SimilarityReview() {
     const groupFileIds = members.map((m) => m.id)
     try {
       const result = await callBackend<{ actions: Record<string, FileAction> }>(
-        'keep_and_delete_others', fileId, groupFileIds,
+        'keep_and_delete_others', { keep_file_id: fileId, group_file_ids: groupFileIds },
       )
       const updated: Record<number, FileAction> = { ...fileActions }
       for (const [id, act] of Object.entries(result.actions)) {
@@ -194,13 +194,13 @@ export function SimilarityReview() {
   const [keepMenuOpenId, setKeepMenuOpenId] = useState<number | null>(null)
 
   // Listen for selection progress/complete events
-  useBackendEvent('selection:progress', (e: CustomEvent) => {
-    setSelectionProgress({ current: e.detail.current, total: e.detail.total })
+  useBackendEvent<{ current: number; total: number }>('selection:progress', (payload) => {
+    setSelectionProgress({ current: payload.current, total: payload.total })
   })
-  useBackendEvent('selection:complete', (e: CustomEvent) => {
+  useBackendEvent<{ active_preset: string }>('selection:complete', (payload) => {
     setSelectionProgress(null)
     setApplyingPreset(false)
-    setActivePreset(e.detail.active_preset)
+    setActivePreset(payload.active_preset)
   })
 
   const reloadAfterPreset = useCallback(async () => {
@@ -216,7 +216,7 @@ export function SimilarityReview() {
     setApplyingPreset(true)
     setActivePreset(preset)
     try {
-      await callBackend<SelectionResult>('apply_similarity_preset', sessionId, preset)
+      await callBackend<SelectionResult>('apply_similarity_preset', { session_id: sessionId, preset })
       await reloadAfterPreset()
     } catch {
       // handle error
@@ -231,7 +231,7 @@ export function SimilarityReview() {
     setApplyingPreset(true)
     setActivePreset('custom')
     try {
-      await callBackend<SelectionResult>('apply_custom_similarity_selection', sessionId, criteria)
+      await callBackend<SelectionResult>('apply_custom_similarity_selection', { session_id: sessionId, criteria })
       await reloadAfterPreset()
     } catch {
       // handle error

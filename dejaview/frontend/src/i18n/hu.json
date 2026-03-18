@@ -162,7 +162,8 @@
     "confirm_purge": "Véglegesen törli az összes lejárt elemet? Ez nem vonható vissza.",
     "confirm_delete": "Véglegesen töröl {{count}} elemet? Ez nem vonható vissza.",
     "confirm_empty_bin": "Véglegesen töröl mind a {{count}} elemet? Ez nem vonható vissza.",
-    "empty": "A Duplikátum Lomtár üres."
+    "empty": "A Duplikátum Lomtár üres.",
+    "toggle_thumbs": "Bélyegképek"
   },
   "family": {
     "title": "Családi Könyvtár",

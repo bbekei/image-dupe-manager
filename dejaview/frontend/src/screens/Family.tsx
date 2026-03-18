@@ -47,7 +47,7 @@ export function Family() {
   const handleExport = async () => {
     if (!sessionId) return
     try {
-      const path = await callBackend<string>('export_hashes', sessionId)
+      const path = await callBackend<string>('export_hashes', { session_id: sessionId })
       toast.success(`Exported to ${path}`)
     } catch {
       toast.error('Export failed')
@@ -57,7 +57,7 @@ export function Family() {
   const handleImport = async () => {
     try {
       // The backend handles file selection
-      const result = await callBackend<{ imported: number; username?: string; error?: string }>('import_hashes', '')
+      const result = await callBackend<{ imported: number; username?: string; error?: string }>('import_hashes', { file_path: '' })
       if (result.error) {
         toast.error(`Import failed: ${result.error}`)
       } else {

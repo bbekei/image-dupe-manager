@@ -280,9 +280,7 @@ export function BrowseResults() {
     try {
       const result = await callBackend<DuplicateGroupsPage>(
         'get_duplicate_groups',
-        sessionId,
-        0,
-        PAGE_SIZE,
+        { session_id: sessionId, offset: 0, limit: PAGE_SIZE },
       )
       setGroups(result.groups, result.total_count)
     } catch {
@@ -298,9 +296,7 @@ export function BrowseResults() {
     try {
       const result = await callBackend<DuplicateGroupsPage>(
         'get_duplicate_groups',
-        sessionId,
-        groups.length,
-        PAGE_SIZE,
+        { session_id: sessionId, offset: groups.length, limit: PAGE_SIZE },
       )
       appendGroups(result.groups)
     } catch {
@@ -313,15 +309,15 @@ export function BrowseResults() {
   useEffect(() => { loadGroups() }, [loadGroups])
 
   // Refresh groups when scan completes
-  useBackendEvent('scan:status', (e: CustomEvent) => {
-    if (e.detail.status === 'complete') loadGroups()
+  useBackendEvent<{ status: string; message: string }>('scan:status', (payload) => {
+    if (payload.status === 'complete') loadGroups()
   })
 
   const loadGroupDetail = useCallback(async (pixelHash: string) => {
     if (!sessionId) return
     setSelectedGroup(pixelHash)
     try {
-      const files = await callBackend<FileInfo[]>('get_group_detail', sessionId, pixelHash)
+      const files = await callBackend<FileInfo[]>('get_group_detail', { session_id: sessionId, pixel_hash: pixelHash })
       setSelectedFiles(files)
       // Populate fileActions from backend-supplied action field
       const actions: Record<number, FileAction> = {}
@@ -343,12 +339,12 @@ export function BrowseResults() {
         const targetFile = selectedFiles.find((f) => f.id === fileId)
         if (!targetFile || !sessionId) return
         const folderPath = targetFile.path.replace(/[/\\][^/\\]+$/, '')
-        await callBackend('apply_folder_action', sessionId, folderPath, action)
+        await callBackend('apply_folder_action', { session_id: sessionId, folder_path: folderPath, action })
         // Reload the group to reflect updated actions
         if (selectedGroupHash) await loadGroupDetail(selectedGroupHash)
       } else {
         const result = await callBackend<{ actions: Record<string, FileAction> }>(
-          'set_file_action', fileId, action, 'file',
+          'set_file_action', { file_id: fileId, action, scope: 'file' },
         )
         const updated: Record<number, FileAction> = {}
         for (const [id, act] of Object.entries(result.actions)) {
@@ -365,7 +361,7 @@ export function BrowseResults() {
     try {
       const groupFileIds = selectedFiles.map((f) => f.id)
       const result = await callBackend<{ actions: Record<string, FileAction> }>(
-        'keep_and_delete_others', fileId, groupFileIds,
+        'keep_and_delete_others', { keep_file_id: fileId, group_file_ids: groupFileIds },
       )
       const updated: Record<number, FileAction> = {}
       for (const [id, act] of Object.entries(result.actions)) {
@@ -378,13 +374,13 @@ export function BrowseResults() {
   }, [selectedFiles])
 
   // Listen for selection progress/complete events
-  useBackendEvent('selection:progress', (e: CustomEvent) => {
-    setSelectionProgress({ current: e.detail.current, total: e.detail.total })
+  useBackendEvent<{ current: number; total: number }>('selection:progress', (payload) => {
+    setSelectionProgress({ current: payload.current, total: payload.total })
   })
-  useBackendEvent('selection:complete', (e: CustomEvent) => {
+  useBackendEvent<{ active_preset: string }>('selection:complete', (payload) => {
     setSelectionProgress(null)
     setApplyingPreset(false)
-    setActivePreset(e.detail.active_preset)
+    setActivePreset(payload.active_preset)
     if (selectedGroupHash) loadGroupDetail(selectedGroupHash)
   })
 
@@ -393,7 +389,7 @@ export function BrowseResults() {
     setApplyingPreset(true)
     setActivePreset(preset)
     try {
-      await callBackend<SelectionResult>('apply_selection_preset', sessionId, preset)
+      await callBackend<SelectionResult>('apply_selection_preset', { session_id: sessionId, preset })
       if (selectedGroupHash) loadGroupDetail(selectedGroupHash)
     } catch {
       // handle error
@@ -408,7 +404,7 @@ export function BrowseResults() {
     setApplyingPreset(true)
     setActivePreset('custom')
     try {
-      await callBackend<SelectionResult>('apply_custom_selection', sessionId, criteria)
+      await callBackend<SelectionResult>('apply_custom_selection', { session_id: sessionId, criteria })
       if (selectedGroupHash) loadGroupDetail(selectedGroupHash)
     } catch {
       // handle error

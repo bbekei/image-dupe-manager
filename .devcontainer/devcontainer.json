@@ -14,7 +14,7 @@
     }
   },
 
-  "postCreateCommand": "pip install -r dejaview/requirements-dev.txt && cd dejaview/frontend && npm install && cargo install tauri-cli",
+  "postCreateCommand": "pip install -r dejaview/requirements-dev.txt && cd dejaview/frontend && npm install && cargo install tauri-cli && rustup target add x86_64-pc-windows-gnu",
 
   "customizations": {
     "vscode": {

@@ -8,6 +8,7 @@ Security coverage: symlink/junction guard (plan §Security — symlink guard).
 """
 
 import os
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
@@ -47,7 +48,7 @@ def session_id(db, scan_dir):
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
 
-def test_discovery_pass_inserts_all_files(qtbot, db, scan_dir, session_id, thumb_dir):
+def test_discovery_pass_inserts_all_files(db, scan_dir, session_id, thumb_dir):
     # Plan §Integration Tests: test_discovery_pass_inserts_all_files
     # Each file gets a unique size (different image dimensions) so that the
     # size pre-filter eliminates all of them from Pass 2 — no hashing occurs.
@@ -55,8 +56,10 @@ def test_discovery_pass_inserts_all_files(qtbot, db, scan_dir, session_id, thumb
         _jpg(scan_dir / f"img{i:02d}.jpg", size=(64 + i * 10, 64 + i * 10))
 
     scanner = Scanner(db=db, session_id=session_id, thumb_dir=thumb_dir)
-    with qtbot.waitSignal(scanner.scan_complete, timeout=10_000):
-        scanner.start()
+    done = threading.Event()
+    scanner.scan_complete.connect(lambda: done.set())
+    scanner.start()
+    assert done.wait(timeout=10.0), "Scan did not complete within timeout"
 
     files = db.get_files_for_session(session_id)
     assert len(files) == 5
@@ -65,15 +68,17 @@ def test_discovery_pass_inserts_all_files(qtbot, db, scan_dir, session_id, thumb
 
 
 def test_discovery_pass_records_correct_path_and_size(
-    qtbot, db, scan_dir, session_id, thumb_dir
+    db, scan_dir, session_id, thumb_dir
 ):
     # Plan §Integration Tests: test_discovery_pass_records_correct_path_and_size
     img = _jpg(scan_dir / "img.jpg")
     expected_size = img.stat().st_size
 
     scanner = Scanner(db=db, session_id=session_id, thumb_dir=thumb_dir)
-    with qtbot.waitSignal(scanner.scan_complete, timeout=10_000):
-        scanner.start()
+    done = threading.Event()
+    scanner.scan_complete.connect(lambda: done.set())
+    scanner.start()
+    assert done.wait(timeout=10.0), "Scan did not complete within timeout"
 
     files = db.get_files_for_session(session_id)
     assert len(files) == 1
@@ -82,7 +87,7 @@ def test_discovery_pass_records_correct_path_and_size(
 
 
 def test_discovery_pass_skips_symlinked_directory(
-    qtbot, db, scan_dir, session_id, thumb_dir
+    db, scan_dir, session_id, thumb_dir
 ):
     # Plan §Integration Tests: test_discovery_pass_does_not_enter_excluded_dirs
     # Implemented via the symlink/junction guard (plan §Security — symlink guard).
@@ -103,8 +108,10 @@ def test_discovery_pass_skips_symlinked_directory(
 
     with patch("core.scanner.os.path.islink", side_effect=mock_islink):
         scanner = Scanner(db=db, session_id=session_id, thumb_dir=thumb_dir)
-        with qtbot.waitSignal(scanner.scan_complete, timeout=10_000):
-            scanner.start()
+        done = threading.Event()
+        scanner.scan_complete.connect(lambda: done.set())
+        scanner.start()
+        assert done.wait(timeout=10.0), "Scan did not complete within timeout"
 
     files = db.get_files_for_session(session_id)
     paths = [f["path"] for f in files]
@@ -113,7 +120,7 @@ def test_discovery_pass_skips_symlinked_directory(
 
 
 def test_discovery_pass_completes_before_hash_pass_begins(
-    qtbot, db, scan_dir, session_id, thumb_dir
+    db, scan_dir, session_id, thumb_dir
 ):
     # Plan §Integration Tests: test_discovery_pass_completes_before_hash_pass_begins
     # Three identical JPEGs → same file size → all three become Pass 2 candidates.
@@ -126,8 +133,10 @@ def test_discovery_pass_completes_before_hash_pass_begins(
     scanner.file_discovered.connect(lambda fid, path: events.append("discovered"))
     scanner.hash_complete.connect(lambda fid, h: events.append("hashed"))
 
-    with qtbot.waitSignal(scanner.scan_complete, timeout=10_000):
-        scanner.start()
+    done = threading.Event()
+    scanner.scan_complete.connect(lambda: done.set())
+    scanner.start()
+    assert done.wait(timeout=10.0), "Scan did not complete within timeout"
 
     # If any hashing happened, every event before the first "hashed" must be "discovered".
     if "hashed" in events:
@@ -136,19 +145,21 @@ def test_discovery_pass_completes_before_hash_pass_begins(
 
 
 def test_discovery_pass_handles_empty_folder(
-    qtbot, db, scan_dir, session_id, thumb_dir
+    db, scan_dir, session_id, thumb_dir
 ):
     # Plan §Integration Tests: test_discovery_pass_handles_empty_folder
     # scan_dir exists but contains no image files — scan must complete without error.
     scanner = Scanner(db=db, session_id=session_id, thumb_dir=thumb_dir)
-    with qtbot.waitSignal(scanner.scan_complete, timeout=10_000):
-        scanner.start()
+    done = threading.Event()
+    scanner.scan_complete.connect(lambda: done.set())
+    scanner.start()
+    assert done.wait(timeout=10.0), "Scan did not complete within timeout"
 
     assert db.get_files_for_session(session_id) == []
 
 
 def test_discovery_pass_handles_unreadable_file(
-    qtbot, db, scan_dir, session_id, thumb_dir
+    db, scan_dir, session_id, thumb_dir
 ):
     # Plan §Integration Tests: test_discovery_pass_handles_unreadable_file
     # os.stat is mocked to raise PermissionError for one file; the scanner must
@@ -167,8 +178,10 @@ def test_discovery_pass_handles_unreadable_file(
     with patch("core.scanner.os.stat", side_effect=mock_stat):
         scanner = Scanner(db=db, session_id=session_id, thumb_dir=thumb_dir)
         scanner.scan_error.connect(lambda path, msg: errors.append(path))
-        with qtbot.waitSignal(scanner.scan_complete, timeout=10_000):
-            scanner.start()
+        done = threading.Event()
+        scanner.scan_complete.connect(lambda: done.set())
+        scanner.start()
+        assert done.wait(timeout=10.0), "Scan did not complete within timeout"
 
     files = db.get_files_for_session(session_id)
     paths = [f["path"] for f in files]

@@ -1,4 +1,3 @@
-import { useEffect } from 'react'
 import { HashRouter, Routes, Route } from 'react-router-dom'
 import { Layout } from './components/Layout.tsx'
 import { MigrationGate } from './components/MigrationGate.tsx'
@@ -14,26 +13,28 @@ import { Family } from './screens/Family.tsx'
 import { Requests } from './screens/Requests.tsx'
 import { Settings } from './screens/Settings.tsx'
 import { Help } from './screens/Help.tsx'
+import { callBackend, usePyBridgeReady } from './hooks/usePyBridge.ts'
+import type { AppConfig } from './types/api.ts'
+
+export function applyTheme(theme: string) {
+  if (theme === 'light') {
+    document.documentElement.setAttribute('data-theme', 'light')
+  } else {
+    document.documentElement.removeAttribute('data-theme')
+  }
+}
 
 export default function App() {
-  useEffect(() => {
-    const applyLanguage = async () => {
-      const api = window.pywebview?.api
-      if (!api) return
-      try {
-        const config = await api.get_app_config()
+  usePyBridgeReady(() => {
+    callBackend<AppConfig>('get_app_config')
+      .then((config) => {
         i18n.changeLanguage(resolveLanguage(config.language))
-      } catch {
+        applyTheme(config.theme)
+      })
+      .catch(() => {
         // leave i18n at its default
-      }
-    }
-
-    if (window.pywebview?.api) {
-      applyLanguage()
-    } else {
-      window.addEventListener('pywebviewready', () => applyLanguage(), { once: true })
-    }
-  }, [])
+      })
+  })
 
   return (
     <MigrationGate>

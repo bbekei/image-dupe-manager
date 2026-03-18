@@ -1,0 +1,44 @@
+{
+  "productName": "DejaView",
+  "version": "1.0.0",
+  "identifier": "com.dejaview.app",
+  "build": {
+    "frontendDist": "../frontend/dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "DejaView",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 800,
+        "minHeight": 600
+      }
+    ],
+    "security": {
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["**"]
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "icon": ["icons/dejaview.ico"],
+    "externalBin": ["binaries/dejaview-sidecar"],
+    "windows": {
+      "nsis": {
+        "languages": ["English", "Hungarian"],
+        "displayLanguageSelector": true,
+        "installMode": "both"
+      },
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      }
+    }
+  }
+}

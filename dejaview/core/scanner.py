@@ -63,13 +63,28 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from PyQt6.QtCore import QThread, pyqtSignal
-
 from core.hasher import HashError, compute_phash_only, hash_file
 from core.perf_monitor import ENABLED as _PERF_ENABLED
 from data.db import Database
 
 log = logging.getLogger(__name__)
+
+
+class _Signal:
+    """Lightweight replacement for pyqtSignal. Thread-safe via simple list."""
+    def __init__(self):
+        self._callbacks = []
+
+    def connect(self, callback, *args, **kwargs):
+        self._callbacks.append(callback)
+
+    def emit(self, *args):
+        for cb in self._callbacks:
+            try:
+                cb(*args)
+            except Exception as exc:
+                log.debug("Signal callback error: %s", exc)
+
 
 # Image extensions to consider during discovery (case-insensitive).
 # Limited to formats actually produced by digital cameras (DSLR, iPhone, Android).
@@ -156,7 +171,7 @@ def _is_reachable(path: str, timeout_s: float = 5.0) -> bool:
         return False
 
 
-class Scanner(QThread):
+class Scanner(threading.Thread):
     """
     Two-pass image scanner (plan §Two-pass scan and file-size pre-filter).
 
@@ -169,24 +184,6 @@ class Scanner(QThread):
         scanner.stop()                       # stop permanently
     """
 
-    # ── Signals ──────────────────────────────────────────────────────────
-    file_discovered  = pyqtSignal(int, str)   # file_id, path
-    hash_complete    = pyqtSignal(int, str)   # file_id, pixel_hash
-    hash_complete_batch = pyqtSignal(list)    # [(file_id, pixel_hash), ...]
-    duplicate_found  = pyqtSignal(str, list)   # pixel_hash, [file_id, ...]
-    progress_updated = pyqtSignal(int, int)   # current, total
-    scan_started     = pyqtSignal()
-    scan_paused      = pyqtSignal()
-    scan_resumed     = pyqtSignal()
-    scan_stopped     = pyqtSignal()
-    scan_complete    = pyqtSignal()
-    scan_error       = pyqtSignal(str, str)   # path, message
-    status_message   = pyqtSignal(str)        # for the status bar
-    directory_hashed = pyqtSignal(str)        # directory path, after all files in it are hashed
-    directories_hashed = pyqtSignal(list)     # [dir_path, ...] batch of completed directories
-    similarity_progress = pyqtSignal(int, int)         # current, total (Pass 3a)
-    similarity_grouping_complete = pyqtSignal(int)     # group_count (Pass 3c)
-
     def __init__(
         self,
         db: Database,
@@ -197,7 +194,24 @@ class Scanner(QThread):
         perf_monitor=None,
         similarity_enabled: bool = False,
     ):
-        super().__init__(parent)
+        super().__init__(daemon=True)
+        # ── Signals (per-instance so callbacks don't bleed between instances) ─
+        self.file_discovered  = _Signal()   # file_id, path
+        self.hash_complete    = _Signal()   # file_id, pixel_hash
+        self.hash_complete_batch = _Signal()    # [(file_id, pixel_hash), ...]
+        self.duplicate_found  = _Signal()   # pixel_hash, [file_id, ...]
+        self.progress_updated = _Signal()   # current, total
+        self.scan_started     = _Signal()
+        self.scan_paused      = _Signal()
+        self.scan_resumed     = _Signal()
+        self.scan_stopped     = _Signal()
+        self.scan_complete    = _Signal()
+        self.scan_error       = _Signal()   # path, message
+        self.status_message   = _Signal()   # for the status bar
+        self.directory_hashed = _Signal()   # directory path, after all files in it are hashed
+        self.directories_hashed = _Signal()     # [dir_path, ...] batch of completed directories
+        self.similarity_progress = _Signal()         # current, total (Pass 3a)
+        self.similarity_grouping_complete = _Signal()     # group_count (Pass 3c)
         self._db = db
         self._session_id = session_id
         self._thumb_dir = Path(thumb_dir)
@@ -232,9 +246,6 @@ class Scanner(QThread):
     # ── QThread entry point ──────────────────────────────────────────────
 
     def run(self) -> None:
-        # Plan §Resource Usage — CPU throttling: yield to foreground processes.
-        self.setPriority(QThread.Priority.NormalPriority)
-
         # Read scan delay once at scan start (plan §Resource throttling design).
         scan_delay_ms = self._db.get_scan_delay_ms()
 
@@ -324,14 +335,17 @@ class Scanner(QThread):
     # ── Pass 1: Discovery ────────────────────────────────────────────────
 
     def _run_pass1(self, folders: list[str]) -> None:
-        self.status_message.emit(self.tr("Discovering files\u2026"))
+        self.status_message.emit("Discovering files\u2026")
         now = datetime.now(timezone.utc).isoformat()
         batch: list[tuple] = []
 
         for folder in folders:
+            if self._stop_requested:
+                break
+
             # Network reachability probe (plan §Security — network drive resilience).
             if not _is_reachable(folder):
-                msg = self.tr("Folder unreachable, skipping: {0}").format(folder)
+                msg = "Folder unreachable, skipping: {0}".format(folder)
                 log.warning("Scanner: %s", msg)
                 self.status_message.emit(msg)
                 continue
@@ -410,15 +424,33 @@ class Scanner(QThread):
 
     def _run_pass2(self, scan_delay_ms: int) -> None:
         candidates = self._db.get_unhashed_files_grouped_by_size(self._session_id)
-        total = len(candidates)
-        current = 0
+        n_remaining = len(candidates)
 
-        self.progress_updated.emit(0, total)
+        # Count total size-duplicate candidates (hashed + unhashed) so that
+        # progress continues from where it left off on resume instead of
+        # restarting from 0/remaining.
+        row = self._db.conn.execute(
+            """
+            SELECT COUNT(*) FROM files
+            WHERE session_id = ?
+              AND size IN (
+                  SELECT size FROM files
+                  WHERE session_id = ? AND size IS NOT NULL
+                  GROUP BY size HAVING COUNT(*) > 1
+              )
+            """,
+            (self._session_id, self._session_id),
+        ).fetchone()
+        n_total = row[0] if row else n_remaining
+        current = n_total - n_remaining
+        total = n_total
+
+        self.progress_updated.emit(current, total)
         self.status_message.emit(
-            self.tr("Hashing {0} candidate(s)\u2026").format(total)
+            "Hashing {0} candidate(s)\u2026".format(n_remaining)
         )
 
-        if total == 0:
+        if n_remaining == 0:
             return
 
         # ── Group candidates by parent directory ──────────────────────────
@@ -544,6 +576,11 @@ class Scanner(QThread):
                 if self._stop_requested or self._pause_requested:
                     for f in list(active):
                         f.cancel()
+                    # Flush any pending hash updates so they survive the pause/stop
+                    if pending_updates:
+                        with db_lock:
+                            self._db.update_pixel_hashes_batch(pending_updates)
+                        pending_updates.clear()
                     break
 
                 # ── Telemetry: queue pressure snapshot ─────────────────
@@ -662,15 +699,24 @@ class Scanner(QThread):
         thumbnail + pHash (dual-hash).
         """
         candidates = self._db.get_files_needing_hashes(self._session_id)
-        total = len(candidates)
-        current = 0
+        n_remaining = len(candidates)
 
-        self.similarity_progress.emit(0, total)
+        # Count total files that need/needed pHash so progress continues from
+        # where it left off on resume (same pattern as Pass 2).
+        row = self._db.conn.execute(
+            "SELECT COUNT(*) FROM files WHERE session_id = ? AND status = 'active'",
+            (self._session_id,),
+        ).fetchone()
+        n_total = row[0] if row else n_remaining
+        current = n_total - n_remaining
+        total = n_total
+
+        self.similarity_progress.emit(current, total)
         self.status_message.emit(
-            self.tr("Similarity hashing {0} file(s)\u2026").format(total)
+            "Similarity hashing {0} file(s)\u2026".format(n_remaining)
         )
 
-        if total == 0:
+        if n_remaining == 0:
             return
 
         # Proportional throttling (same as Pass 2).
@@ -782,7 +828,7 @@ class Scanner(QThread):
         pixel_hashes.  Check if any of them form new exact-duplicate groups
         and emit duplicate_found signals (plan §S2.3).
         """
-        self.status_message.emit(self.tr("Checking for new exact duplicates\u2026"))
+        self.status_message.emit("Checking for new exact duplicates\u2026")
 
         # Query: find pixel_hashes with >=2 files that were NOT detected
         # as duplicates before (i.e. they were size-filtered, so they got
@@ -814,7 +860,7 @@ class Scanner(QThread):
         """
         from core.similarity import build_similarity_groups
 
-        self.status_message.emit(self.tr("Grouping similar images\u2026"))
+        self.status_message.emit("Grouping similar images\u2026")
 
         # Fetch all files with pHash for this session.
         file_rows = self._db.get_files_with_phash(self._session_id)
@@ -851,5 +897,5 @@ class Scanner(QThread):
         group_count = len(groups)
         self.similarity_grouping_complete.emit(group_count)
         self.status_message.emit(
-            self.tr("Found {0} similarity group(s)").format(group_count)
+            "Found {0} similarity group(s)".format(group_count)
         )

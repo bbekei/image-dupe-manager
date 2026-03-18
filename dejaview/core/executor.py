@@ -17,10 +17,9 @@ Module ownership:
 """
 
 import logging
+import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-
-from PyQt6.QtCore import QThread, pyqtSignal
 
 from core.trash import soft_delete
 from data.db import Database
@@ -28,7 +27,23 @@ from data.db import Database
 log = logging.getLogger(__name__)
 
 
-class PlanExecutor(QThread):
+class _Signal:
+    """Lightweight replacement for pyqtSignal. Thread-safe via simple list."""
+    def __init__(self):
+        self._callbacks = []
+
+    def connect(self, callback, *args, **kwargs):
+        self._callbacks.append(callback)
+
+    def emit(self, *args):
+        for cb in self._callbacks:
+            try:
+                cb(*args)
+            except Exception as exc:
+                log.debug("Signal callback error: %s", exc)
+
+
+class PlanExecutor(threading.Thread):
     """Execute the committed plan in a background thread.
 
     Signals:
@@ -42,15 +57,6 @@ class PlanExecutor(QThread):
         execution_error:    (path, message) — per-file errors
     """
 
-    execution_started = pyqtSignal()
-    progress_updated = pyqtSignal(int, int)
-    log_message = pyqtSignal(str)
-    stage_changed = pyqtSignal(str)
-    sync_substage = pyqtSignal(str)
-    sync_peer_errors = pyqtSignal(dict)
-    execution_complete = pyqtSignal(int, int)
-    execution_error = pyqtSignal(str, str)
-
     def __init__(
         self,
         db: Database,
@@ -59,7 +65,16 @@ class PlanExecutor(QThread):
         drive_sync=None,
         parent=None,
     ):
-        super().__init__(parent)
+        super().__init__(daemon=True)
+        # ── Signals (per-instance so callbacks don't bleed between instances) ─
+        self.execution_started = _Signal()
+        self.progress_updated = _Signal()
+        self.log_message = _Signal()
+        self.stage_changed = _Signal()
+        self.sync_substage = _Signal()
+        self.sync_peer_errors = _Signal()
+        self.execution_complete = _Signal()
+        self.execution_error = _Signal()
         self._db = db
         self._session_id = session_id
         self._trash_root = Path(trash_root)

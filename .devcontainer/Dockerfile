@@ -13,4 +13,8 @@ RUN apt-get update && apt-get install -y \
     libgtk-3-dev \
     libxdo-dev \
     pkg-config \
+    gcc-mingw-w64-x86-64 \
+    g++-mingw-w64-x86-64 \
+    binutils-mingw-w64-x86-64 \
+    nsis \
     && rm -rf /var/lib/apt/lists/*
