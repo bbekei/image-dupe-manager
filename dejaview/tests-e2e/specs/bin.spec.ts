@@ -63,12 +63,13 @@ describe('Duplicates Bin flow', () => {
     await firstRestoreBtn.waitForDisplayed({ timeout: 5000 })
     await firstRestoreBtn.click()
 
-    // Wait for the list to update
+    // Wait for the list to update; re-query to avoid stale element reference
+    // (React re-renders the list after restore, replacing the DOM node)
     await browser.pause(1500)
 
     const countAfter = await browser.execute(
       (el: Element) => el.childElementCount,
-      binList,
+      await $('[data-testid="bin-items-list"]'),
     )
     expect(countAfter).toBe(countBefore - 1)
   })
