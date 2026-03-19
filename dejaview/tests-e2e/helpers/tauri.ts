@@ -3,10 +3,14 @@
  * Uses browser.executeAsync so we can await the Promise.
  */
 export async function invoke<T>(command: string, args: Record<string, unknown> = {}): Promise<T> {
-  return browser.executeAsync((cmd, a, done) => {
+  const result = await browser.executeAsync((cmd, a, done) => {
     // @ts-ignore — __TAURI_INTERNALS__ is the Tauri v2 IPC object
     window.__TAURI_INTERNALS__.invoke(cmd, a).then(done).catch((err: unknown) => done({ __error: String(err) }))
-  }, command, args) as Promise<T>
+  }, command, args)
+  if (result && typeof result === 'object' && '__error' in (result as object)) {
+    throw new Error(`invoke '${command}' failed: ${(result as { __error: string }).__error}`)
+  }
+  return result as T
 }
 
 /**

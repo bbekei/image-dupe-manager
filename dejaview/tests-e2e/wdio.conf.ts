@@ -53,8 +53,4 @@ export const config: WebdriverIO.Config = {
     tauriDriver?.kill()
   },
 
-  before: async () => {
-    // Extend default waitFor timeout (WDIO v9 API)
-    await browser.setTimeouts({ implicit: 10000 })
-  },
 }

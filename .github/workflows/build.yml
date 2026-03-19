@@ -146,6 +146,16 @@ jobs:
         working-directory: dejaview
         run: frontend/node_modules/.bin/tauri build --debug --no-bundle
 
+      - name: Copy sidecar to runtime location
+        working-directory: dejaview
+        run: |
+          # With --no-bundle, Tauri does not copy sidecars to target/debug/.
+          # tauri-plugin-shell resolves sidecars relative to the binary at runtime.
+          SRC=src-tauri/binaries/dejaview-sidecar-x86_64-unknown-linux-gnu
+          DST=src-tauri/target/debug/dejaview-sidecar-x86_64-unknown-linux-gnu
+          cp "$SRC" "$DST"
+          chmod +x "$DST"
+
       - name: Install E2E test dependencies
         run: cd dejaview/tests-e2e && npm ci
 
