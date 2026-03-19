@@ -90,7 +90,7 @@ function ScanProgressPanel() {
     : 0
 
   return (
-    <div className="bg-dv-surface rounded-xl border border-dv-border p-5 mb-8">
+    <div data-testid="scan-progress-panel" className="bg-dv-surface rounded-xl border border-dv-border p-5 mb-8">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-3">
           {isActive && <Loader2 size={20} className="text-dv-primary animate-spin" />}
@@ -125,6 +125,7 @@ function ScanProgressPanel() {
           )}
           {phase === 'complete' && (
             <button
+              data-testid="btn-view-results"
               onClick={() => navigate('/browse')}
               className="flex items-center gap-2 px-3 py-1.5 rounded bg-dv-primary hover:bg-dv-primary-hover text-white text-sm"
             >

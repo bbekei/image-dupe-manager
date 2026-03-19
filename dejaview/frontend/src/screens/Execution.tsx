@@ -81,7 +81,7 @@ export function Execution() {
         </div>
 
         {complete && (
-          <div className="flex gap-4 mt-4 text-sm">
+          <div data-testid="execution-complete" className="flex gap-4 mt-4 text-sm">
             <span className="text-dv-success">
               {t('execution.success_count', { count: successCount })}
             </span>
@@ -108,6 +108,7 @@ export function Execution() {
       <div className="flex gap-3 mt-6">
         {complete && (
           <button
+            data-testid="btn-view-bin"
             onClick={() => navigate('/bin')}
             className="px-5 py-2.5 bg-dv-primary hover:bg-dv-primary-hover text-white rounded-lg transition-colors font-medium"
           >

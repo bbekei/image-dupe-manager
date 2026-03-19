@@ -141,7 +141,7 @@ export function DuplicatesBin() {
           <p>{t('bin.empty')}</p>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div data-testid="bin-items-list" className="space-y-2">
           {items.map((item) => {
             const daysLeft = differenceInDays(new Date(item.expires_at), new Date())
             const expired = daysLeft <= 0
@@ -190,6 +190,7 @@ export function DuplicatesBin() {
                   )}
                 </div>
                 <button
+                  data-testid={`btn-restore-${item.id}`}
                   onClick={() => handleRestore(item.id)}
                   className="p-2 bg-dv-bg hover:bg-dv-surface-hover rounded-lg transition-colors"
                   title={t('bin.restore')}

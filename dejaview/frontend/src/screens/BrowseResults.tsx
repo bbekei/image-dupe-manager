@@ -445,6 +445,7 @@ export function BrowseResults() {
             {presets.map((preset) => (
               <button
                 key={preset}
+                data-testid={`preset-${preset}`}
                 onClick={() => handlePreset(preset)}
                 disabled={applyingPreset}
                 className={`flex items-center gap-1 px-2 py-1 text-xs rounded ${
@@ -496,6 +497,7 @@ export function BrowseResults() {
 
         <div
           ref={parentRef}
+          data-testid="duplicate-groups-list"
           className="flex-1 overflow-y-auto"
           onScroll={(e) => {
             const el = e.currentTarget

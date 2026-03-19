@@ -140,6 +140,7 @@ export function PlanReview() {
       {/* Action buttons */}
       <div className="flex gap-3">
         <button
+          data-testid="btn-execute-plan"
           onClick={() => setConfirmOpen(true)}
           disabled={summary.delete_count === 0}
           className="flex items-center gap-2 px-6 py-2.5 bg-dv-primary hover:bg-dv-primary-hover text-white rounded-lg transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
@@ -175,6 +176,7 @@ export function PlanReview() {
                 </button>
               </Dialog.Close>
               <button
+                data-testid="btn-confirm-execute"
                 onClick={handleExecute}
                 className="px-4 py-2 bg-dv-danger hover:bg-red-600 text-white rounded-lg transition-colors"
               >
