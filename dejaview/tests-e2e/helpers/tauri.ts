@@ -14,19 +14,17 @@ export async function invoke<T>(command: string, args: Record<string, unknown> =
 }
 
 /**
- * Navigate to a hash route by clicking the sidebar NavLink.
- * Clicking the anchor is more reliable than hash assignment because React Router
- * listens to click events, not just hashchange, in some environments.
+ * Navigate to a hash route by JS-clicking the sidebar NavLink.
+ * browser.execute/.click() fires the click event directly on the anchor,
+ * bypassing WebDriver coordinate-based "element click intercepted" errors
+ * (e.g. from the scan progress panel overlapping in small Xvfb windows).
+ * React Router's NavLink onClick handler responds to the JS click event.
  */
 export async function navigateTo(route: string): Promise<void> {
   // HashRouter renders NavLink as <a href="#/route">
   const link = await $(`a[href="#${route}"]`)
-  if (await link.isExisting()) {
-    await link.click()
-  } else {
-    // Fallback: direct hash assignment
-    await browser.execute((h) => { window.location.hash = h }, route)
-  }
+  // JS .click() bypasses viewport/overlay constraints that block WebDriver clicks
+  await browser.execute((el) => (el as HTMLElement).click(), link)
   await browser.waitUntil(
     async () => {
       const url = await browser.getUrl()
