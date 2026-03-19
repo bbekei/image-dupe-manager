@@ -101,6 +101,7 @@ class PlanExecutor(threading.Thread):
             self.execution_complete.emit(0, 0)
             return
 
+        self.progress_updated.emit(0, total)
         self.log_message.emit(f"Deleting {total} files...")
 
         for i, row in enumerate(rows):

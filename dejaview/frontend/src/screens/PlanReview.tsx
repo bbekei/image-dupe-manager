@@ -40,9 +40,10 @@ export function PlanReview() {
   const handleExecute = async () => {
     if (!sessionId) return
     setConfirmOpen(false)
+    // Navigate first so Execution screen listeners are ready before events flow
+    navigate('/execute')
     try {
       await callBackend('execute_plan', { session_id: sessionId })
-      navigate('/execute')
     } catch {
       // handle error
     }
