@@ -4,9 +4,18 @@
  */
 export async function invoke<T>(command: string, args: Record<string, unknown> = {}): Promise<T> {
   return browser.executeAsync((cmd, a, done) => {
-    // @ts-ignore — __TAURI__ is injected by Tauri at runtime
-    window.__TAURI__.invoke(cmd, a).then(done).catch((err: unknown) => done({ __error: String(err) }))
+    // @ts-ignore — __TAURI_INTERNALS__ is the Tauri v2 IPC object
+    window.__TAURI_INTERNALS__.invoke(cmd, a).then(done).catch((err: unknown) => done({ __error: String(err) }))
   }, command, args) as Promise<T>
+}
+
+/**
+ * Navigate to a hash route without needing to know the Tauri URL scheme.
+ */
+export async function navigateTo(hash: string): Promise<void> {
+  await browser.execute((h) => { window.location.hash = h }, hash)
+  // Allow React Router to process the navigation
+  await browser.pause(300)
 }
 
 /**

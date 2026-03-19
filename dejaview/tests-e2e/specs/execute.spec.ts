@@ -1,4 +1,4 @@
-import { invoke, waitForScanComplete, waitForExecutionComplete } from '../helpers/tauri.js'
+import { invoke, waitForScanComplete, waitForExecutionComplete, navigateTo } from '../helpers/tauri.js'
 import { execSync } from 'child_process'
 import path from 'path'
 import os from 'os'
@@ -27,7 +27,7 @@ describe('Execute flow', () => {
   })
 
   it('applies Keep Largest preset from Browse', async () => {
-    await browser.url('/#/browse')
+    await navigateTo('/browse')
 
     const keepLargestBtn = await $('[data-testid="preset-KEEP_LARGEST_FILE"]')
     await keepLargestBtn.waitForDisplayed({ timeout: 10000 })
@@ -40,7 +40,7 @@ describe('Execute flow', () => {
   })
 
   it('shows a non-empty plan in Plan Review', async () => {
-    await browser.url('/#/plan')
+    await navigateTo('/plan')
 
     // Wait for plan summary to load — delete count should be > 0
     await browser.waitUntil(async () => {

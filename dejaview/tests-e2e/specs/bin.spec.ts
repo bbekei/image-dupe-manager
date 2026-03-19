@@ -1,4 +1,4 @@
-import { invoke, waitForScanComplete, waitForExecutionComplete } from '../helpers/tauri.js'
+import { invoke, waitForScanComplete, waitForExecutionComplete, navigateTo } from '../helpers/tauri.js'
 import { execSync } from 'child_process'
 import path from 'path'
 import os from 'os'
@@ -30,7 +30,7 @@ describe('Duplicates Bin flow', () => {
     })
 
     // Navigate to plan and execute
-    await browser.url('/#/plan')
+    await navigateTo('/plan')
     const executePlanBtn = await $('[data-testid="btn-execute-plan"]')
     await executePlanBtn.waitForDisplayed({ timeout: 10000 })
     await executePlanBtn.click()
@@ -45,7 +45,7 @@ describe('Duplicates Bin flow', () => {
   })
 
   it('navigates to the Duplicates Bin and shows items', async () => {
-    await browser.url('/#/bin')
+    await navigateTo('/bin')
 
     const binList = await $('[data-testid="bin-items-list"]')
     await binList.waitForDisplayed({ timeout: 10000 })
@@ -55,7 +55,7 @@ describe('Duplicates Bin flow', () => {
   })
 
   it('restores one item from the bin', async () => {
-    await browser.url('/#/bin')
+    await navigateTo('/bin')
 
     const binList = await $('[data-testid="bin-items-list"]')
     await binList.waitForDisplayed({ timeout: 10000 })

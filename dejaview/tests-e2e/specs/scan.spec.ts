@@ -1,4 +1,4 @@
-import { invoke, waitForScanComplete } from '../helpers/tauri.js'
+import { invoke, waitForScanComplete, navigateTo } from '../helpers/tauri.js'
 import { execSync } from 'child_process'
 import path from 'path'
 import os from 'os'
@@ -40,7 +40,7 @@ describe('Scan flow', () => {
 
   it('shows at least one duplicate group after scan', async () => {
     // Navigate to browse
-    await browser.url('/#/browse')
+    await navigateTo('/browse')
 
     const groupsList = await $('[data-testid="duplicate-groups-list"]')
     await groupsList.waitForDisplayed({ timeout: 10000 })

@@ -54,7 +54,7 @@ export const config: WebdriverIO.Config = {
   },
 
   before: async () => {
-    // Extend default waitFor timeout
-    browser.setImplicitTimeout(10000)
+    // Extend default waitFor timeout (WDIO v9 API)
+    await browser.setTimeouts({ implicit: 10000 })
   },
 }
