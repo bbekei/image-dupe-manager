@@ -51,6 +51,8 @@ describe('Execute flow', () => {
   })
 
   it('executes the plan and reaches completion', async () => {
+    await navigateTo('/plan')
+
     // Click "Execute Plan" to open confirmation dialog
     const executePlanBtn = await $('[data-testid="btn-execute-plan"]')
     await executePlanBtn.waitForDisplayed({ timeout: 5000 })

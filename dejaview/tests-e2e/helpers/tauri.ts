@@ -15,11 +15,19 @@ export async function invoke<T>(command: string, args: Record<string, unknown> =
 
 /**
  * Navigate to a hash route without needing to know the Tauri URL scheme.
+ * Waits for the URL to reflect the new hash, then gives React Router time to render.
  */
 export async function navigateTo(hash: string): Promise<void> {
   await browser.execute((h) => { window.location.hash = h }, hash)
-  // Allow React Router to process the navigation
-  await browser.pause(300)
+  await browser.waitUntil(
+    async () => {
+      const url = await browser.getUrl()
+      return url.includes('#' + hash)
+    },
+    { timeout: 5000, timeoutMsg: `Hash did not update to ${hash}` },
+  )
+  // Allow React Router and components to finish rendering
+  await browser.pause(1500)
 }
 
 /**
