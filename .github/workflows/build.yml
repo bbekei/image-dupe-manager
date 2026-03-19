@@ -114,7 +114,17 @@ jobs:
           python-version: '3.11'
 
       - name: Install Python dependencies
-        run: pip install -r dejaview/requirements.txt
+        run: |
+          pip install pyinstaller
+          pip install -r dejaview/requirements.txt
+
+      - name: Build Linux sidecar
+        working-directory: dejaview
+        run: |
+          pyinstaller sidecar/sidecar.spec --noconfirm
+          TARGET=src-tauri/binaries/dejaview-sidecar-x86_64-unknown-linux-gnu
+          cp dist/dejaview-sidecar "$TARGET"
+          chmod +x "$TARGET"
 
       - name: Set up Node 20
         uses: actions/setup-node@v4
