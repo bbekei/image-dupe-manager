@@ -16,8 +16,8 @@ describe('Duplicates Bin flow', () => {
 
     await invoke('start_scan', {
       folders: [fixtureDir],
-      session_name: 'E2E Bin Test',
-      enable_similarity: false,
+      sessionName: 'E2E Bin Test',
+      enableSimilarity: false,
     })
     await waitForScanComplete(60000)
 
@@ -25,7 +25,7 @@ describe('Duplicates Bin flow', () => {
     const sessions = await invoke<Array<{ id: number }>>('get_sessions')
     const sessionId = sessions[0].id
     await invoke('apply_selection_preset', {
-      session_id: sessionId,
+      sessionId,
       preset: 'KEEP_LARGEST_FILE',
     })
 

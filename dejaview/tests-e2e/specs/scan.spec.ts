@@ -24,8 +24,8 @@ describe('Scan flow', () => {
     // Call start_scan directly, bypassing the native folder picker
     const sessionId = await invoke<number>('start_scan', {
       folders: [fixtureDir],
-      session_name: 'E2E Scan Test',
-      enable_similarity: false,
+      sessionName: 'E2E Scan Test',
+      enableSimilarity: false,
     })
     expect(typeof sessionId).toBe('number')
 

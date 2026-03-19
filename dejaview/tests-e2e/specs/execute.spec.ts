@@ -16,8 +16,8 @@ describe('Execute flow', () => {
 
     await invoke('start_scan', {
       folders: [fixtureDir],
-      session_name: 'E2E Execute Test',
-      enable_similarity: false,
+      sessionName: 'E2E Execute Test',
+      enableSimilarity: false,
     })
     await waitForScanComplete(60000)
   })
