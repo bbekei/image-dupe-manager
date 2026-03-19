@@ -17,12 +17,10 @@ export const config: WebdriverIO.Config = {
   maxInstances: 1,
 
   capabilities: [{
-    // tauri-driver capability
+    browserName: 'wry',
     'tauri:options': {
       application: APP_BINARY,
     },
-    browserName: '',
-    acceptInsecureCerts: true,
   }],
 
   logLevel: 'warn',
