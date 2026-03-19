@@ -1,4 +1,4 @@
-import { invoke, waitForScanComplete, waitForExecutionComplete, navigateTo } from '../helpers/tauri.js'
+import { startScan, waitForScanComplete, waitForExecutionComplete, navigateTo } from '../helpers/tauri.js'
 import { execSync } from 'child_process'
 import path from 'path'
 import os from 'os'
@@ -14,11 +14,7 @@ describe('Execute flow', () => {
     execSync(`python3 "${script}" "${tmpDir}"`, { stdio: 'pipe' })
     fixtureDir = tmpDir
 
-    await invoke('start_scan', {
-      folders: [fixtureDir],
-      sessionName: 'E2E Execute Test',
-      enableSimilarity: false,
-    })
+    await startScan([fixtureDir], 'E2E Execute Test')
     await waitForScanComplete(60000)
   })
 

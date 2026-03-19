@@ -1,4 +1,4 @@
-import { invoke, waitForScanComplete, waitForExecutionComplete, navigateTo } from '../helpers/tauri.js'
+import { startScan, invoke, waitForScanComplete, waitForExecutionComplete, navigateTo } from '../helpers/tauri.js'
 import { execSync } from 'child_process'
 import path from 'path'
 import os from 'os'
@@ -14,11 +14,7 @@ describe('Duplicates Bin flow', () => {
     execSync(`python3 "${script}" "${tmpDir}"`, { stdio: 'pipe' })
     fixtureDir = tmpDir
 
-    await invoke('start_scan', {
-      folders: [fixtureDir],
-      sessionName: 'E2E Bin Test',
-      enableSimilarity: false,
-    })
+    await startScan([fixtureDir], 'E2E Bin Test')
     await waitForScanComplete(60000)
 
     // Apply preset via Tauri invoke directly for speed

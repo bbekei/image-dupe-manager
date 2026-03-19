@@ -52,6 +52,29 @@ export async function waitUntil(
 }
 
 /**
+ * Start a scan via IPC and populate the Zustand scan store with the returned
+ * session ID.  When start_scan is called directly (bypassing the Dashboard UI),
+ * the store's setSessionId() is never called by the React code, which causes
+ * BrowseResults / PlanReview / DuplicatesBin to render an empty placeholder.
+ * The __e2e bridge (added to App.tsx) lets us fix that from test code.
+ */
+export async function startScan(
+  folders: string[],
+  sessionName: string,
+): Promise<number> {
+  const sessionId = await invoke<number>('start_scan', {
+    folders,
+    sessionName,
+    enableSimilarity: false,
+  })
+  await browser.execute((id: number) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(window as any).__e2e?.setScanSessionId(id)
+  }, sessionId)
+  return sessionId
+}
+
+/**
  * Wait for scan to reach the 'complete' phase by polling get_scan_progress.
  */
 export async function waitForScanComplete(timeoutMs = 60000): Promise<void> {

@@ -1,4 +1,4 @@
-import { invoke, waitForScanComplete, navigateTo } from '../helpers/tauri.js'
+import { startScan, waitForScanComplete, navigateTo } from '../helpers/tauri.js'
 import { execSync } from 'child_process'
 import path from 'path'
 import os from 'os'
@@ -21,12 +21,8 @@ describe('Scan flow', () => {
   })
 
   it('starts a scan and reaches the complete phase', async () => {
-    // Call start_scan directly, bypassing the native folder picker
-    const sessionId = await invoke<number>('start_scan', {
-      folders: [fixtureDir],
-      sessionName: 'E2E Scan Test',
-      enableSimilarity: false,
-    })
+    // startScan invokes start_scan and populates the Zustand store session ID
+    const sessionId = await startScan([fixtureDir], 'E2E Scan Test')
     expect(typeof sessionId).toBe('number')
 
     // Wait for the scan-progress panel to show completion

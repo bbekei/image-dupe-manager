@@ -15,6 +15,14 @@ import { Settings } from './screens/Settings.tsx'
 import { Help } from './screens/Help.tsx'
 import { callBackend, usePyBridgeReady } from './hooks/usePyBridge.ts'
 import type { AppConfig } from './types/api.ts'
+import { useScanStore } from './stores/useScanStore.ts'
+
+// Minimal E2E test bridge: lets automation set Zustand store state that would
+// normally be populated by UI-driven flows (e.g. after invoking start_scan
+// directly via IPC instead of going through the Dashboard scan button).
+;(window as unknown as Record<string, unknown>).__e2e = {
+  setScanSessionId: (id: number) => useScanStore.getState().setSessionId(id),
+}
 
 export function applyTheme(theme: string) {
   if (theme === 'light') {
