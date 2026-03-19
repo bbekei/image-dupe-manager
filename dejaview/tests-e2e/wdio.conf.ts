@@ -17,7 +17,6 @@ export const config: WebdriverIO.Config = {
   maxInstances: 1,
 
   capabilities: [{
-    browserName: 'wry',
     'tauri:options': {
       application: APP_BINARY,
     },
