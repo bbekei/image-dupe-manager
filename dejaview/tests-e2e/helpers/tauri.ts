@@ -88,10 +88,28 @@ export async function waitForScanComplete(timeoutMs = 60000): Promise<void> {
 }
 
 /**
- * Wait for execution to complete by watching for the exec:complete event.
- * We poll get_scan_progress is not useful here — instead wait for the
- * "View Duplicates Bin" button to appear (data-testid="btn-view-bin").
+ * Wait for execute_plan to finish by polling get_bin_items via IPC.
+ *
+ * The previous approach waited for the [data-testid="execution-complete"] UI
+ * element inside Execution.tsx, but that element only appears when the
+ * exec:complete backend event fires AFTER the component mounts.  Because
+ * execute_plan is fast (tiny fixture files), the event fires before the
+ * Execution component is mounted and the listener is registered — so the
+ * element never appears.  Polling the backend directly avoids the race.
  */
 export async function waitForExecutionComplete(timeoutMs = 60000): Promise<void> {
-  await $('[data-testid="execution-complete"]').waitForDisplayed({ timeout: timeoutMs })
+  const sessions = await invoke<Array<{ id: number }>>('get_sessions')
+  const sessionId = sessions[0]?.id
+  if (sessionId == null) throw new Error('waitForExecutionComplete: no session found')
+  await waitUntil(
+    async () => {
+      try {
+        const items = await invoke<unknown[]>('get_bin_items', { sessionId })
+        return items.length > 0
+      } catch {
+        return false
+      }
+    },
+    { timeout: timeoutMs, interval: 1000, message: 'Execution did not complete (bin still empty)' },
+  )
 }

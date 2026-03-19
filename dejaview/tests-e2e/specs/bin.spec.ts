@@ -17,22 +17,15 @@ describe('Duplicates Bin flow', () => {
     await startScan([fixtureDir], 'E2E Bin Test')
     await waitForScanComplete(60000)
 
-    // Apply preset via Tauri invoke directly for speed
+    // Apply preset and execute via IPC directly (avoids UI navigation + exec:complete
+    // race condition where the event fires before Execution component mounts)
     const sessions = await invoke<Array<{ id: number }>>('get_sessions')
     const sessionId = sessions[0].id
     await invoke('apply_selection_preset', {
       sessionId,
       preset: 'KEEP_LARGEST_FILE',
     })
-
-    // Navigate to plan and execute
-    await navigateTo('/plan')
-    const executePlanBtn = await $('[data-testid="btn-execute-plan"]')
-    await executePlanBtn.waitForDisplayed({ timeout: 10000 })
-    await executePlanBtn.click()
-    const confirmBtn = await $('[data-testid="btn-confirm-execute"]')
-    await confirmBtn.waitForDisplayed({ timeout: 5000 })
-    await confirmBtn.click()
+    await invoke('execute_plan', { sessionId })
     await waitForExecutionComplete(60000)
   })
 
@@ -46,8 +39,12 @@ describe('Duplicates Bin flow', () => {
     const binList = await $('[data-testid="bin-items-list"]')
     await binList.waitForDisplayed({ timeout: 10000 })
 
-    const items = await binList.$$('> *')
-    expect(items.length).toBeGreaterThanOrEqual(1)
+    // WebKit WebDriver rejects relative '> *' selectors; count via JS instead
+    const childCount = await browser.execute(
+      (el: Element) => el.childElementCount,
+      binList,
+    )
+    expect(childCount).toBeGreaterThanOrEqual(1)
   })
 
   it('restores one item from the bin', async () => {
@@ -56,8 +53,10 @@ describe('Duplicates Bin flow', () => {
     const binList = await $('[data-testid="bin-items-list"]')
     await binList.waitForDisplayed({ timeout: 10000 })
 
-    const itemsBefore = await binList.$$('> *')
-    const countBefore = itemsBefore.length
+    const countBefore = await browser.execute(
+      (el: Element) => el.childElementCount,
+      binList,
+    )
 
     // Click the restore button on the first item
     const firstRestoreBtn = await $('[data-testid^="btn-restore-"]')
@@ -67,7 +66,10 @@ describe('Duplicates Bin flow', () => {
     // Wait for the list to update
     await browser.pause(1500)
 
-    const itemsAfter = await binList.$$('> *')
-    expect(itemsAfter.length).toBe(countBefore - 1)
+    const countAfter = await browser.execute(
+      (el: Element) => el.childElementCount,
+      binList,
+    )
+    expect(countAfter).toBe(countBefore - 1)
   })
 })

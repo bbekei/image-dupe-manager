@@ -41,8 +41,11 @@ describe('Scan flow', () => {
     const groupsList = await $('[data-testid="duplicate-groups-list"]')
     await groupsList.waitForDisplayed({ timeout: 10000 })
 
-    // Should have at least one group row (image_a_1/2/3 are identical)
-    const rows = await groupsList.$$('> *')
-    expect(rows.length).toBeGreaterThanOrEqual(1)
+    // WebKit WebDriver rejects relative '> *' selectors; count via JS instead
+    const childCount = await browser.execute(
+      (el: Element) => el.childElementCount,
+      groupsList,
+    )
+    expect(childCount).toBeGreaterThanOrEqual(1)
   })
 })
