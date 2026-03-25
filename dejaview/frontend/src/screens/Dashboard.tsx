@@ -46,10 +46,18 @@ function ScanProgressPanel() {
 
   const isActive = phase !== 'idle' && phase !== 'complete' && phase !== 'stopped' && phase !== 'error'
 
-  // Seed initial state from backend (recovery after navigation away and back)
+  // Seed initial state from backend (recovery after navigation away and back).
+  // Only poll when the store is still in 'idle' — if real-time events have
+  // already moved the phase forward (e.g. 'started', 'hashing'), the poll
+  // must not overwrite with a later phase that arrived faster via IPC
+  // (e.g. 'complete' for a scan with no size-duplicate candidates).
   useEffect(() => {
     if (!sessionId) return
+    const currentPhase = useScanStore.getState().phase
+    if (currentPhase !== 'idle') return  // real-time events already active
     callBackend<ScanProgress>('get_scan_progress').then(p => {
+      // Double-check: if events arrived while the poll was in-flight, don't overwrite
+      if (useScanStore.getState().phase !== 'idle') return
       setDiscovered(p.discovered)
       if (p.phase === 'hashing' || p.phase === 'similarity') {
         setProgress(p.current, p.total, p.phase)
@@ -146,7 +154,7 @@ function ScanProgressPanel() {
         {phase === 'stopped' && t('scan.stopped')}
       </div>
 
-      {/* Progress bar */}
+      {/* Progress bar — shown during active scan */}
       {isActive && (
         <>
           <div className="w-full bg-dv-bg rounded-full h-2.5 mb-2">
@@ -168,8 +176,16 @@ function ScanProgressPanel() {
         </>
       )}
 
-      {/* Duplicates found counter */}
-      {duplicatesFound > 0 && (
+      {/* Summary stats — shown after completion so fast scans still inform the user */}
+      {phase === 'complete' && (
+        <div className="flex items-center gap-4 text-xs text-dv-text-muted">
+          <span>{t('scan.discovered', { count: discovered })}</span>
+          <span>{t('scan.duplicates_found', { count: duplicatesFound })}</span>
+        </div>
+      )}
+
+      {/* Duplicates found counter — shown during active scan */}
+      {isActive && duplicatesFound > 0 && (
         <div className="mt-2 text-xs text-dv-text-muted">
           {t('scan.duplicates_found', { count: duplicatesFound })}
         </div>
