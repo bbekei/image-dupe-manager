@@ -24,7 +24,7 @@ class ConfigCommandsMixin:
         config = self._db.get_app_config()
         if not config:
             return {
-                "language": "en",
+                "language": "auto",
                 "theme": "dark",
                 "max_scan_workers": 4,
                 "perf_logging": False,

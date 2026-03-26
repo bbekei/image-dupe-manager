@@ -34,7 +34,10 @@
       "nsis": {
         "languages": ["English", "Hungarian"],
         "displayLanguageSelector": true,
-        "installMode": "both"
+        "installMode": "both",
+        "customLanguageFiles": {
+          "Hungarian": "nsis/Hungarian.nsh"
+        }
       },
       "webviewInstallMode": {
         "type": "downloadBootstrapper"
