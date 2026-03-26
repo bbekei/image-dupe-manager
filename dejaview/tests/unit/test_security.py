@@ -399,7 +399,7 @@ class TestAPITypeSafety:
         api.set_app_config("language", 42)
         config = api.get_app_config()
         # Should retain the default, not store 42
-        assert config["language"] == "en"
+        assert config["language"] == "auto"
 
     def test_set_app_config_rejects_wrong_type_for_max_workers(self, api):
         """max_scan_workers must be int or float, not a string."""
