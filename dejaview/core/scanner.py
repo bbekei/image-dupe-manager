@@ -291,11 +291,13 @@ class Scanner(threading.Thread):
             return
 
         # ── Pass 2: Hashing ───────────────────────────────────────────────
+        log.info("Pass 2: starting hash pass")
         if self._perf:
             self._perf.stage_begin("hashing")
         self._run_pass2(scan_delay_ms)
         if self._perf:
             self._perf.stage_end("hashing")
+        log.info("Pass 2: complete")
 
         if self._stop_requested:
             self._db.update_session_status(self._session_id, "stopped")
@@ -313,6 +315,7 @@ class Scanner(threading.Thread):
 
         # ── Pass 3: Similarity (opt-in) ─────────────────────────────────
         if self._similarity_enabled:
+            log.info("Pass 3: starting similarity pass")
             if self._perf:
                 self._perf.stage_begin("similarity_hashing")
             self._run_pass3(scan_delay_ms)

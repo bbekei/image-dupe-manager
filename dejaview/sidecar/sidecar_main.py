@@ -20,9 +20,11 @@ import io
 import json
 import logging
 import os
+import queue
 import shutil
 import sqlite3
 import sys
+import threading
 from pathlib import Path
 
 # ── R4: Force UTF-8 + line-buffered stdin/stdout immediately ──────────────────
@@ -59,12 +61,40 @@ _FORWARDED_EVENTS = frozenset({
     "selection:complete",
 })
 
+# ── Non-blocking stdout writer ────────────────────────────────────────────────
+# Scanner/executor threads emit events via _notify, which writes to stdout.
+# On Windows, stdout is a pipe with a small buffer (~4 KB).  If the Rust
+# reader can't drain events fast enough (e.g. webview is backgrounded),
+# the pipe fills and sys.stdout.write() blocks — freezing the scanner thread.
+#
+# Fix: route all stdout output through a queue + dedicated writer thread.
+# Event producers (scanner) never block; only the writer thread can block,
+# which is harmless because it does no other work.
+
+_write_queue: queue.Queue[str | None] = queue.Queue()
+
+
+def _stdout_writer() -> None:
+    """Drain _write_queue → stdout.  Runs in its own daemon thread."""
+    while True:
+        line = _write_queue.get()
+        if line is None:
+            break
+        try:
+            sys.stdout.write(line)
+            sys.stdout.flush()
+        except OSError:
+            break  # pipe closed — sidecar shutting down
+
+
+_writer_thread = threading.Thread(target=_stdout_writer, daemon=True)
+_writer_thread.start()
+
 
 def _write(obj: dict) -> None:
-    """Write a JSON object as a single line to stdout and flush."""
-    line = json.dumps(obj, ensure_ascii=True)
-    sys.stdout.write(line + "\n")
-    sys.stdout.flush()
+    """Enqueue a JSON object for writing to stdout (non-blocking)."""
+    line = json.dumps(obj, ensure_ascii=True) + "\n"
+    _write_queue.put(line)
 
 
 def _ok(req_id, result) -> None:
