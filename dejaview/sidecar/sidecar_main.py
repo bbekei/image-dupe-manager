@@ -25,11 +25,15 @@ import sqlite3
 import sys
 from pathlib import Path
 
-# ── R4: Force line-buffered stdout immediately ────────────────────────────────
+# ── R4: Force UTF-8 + line-buffered stdin/stdout immediately ──────────────────
 # Must happen before any other stdout write. Python may buffer stdout when
 # running as a subprocess; line_buffering=True ensures each line is flushed
 # as it is written, preventing silent hangs.
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, line_buffering=True)
+# On Windows, sys.stdin/stdout default to the system codepage (e.g. CP-1252),
+# but the Tauri host sends/expects UTF-8 JSON-RPC.  Force both to UTF-8 so
+# non-ASCII paths (e.g. Hungarian folder names) survive the round-trip.
+sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding="utf-8")
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", line_buffering=True)
 
 log = logging.getLogger(__name__)
 
