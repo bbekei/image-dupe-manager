@@ -26,6 +26,7 @@ class ScanCommandsMixin:
         self, folders: list[str], session_name: str, enable_similarity: bool
     ) -> int:
         """Start a new multi-pass scan. Returns session_id."""
+        log.info("start_scan called: folders=%r, similarity=%s", folders, enable_similarity)
         self._scan_phase = "started"
         self._scan_current = 0
         self._scan_total = 0
@@ -37,6 +38,10 @@ class ScanCommandsMixin:
         session_id = self._db.create_session(session_name, now, similarity_enabled=enable_similarity)
         for folder in folders:
             self._db.add_session_folder(session_id, folder)
+
+        # Verify folders were persisted before spawning scanner thread
+        saved = self._db.get_session_folders(session_id)
+        log.info("start_scan: session=%d, saved folders=%r", session_id, saved)
 
         from core.scanner import Scanner
 

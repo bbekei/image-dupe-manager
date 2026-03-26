@@ -121,6 +121,8 @@ def main() -> None:
         handlers=[logging.FileHandler(str(log_path), encoding="utf-8")],
     )
 
+    log.info("Sidecar starting — app_dir=%s", app_dir)
+
     db_path = app_dir / "library.db"
     thumb_dir = app_dir / "thumbs"
     thumb_dir.mkdir(exist_ok=True)
@@ -131,6 +133,7 @@ def main() -> None:
     if dejaview_dir not in sys.path:
         sys.path.insert(0, dejaview_dir)
 
+    log.info("Importing data.db …")
     from data.db import Database, LATEST_SCHEMA_VERSION, MigrationError
     from version import APP_VERSION
 
@@ -141,6 +144,7 @@ def main() -> None:
         if current_version < LATEST_SCHEMA_VERSION:
             backup_path = str(_backup_database(db_path, current_version))
 
+    log.info("Opening database %s …", db_path)
     try:
         db = Database(db_path)
         migration_result = db.open()
@@ -148,6 +152,7 @@ def main() -> None:
         log.error("Database migration failed: %s", exc)
         sys.exit(1)
 
+    log.info("Database open (schema v%d)", db.get_schema_version())
     migration_result.backup_path = backup_path
 
     # Startup cleanup
@@ -170,6 +175,7 @@ def main() -> None:
         log.warning("Startup trash purge failed: %s", exc)
 
     # DriveSync initialisation
+    log.info("Initialising DriveSync …")
     from data.sync import DriveSync
     creds_path = app_dir / "credentials.json"
     secrets_path = _base_dir() / "resources" / "client_secrets.json"
@@ -190,6 +196,7 @@ def main() -> None:
     except Exception:
         pass
 
+    log.info("Importing backend.api …")
     from backend.api import DejaViewAPI
     api = DejaViewAPI(
         db=db,
@@ -248,4 +255,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception:
+        logging.exception("Sidecar crashed during startup")
+        sys.exit(1)

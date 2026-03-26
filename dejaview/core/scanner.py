@@ -246,10 +246,26 @@ class Scanner(threading.Thread):
     # ── QThread entry point ──────────────────────────────────────────────
 
     def run(self) -> None:
+        try:
+            self._run_inner()
+        except Exception:
+            log.exception("Scanner thread crashed (session %d)", self._session_id)
+            self.scan_error.emit("scanner", "Scanner thread crashed unexpectedly")
+            try:
+                self._db.update_session_status(self._session_id, "stopped")
+            except Exception:
+                pass
+            self.scan_stopped.emit()
+
+    def _run_inner(self) -> None:
         # Read scan delay once at scan start (plan §Resource throttling design).
         scan_delay_ms = self._db.get_scan_delay_ms()
 
         folders = self._db.get_session_folders(self._session_id)
+        log.info(
+            "Scanner.run: session=%d, folders=%r",
+            self._session_id, folders,
+        )
         if not folders:
             log.warning("Scanner: no folders in session %d", self._session_id)
             self._db.update_session_status(self._session_id, "complete")
@@ -338,17 +354,23 @@ class Scanner(threading.Thread):
         self.status_message.emit("Discovering files\u2026")
         now = datetime.now(timezone.utc).isoformat()
         batch: list[tuple] = []
+        total_discovered = 0
 
         for folder in folders:
             if self._stop_requested:
                 break
 
+            log.info("Pass 1: probing folder %r", folder)
+
             # Network reachability probe (plan §Security — network drive resilience).
             if not _is_reachable(folder):
                 msg = "Folder unreachable, skipping: {0}".format(folder)
                 log.warning("Scanner: %s", msg)
+                self.scan_error.emit(folder, msg)
                 self.status_message.emit(msg)
                 continue
+
+            log.info("Pass 1: folder reachable, starting walk: %r", folder)
 
             try:
                 for dir_path, dir_names, file_names in os.walk(
@@ -379,6 +401,7 @@ class Scanner(threading.Thread):
                             batch.append(
                                 (self._session_id, full_path, st.st_size, mtime, now)
                             )
+                            total_discovered += 1
                             if len(batch) >= 100:
                                 self._flush_batch(batch)
                                 batch = []
@@ -399,6 +422,8 @@ class Scanner(threading.Thread):
 
         if batch and not self._stop_requested:
             self._flush_batch(batch)
+
+        log.info("Pass 1 complete: %d image files discovered", total_discovered)
 
     def _flush_batch(self, batch: list[tuple]) -> None:
         """Insert a batch of discovered files and emit file_discovered signals."""
