@@ -288,7 +288,8 @@ jobs:
           # Create a test folder with a few images
           $testDir = "$env:TEMP\dejaview-smoke"
           New-Item -ItemType Directory -Force -Path $testDir | Out-Null
-          python -c "from PIL import Image; img = Image.new('RGB', (64,64), (128,128,128)); img.save('$testDir\\test.jpg', 'JPEG')"
+          $pyDir = $testDir -replace '\\','/'
+          python -c "from PIL import Image; img = Image.new('RGB', (64,64), (128,128,128)); img.save('$pyDir/test.jpg', 'JPEG')"
 
           # Send start_scan + get_scan_progress via JSON-RPC
           $commands = @(
