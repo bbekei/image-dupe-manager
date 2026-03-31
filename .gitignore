@@ -41,6 +41,9 @@ dejaview/installer/
 # E2E test image dataset (generated, large binary set)
 dejaview/tests/fixtures/images/e2e_dataset/
 
+# E2E video recordings (Phase 4 local tests)
+dejaview/tests-e2e/recordings/*/
+
 # Project management docs (planning iterations)
 dejaview/project_management/
 project_management/

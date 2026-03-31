@@ -1,6 +1,6 @@
 {
   "productName": "DejaView",
-  "version": "1.0.0",
+  "version": "1.1.1",
   "identifier": "com.dejaview.app",
   "build": {
     "frontendDist": "../frontend/dist",

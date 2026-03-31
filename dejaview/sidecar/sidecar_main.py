@@ -20,11 +20,9 @@ import io
 import json
 import logging
 import os
-import queue
 import shutil
 import sqlite3
 import sys
-import threading
 from pathlib import Path
 
 # ── R4: Force UTF-8 + line-buffered stdin/stdout immediately ──────────────────
@@ -39,77 +37,30 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", line_bufferin
 
 log = logging.getLogger(__name__)
 
-# ── JSON-RPC error codes ──────────────────────────────────────────────────────
-_PARSE_ERROR = -32700
-_INVALID_REQUEST = -32600
-_METHOD_NOT_FOUND = -32601
-_INVALID_PARAMS = -32602
-_INTERNAL_ERROR = -32603
+# ── Output stream (injectable, extracted to sidecar/output.py) ───────────────
+# Ensure dejaview/ is on sys.path before importing sidecar.output, so the
+# import resolves both when running as a subprocess and from the test suite.
+_dejaview_dir = str(Path(__file__).parent.parent)
+if _dejaview_dir not in sys.path:
+    sys.path.insert(0, _dejaview_dir)
 
-# ── Forwarded event set (consumed by frontend) ────────────────────────────────
-_FORWARDED_EVENTS = frozenset({
-    "scan:discovery_progress",
-    "scan:progress",
-    "scan:status",
-    "scan:duplicate_found",
-    "scan:similarity_progress",
-    "scan:error",
-    "exec:progress",
-    "exec:complete",
-    "exec:error",
-    "selection:progress",
-    "selection:complete",
-})
+from sidecar.output import (  # noqa: E402
+    FORWARDED_EVENTS as _FORWARDED_EVENTS,
+    INTERNAL_ERROR as _INTERNAL_ERROR,
+    INVALID_PARAMS as _INVALID_PARAMS,
+    INVALID_REQUEST as _INVALID_REQUEST,
+    METHOD_NOT_FOUND as _METHOD_NOT_FOUND,
+    PARSE_ERROR as _PARSE_ERROR,
+    StdoutOutput,
+)
 
-# ── Non-blocking stdout writer ────────────────────────────────────────────────
-# Scanner/executor threads emit events via _notify, which writes to stdout.
-# On Windows, stdout is a pipe with a small buffer (~4 KB).  If the Rust
-# reader can't drain events fast enough (e.g. webview is backgrounded),
-# the pipe fills and sys.stdout.write() blocks — freezing the scanner thread.
-#
-# Fix: route all stdout output through a queue + dedicated writer thread.
-# Event producers (scanner) never block; only the writer thread can block,
-# which is harmless because it does no other work.
-
-_write_queue: queue.Queue[str | None] = queue.Queue()
-
-
-def _stdout_writer() -> None:
-    """Drain _write_queue → stdout.  Runs in its own daemon thread."""
-    while True:
-        line = _write_queue.get()
-        if line is None:
-            break
-        try:
-            sys.stdout.write(line)
-            sys.stdout.flush()
-        except OSError:
-            break  # pipe closed — sidecar shutting down
-
-
-_writer_thread = threading.Thread(target=_stdout_writer, daemon=True)
-_writer_thread.start()
-
-
-def _write(obj: dict) -> None:
-    """Enqueue a JSON object for writing to stdout (non-blocking)."""
-    line = json.dumps(obj, ensure_ascii=True) + "\n"
-    _write_queue.put(line)
-
-
-def _ok(req_id, result) -> None:
-    _write({"jsonrpc": "2.0", "id": req_id, "result": result})
-
-
-def _err(req_id, code: int, message: str) -> None:
-    _write({"jsonrpc": "2.0", "id": req_id, "error": {"code": code, "message": message}})
-
-
-def _notify(event_name: str, detail: dict) -> None:
-    """Forward a backend event as a JSON-RPC notification (no id)."""
-    if event_name not in _FORWARDED_EVENTS:
-        return
-    _write({"jsonrpc": "2.0", "method": "event", "params": {"name": event_name, "detail": detail}})
+# Production output: queue-based non-blocking writer to stdout.
+# See sidecar/output.py for the injectable Output protocol.
+_output = StdoutOutput()
+_write = _output.write
+_ok = _output.ok
+_err = _output.err
+_notify = _output.notify
 
 
 def _app_dir() -> Path:
@@ -162,10 +113,7 @@ def main() -> None:
     thumb_dir.mkdir(exist_ok=True)
     trash_root = app_dir / ".dejaview_trash"
 
-    # Add dejaview/ to sys.path so imports resolve when running as sidecar
-    dejaview_dir = str(Path(__file__).parent.parent)
-    if dejaview_dir not in sys.path:
-        sys.path.insert(0, dejaview_dir)
+    # dejaview/ already added to sys.path at module level (above imports)
 
     log.info("Importing data.db …")
     from data.db import Database, LATEST_SCHEMA_VERSION, MigrationError

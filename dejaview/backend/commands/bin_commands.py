@@ -35,6 +35,7 @@ class BinCommandsMixin:
             recover(rows["trash_path"], rows["original_path"])
             now = datetime.now(timezone.utc).isoformat()
             self._db.record_recovery(soft_delete_id, now)
+            self._db.update_file_status(rows["file_id"], "active")
 
     def permanent_delete(self, soft_delete_ids: list[int]) -> None:
         """Permanently delete specified bin items from disk."""

@@ -44,6 +44,7 @@ export const config: WebdriverIO.Config = {
   onPrepare: async () => {
     tauriDriver = spawn('tauri-driver', [], {
       stdio: [null, process.stdout, process.stderr],
+      shell: true,
     })
     // Give the driver a moment to bind
     await new Promise((resolve) => setTimeout(resolve, 2000))

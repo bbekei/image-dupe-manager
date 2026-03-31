@@ -1,0 +1,24 @@
+name: "Smoke - Full cycle with similarity"
+mode: smoke
+timeout: 300000
+steps:
+  - action: scan
+    folders:
+      - "E:\\Emlékek\\János képek\\2006"
+    session_name: "smoke-full"
+    enable_similarity: true
+    expect:
+      min_duplicates: 1
+
+  - action: view_duplicates
+
+  - action: view_similarity
+
+  - action: apply_preset
+    preset: "keep_largest"
+
+  - action: execute
+    expect:
+      bin_items_min: 1
+
+  - action: restore_all

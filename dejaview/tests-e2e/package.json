@@ -2,7 +2,8 @@
   "name": "dejaview-e2e",
   "private": true,
   "scripts": {
-    "test": "wdio run wdio.conf.ts"
+    "test": "node node_modules/@wdio/cli/bin/wdio.js run wdio.conf.ts",
+    "test:local": "node node_modules/@wdio/cli/bin/wdio.js run wdio.local.conf.ts"
   },
   "devDependencies": {
     "@wdio/cli": "^9.0.0",
@@ -11,6 +12,8 @@
     "@wdio/spec-reporter": "^9.0.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.0.0",
+    "wdio-video-reporter": "^5.0.0",
+    "edgedriver": "^6.0.0",
     "webdriverio": "^9.0.0"
   }
 }

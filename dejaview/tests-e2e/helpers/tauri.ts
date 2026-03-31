@@ -61,11 +61,12 @@ export async function waitUntil(
 export async function startScan(
   folders: string[],
   sessionName: string,
+  enableSimilarity = false,
 ): Promise<number> {
   const sessionId = await invoke<number>('start_scan', {
     folders,
     sessionName,
-    enableSimilarity: false,
+    enableSimilarity,
   })
   await browser.execute((id: number) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -104,8 +105,8 @@ export async function waitForExecutionComplete(timeoutMs = 60000): Promise<void>
   await waitUntil(
     async () => {
       try {
-        const items = await invoke<unknown[]>('get_bin_items', { sessionId })
-        return items.length > 0
+        const items = await invoke<Array<{ id: number }>>('get_bin_items', { sessionId })
+        return items.map(i => i.id).length > 0
       } catch {
         return false
       }
