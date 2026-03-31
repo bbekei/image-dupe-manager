@@ -1,4 +1,4 @@
-import { startScan, invoke, waitForScanComplete, waitForExecutionComplete, navigateTo } from '../helpers/tauri.js'
+import { startScan, invoke, waitForScanComplete, waitForExecutionComplete, navigateTo, pythonCmd } from '../helpers/tauri.js'
 import { execSync } from 'child_process'
 import path from 'path'
 import os from 'os'
@@ -11,7 +11,7 @@ describe('Duplicates Bin flow', () => {
     // Set up fixture dir, scan, apply preset, and execute so the bin has items
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dejaview-e2e-bin-'))
     const script = path.resolve(__dirname, '../fixtures/generate_fixtures.py')
-    execSync(`python3 "${script}" "${tmpDir}"`, { stdio: 'pipe' })
+    execSync(`${pythonCmd} "${script}" "${tmpDir}"`, { stdio: 'pipe' })
     fixtureDir = tmpDir
 
     await startScan([fixtureDir], 'E2E Bin Test')

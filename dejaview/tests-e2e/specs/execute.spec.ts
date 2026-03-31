@@ -1,4 +1,4 @@
-import { startScan, waitForScanComplete, waitForExecutionComplete, navigateTo } from '../helpers/tauri.js'
+import { startScan, waitForScanComplete, waitForExecutionComplete, navigateTo, pythonCmd } from '../helpers/tauri.js'
 import { execSync } from 'child_process'
 import path from 'path'
 import os from 'os'
@@ -11,7 +11,7 @@ describe('Execute flow', () => {
     // Set up fresh fixture directory and run a scan
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dejaview-e2e-exec-'))
     const script = path.resolve(__dirname, '../fixtures/generate_fixtures.py')
-    execSync(`python3 "${script}" "${tmpDir}"`, { stdio: 'pipe' })
+    execSync(`${pythonCmd} "${script}" "${tmpDir}"`, { stdio: 'pipe' })
     fixtureDir = tmpDir
 
     await startScan([fixtureDir], 'E2E Execute Test')

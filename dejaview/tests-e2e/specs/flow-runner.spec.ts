@@ -13,7 +13,7 @@ import { execSync } from 'child_process'
 import os from 'os'
 import fs from 'fs'
 import { loadFlows, type FlowDefinition, type FlowStep } from '../helpers/flow-parser.js'
-import { invoke, navigateTo, startScan, waitForScanComplete, waitForExecutionComplete } from '../helpers/tauri.js'
+import { invoke, navigateTo, startScan, waitForScanComplete, waitForExecutionComplete, pythonCmd } from '../helpers/tauri.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const flowsDir = path.resolve(__dirname, '../flows')
@@ -57,7 +57,7 @@ if (flows.length === 0) {
         before(function () {
           const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dejaview-flow-'))
           const script = path.resolve(__dirname, '../fixtures/generate_fixtures.py')
-          execSync(`python3 "${script}" "${tmpDir}"`, { stdio: 'pipe' })
+          execSync(`${pythonCmd} "${script}" "${tmpDir}"`, { stdio: 'pipe' })
           generatedFixtureDir = tmpDir
         })
 

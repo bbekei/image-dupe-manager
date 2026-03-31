@@ -1,4 +1,4 @@
-import { startScan, waitForScanComplete, navigateTo } from '../helpers/tauri.js'
+import { startScan, waitForScanComplete, navigateTo, pythonCmd } from '../helpers/tauri.js'
 import { execSync } from 'child_process'
 import path from 'path'
 import os from 'os'
@@ -11,7 +11,7 @@ describe('Scan flow', () => {
     // Generate synthetic fixture images into a temp dir
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dejaview-e2e-'))
     const script = path.resolve(__dirname, '../fixtures/generate_fixtures.py')
-    execSync(`python3 "${script}" "${tmpDir}"`, { stdio: 'pipe' })
+    execSync(`${pythonCmd} "${script}" "${tmpDir}"`, { stdio: 'pipe' })
     fixtureDir = tmpDir
   })
 

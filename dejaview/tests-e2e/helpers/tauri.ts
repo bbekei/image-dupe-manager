@@ -1,3 +1,6 @@
+/** Python command name — `python` on Windows, `python3` elsewhere. */
+export const pythonCmd = process.platform === 'win32' ? 'python' : 'python3'
+
 /**
  * Invoke a Tauri command from within the WebView.
  * Uses browser.executeAsync so we can await the Promise.

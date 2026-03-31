@@ -5,7 +5,7 @@
  * and the SimilarityReview screen renders them.
  */
 
-import { invoke, startScan, waitForScanComplete, navigateTo, waitUntil } from '../helpers/tauri.js'
+import { invoke, startScan, waitForScanComplete, navigateTo, waitUntil, pythonCmd } from '../helpers/tauri.js'
 import { execSync } from 'child_process'
 import path from 'path'
 import os from 'os'
@@ -17,7 +17,7 @@ describe('Similarity review', () => {
   before(async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dejaview-sim-'))
     const script = path.resolve(__dirname, '../fixtures/generate_fixtures.py')
-    execSync(`python3 "${script}" "${tmpDir}"`, { stdio: 'pipe' })
+    execSync(`${pythonCmd} "${script}" "${tmpDir}"`, { stdio: 'pipe' })
     fixtureDir = tmpDir
   })
 
