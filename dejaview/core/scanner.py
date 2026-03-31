@@ -93,7 +93,6 @@ class _Signal:
 # never idle waiting for the next submission.
 _PIPELINE_BUFFER_FACTOR = 4
 _DB_BATCH_SIZE = 128
-_PROGRESS_INTERVAL = 8  # emit progress every N files (decoupled from DB batch)
 
 _IMAGE_EXTENSIONS = frozenset({
     ".jpg", ".jpeg", ".heic", ".heif",
@@ -765,7 +764,6 @@ class Scanner(threading.Thread):
         window_size = workers * _PIPELINE_BUFFER_FACTOR
         candidate_it = iter(candidates)
         active: dict[concurrent.futures.Future, dict] = {}
-        _last_progress_current = current  # track last emitted value
 
         def _submit_next() -> bool:
             if self._stop_requested or self._pause_requested:
@@ -830,13 +828,6 @@ class Scanner(threading.Thread):
                     current += 1
                     _submit_next()
 
-                # Emit progress frequently so the frontend stays responsive.
-                # Decoupled from DB batch size — pHash is slow, so waiting for
-                # 128 files before the first UI update causes a perceived stall.
-                if current - _last_progress_current >= _PROGRESS_INTERVAL:
-                    self.similarity_progress.emit(current, total)
-                    _last_progress_current = current
-
                 # Flush batches.
                 batch_ready = (
                     len(pending_phash_only) + len(pending_dual) >= _DB_BATCH_SIZE
@@ -851,10 +842,7 @@ class Scanner(threading.Thread):
                             self._db.update_dual_hashes_batch(pending_dual)
                             pending_dual.clear()
 
-                    # Ensure progress is up-to-date after DB flush too.
-                    if current != _last_progress_current:
-                        self.similarity_progress.emit(current, total)
-                        _last_progress_current = current
+                    self.similarity_progress.emit(current, total)
 
                     if scan_delay_ms > 0:
                         time.sleep(scan_delay_ms / 1000.0)
