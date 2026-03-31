@@ -247,7 +247,7 @@ export function SimilarityReview() {
 
   if (totalGroups === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-dv-text-muted gap-4">
+      <div data-testid="similarity-empty" className="flex flex-col items-center justify-center h-full text-dv-text-muted gap-4">
         <Images size={48} />
         <p>{t('similarity.no_groups')}</p>
       </div>
@@ -446,7 +446,7 @@ export function SimilarityReview() {
           )}
 
           {/* Member list */}
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+          <div data-testid="similarity-groups-list" className="grid grid-cols-2 lg:grid-cols-3 gap-4">
             {members.map((file: FileInfo) => {
               const action = fileActions[file.id]
               const isLeft = compareLeft === file.id

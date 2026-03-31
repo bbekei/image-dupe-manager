@@ -23,6 +23,7 @@ export async function invoke<T>(command: string, args: Record<string, unknown> =
 export async function navigateTo(route: string): Promise<void> {
   // HashRouter renders NavLink as <a href="#/route">
   const link = await $(`a[href="#${route}"]`)
+  await link.waitForExist({ timeout: 10000, timeoutMsg: `Sidebar link for ${route} not found` })
   // JS .click() bypasses viewport/overlay constraints that block WebDriver clicks
   await browser.execute((el) => (el as HTMLElement).click(), link)
   await browser.waitUntil(

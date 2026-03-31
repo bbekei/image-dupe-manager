@@ -9,6 +9,9 @@
 
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { execSync } from 'child_process'
+import os from 'os'
+import fs from 'fs'
 import { loadFlows, type FlowDefinition, type FlowStep } from '../helpers/flow-parser.js'
 import { invoke, navigateTo, startScan, waitForScanComplete, waitForExecutionComplete } from '../helpers/tauri.js'
 
@@ -44,10 +47,31 @@ if (flows.length === 0) {
       // Set timeout from flow definition
       this.timeout(flow.timeout)
 
+      // Generate fixtures if any scan step uses $GENERATED_FIXTURES
+      let generatedFixtureDir: string | null = null
+      const needsFixtures = regularSteps.some(
+        s => s.action === 'scan' && s.folders.includes('$GENERATED_FIXTURES')
+      )
+
+      if (needsFixtures) {
+        before(function () {
+          const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dejaview-flow-'))
+          const script = path.resolve(__dirname, '../fixtures/generate_fixtures.py')
+          execSync(`python3 "${script}" "${tmpDir}"`, { stdio: 'pipe' })
+          generatedFixtureDir = tmpDir
+        })
+
+        after(function () {
+          if (generatedFixtureDir) {
+            fs.rmSync(generatedFixtureDir, { recursive: true, force: true })
+          }
+        })
+      }
+
       for (let i = 0; i < regularSteps.length; i++) {
         const step = regularSteps[i]
         it(`Step ${i + 1}: ${step.action}`, async () => {
-          await executeStep(step)
+          await executeStep(step, generatedFixtureDir)
         })
       }
 
@@ -72,10 +96,10 @@ if (flows.length === 0) {
 
 // ── Step execution ──────────────────────────────────────────────────────────
 
-async function executeStep(step: FlowStep): Promise<void> {
+async function executeStep(step: FlowStep, generatedFixtureDir: string | null): Promise<void> {
   switch (step.action) {
     case 'scan':
-      return executeScan(step)
+      return executeScan(step, generatedFixtureDir)
     case 'apply_preset':
       return executeApplyPreset(step)
     case 'execute':
@@ -93,11 +117,15 @@ async function executeStep(step: FlowStep): Promise<void> {
   }
 }
 
-async function executeScan(step: Extract<FlowStep, { action: 'scan' }>): Promise<void> {
-  // Expand ~ in folder paths
-  const folders = step.folders.map(f =>
-    f.startsWith('~/') ? path.join(process.env.HOME ?? '', f.slice(2)) : f
-  )
+async function executeScan(step: Extract<FlowStep, { action: 'scan' }>, generatedFixtureDir: string | null): Promise<void> {
+  // Expand ~ and $GENERATED_FIXTURES in folder paths
+  const folders = step.folders.map(f => {
+    if (f === '$GENERATED_FIXTURES') {
+      if (!generatedFixtureDir) throw new Error('$GENERATED_FIXTURES used but no fixture dir generated')
+      return generatedFixtureDir
+    }
+    return f.startsWith('~/') ? path.join(process.env.HOME ?? '', f.slice(2)) : f
+  })
 
   const sessionId = await startScan(folders, step.session_name, step.enable_similarity ?? false)
   expect(typeof sessionId).toBe('number')

@@ -4,7 +4,7 @@ timeout: 300000
 steps:
   - action: scan
     folders:
-      - "E:\\Emlékek\\János képek\\2006"
+      - "$GENERATED_FIXTURES"
     session_name: "smoke-full"
     enable_similarity: true
     expect:

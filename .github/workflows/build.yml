@@ -191,7 +191,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r dejaview/requirements.txt
-          pip install pytest pytest-cov
+          pip install pytest pytest-cov hypothesis
 
       - name: Run Python tests
         working-directory: dejaview
@@ -220,7 +220,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r dejaview/requirements.txt
-          pip install pytest pytest-cov
+          pip install pytest pytest-cov hypothesis
 
       - name: Run Python tests
         working-directory: dejaview
