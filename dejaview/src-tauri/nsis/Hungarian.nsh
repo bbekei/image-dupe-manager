@@ -25,3 +25,10 @@ LangString webview2Downloading ${LANG_HUNGARIAN} "WebView2 telepítő letöltés
 LangString webview2InstallError ${LANG_HUNGARIAN} "Hiba: A WebView2 telepítése sikertelen, kilépési kód: $1"
 LangString webview2InstallSuccess ${LANG_HUNGARIAN} "A WebView2 sikeresen telepítve"
 LangString deleteAppData ${LANG_HUNGARIAN} "Alkalmazásadatok törlése"
+
+; MultiUser page — NSIS's Hungarian.nsh lacks these strings
+LangString MULTIUSER_TEXT_INSTALLMODE_TITLE ${LANG_HUNGARIAN} "Felhasználók kiválasztása"
+LangString MULTIUSER_TEXT_INSTALLMODE_SUBTITLE ${LANG_HUNGARIAN} "Válaszd ki, mely felhasználók számára szeretnéd telepíteni a(z) $(^NameDA) alkalmazást."
+LangString MULTIUSER_INNERTEXT_INSTALLMODE_TOP ${LANG_HUNGARIAN} "Válaszd ki, hogy csak a saját fiókodba vagy az összes felhasználó számára szeretnéd telepíteni a(z) $(^NameDA) alkalmazást. $(^ClickNext)"
+LangString MULTIUSER_INNERTEXT_INSTALLMODE_ALLUSERS ${LANG_HUNGARIAN} "Telepítés a számítógép összes felhasználója számára"
+LangString MULTIUSER_INNERTEXT_INSTALLMODE_CURRENTUSER ${LANG_HUNGARIAN} "Telepítés csak nekem"
