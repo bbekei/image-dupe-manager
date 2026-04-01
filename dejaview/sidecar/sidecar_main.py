@@ -23,6 +23,7 @@ import os
 import shutil
 import sqlite3
 import sys
+import threading
 from pathlib import Path
 
 # ── R4: Force UTF-8 + line-buffered stdin/stdout immediately ──────────────────
@@ -192,8 +193,31 @@ def main() -> None:
 
     log.info("DejaView sidecar %s ready (schema v%d)", APP_VERSION, LATEST_SCHEMA_VERSION)
 
+    # ── Stdin reader thread ─────────────────────────────────────────────────
+    # Reading stdin via `for line in sys.stdin:` blocks in C-level code
+    # (TextIOWrapper → BufferedReader → FileIO) that can starve the GIL on
+    # Windows, preventing ThreadPoolExecutor workers from making progress.
+    # Moving the blocking read into a dedicated thread lets the main dispatch
+    # loop use queue.get(), which cleanly releases the GIL.
+    import queue as _queue
+    _stdin_q: _queue.Queue[str | None] = _queue.Queue()
+
+    def _stdin_reader() -> None:
+        try:
+            for line in sys.stdin:
+                _stdin_q.put(line)
+        except Exception:
+            pass
+        _stdin_q.put(None)  # sentinel: stdin closed
+
+    _stdin_thread = threading.Thread(target=_stdin_reader, daemon=True)
+    _stdin_thread.start()
+
     # ── Main dispatch loop ────────────────────────────────────────────────────
-    for line in sys.stdin:
+    while True:
+        line = _stdin_q.get()
+        if line is None:
+            break
         line = line.strip()
         if not line:
             continue
