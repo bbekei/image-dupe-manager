@@ -313,6 +313,28 @@ class Scanner(threading.Thread):
                 self._perf.finalize()
             return
 
+        # ── Pass 2→3 transition: flush connection state ──────────────────
+        # Ensure no implicit transaction or stale cursor state from Pass 2
+        # blocks the Pass 3 SELECT queries (observed: Pass 3 stalls
+        # indefinitely until an IPC call from the main thread touches the DB).
+        if self._similarity_enabled:
+            _t0 = time.monotonic()
+            log.info("Pass 2→3: flushing DB connection state")
+            try:
+                self._db.conn.commit()
+            except Exception:
+                pass  # no-op if nothing to commit
+            # Test that the connection is responsive
+            _count = self._db.conn.execute(
+                "SELECT COUNT(*) FROM files WHERE session_id = ?",
+                (self._session_id,),
+            ).fetchone()[0]
+            _elapsed = (time.monotonic() - _t0) * 1000
+            log.info(
+                "Pass 2→3: DB responsive (count=%d, %.1fms)",
+                _count, _elapsed,
+            )
+
         # ── Pass 3: Similarity (opt-in) ─────────────────────────────────
         if self._similarity_enabled:
             log.info("Pass 3: starting similarity pass")
@@ -726,8 +748,10 @@ class Scanner(threading.Thread):
         For files skipped by the size pre-filter: compute pixel_hash +
         thumbnail + pHash (dual-hash).
         """
+        log.info("Pass 3: querying files needing hashes")
         candidates = self._db.get_files_needing_hashes(self._session_id)
         n_remaining = len(candidates)
+        log.info("Pass 3: %d files need hashing", n_remaining)
 
         # Count total files that need/needed pHash so progress continues from
         # where it left off on resume (same pattern as Pass 2).
@@ -738,6 +762,7 @@ class Scanner(threading.Thread):
         n_total = row[0] if row else n_remaining
         current = n_total - n_remaining
         total = n_total
+        log.info("Pass 3: progress %d/%d, emitting initial event", current, total)
 
         self.similarity_progress.emit(current, total)
         self.status_message.emit(
@@ -754,6 +779,7 @@ class Scanner(threading.Thread):
             workers = max(2, self._max_workers // 2)
         else:
             workers = max(1, self._max_workers // 4)
+        log.info("Pass 3: using %d workers, window_size=%d", workers, workers * _PIPELINE_BUFFER_FACTOR)
 
         db_lock = self._perf.tracked_lock() if self._perf else threading.Lock()
 
@@ -788,10 +814,15 @@ class Scanner(threading.Thread):
             return True
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+            log.info("Pass 3: executor created, seeding %d tasks", window_size)
+            submitted = 0
             for _ in range(window_size):
                 if not _submit_next():
                     break
+                submitted += 1
+            log.info("Pass 3: seeded %d tasks, entering wait loop", submitted)
 
+            _wait_iterations = 0
             while active:
                 if self._stop_requested or self._pause_requested:
                     for f in list(active):
@@ -803,6 +834,12 @@ class Scanner(threading.Thread):
                     timeout=0.1,
                     return_when=concurrent.futures.FIRST_COMPLETED,
                 )
+                _wait_iterations += 1
+                if _wait_iterations <= 3 or _wait_iterations % 100 == 0:
+                    log.info(
+                        "Pass 3: wait iter=%d, done=%d, active=%d, current=%d/%d",
+                        _wait_iterations, len(done), len(active), current, total,
+                    )
                 if not done:
                     continue
 
