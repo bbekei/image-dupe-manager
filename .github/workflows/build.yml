@@ -296,5 +296,12 @@ jobs:
             '{"jsonrpc":"2.0","id":1,"method":"start_scan","params":{"folders":["' + ($testDir -replace '\\','\\\\') + '"],"session_name":"smoke","enable_similarity":false}}'
           )
           $input = $commands -join "`n"
-          $result = $input | python sidecar/sidecar_main.py 2>$null
+          # Sidecar exit code is unreliable: the daemon scanner thread may
+          # still be using the DB when stdin closes and db.close() runs.
+          # Capture stdout and verify the JSON-RPC response instead.
+          $result = $input | python sidecar/sidecar_main.py 2>$null; $true
           Write-Host "Scan result: $result"
+          if ($result -notmatch '"result":\s*\d+') {
+            Write-Error "start_scan did not return a session ID"
+            exit 1
+          }
