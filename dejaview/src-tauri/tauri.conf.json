@@ -35,6 +35,7 @@
         "languages": ["English", "Hungarian"],
         "displayLanguageSelector": true,
         "installMode": "both",
+        "installerHooks": "nsis/hooks.nsh",
         "customLanguageFiles": {
           "Hungarian": "nsis/Hungarian.nsh"
         }
