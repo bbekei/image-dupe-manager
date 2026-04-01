@@ -781,6 +781,13 @@ class Scanner(threading.Thread):
             workers = max(1, self._max_workers // 4)
         log.info("Pass 3: using %d workers, window_size=%d", workers, workers * _PIPELINE_BUFFER_FACTOR)
 
+        # Pre-import imagehash in the scanner thread to avoid an import
+        # deadlock when multiple ThreadPoolExecutor workers all try to
+        # import it simultaneously (observed: 16 threads block on the
+        # per-module import lock for minutes until main-thread GIL activity
+        # breaks the deadlock).
+        import imagehash  # noqa: F401
+
         db_lock = self._perf.tracked_lock() if self._perf else threading.Lock()
 
         # Pending DB updates, split by type.
